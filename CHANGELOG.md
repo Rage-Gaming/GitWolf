@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Changed
+- Smoother diff scrolling: diff rows only track hover when a line can be staged, instead of one tracking area per row.
 - Smoother scrolling: panels draw their shadow on a background shape instead of the scrolling content, and history rows share one relative-date formatter.
 - More smoothing: syntax highlighting fades in instead of popping, the file-history diff keeps the old one until the next arrives, and pull request / issue lists and comments fade in.
 - Smoother transitions: turning on a history filter (dates, file, author…) keeps the current list, dims it while git searches and then fades the results in instead of flashing an empty state; stash and compare selections fade in the same way.

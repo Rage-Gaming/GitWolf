@@ -460,7 +460,7 @@ private struct SplitHalf: View {
         .overlay(alignment: .trailing) {
             if side == .left { Rectangle().fill(Color.primary.opacity(0.10)).frame(width: 1) }
         }
-        .onHover { hovering = $0 }
+        .hoverIf(staging != nil && line?.isChange == true) { hovering = $0 }
     }
 
     private func marker(_ line: DiffLine) -> String {
@@ -528,7 +528,7 @@ private struct DiffLineRow: View {
         .overlay(alignment: .leading) {
             if selected { Rectangle().fill(Theme.brand).frame(width: 3) }
         }
-        .onHover { hovering = $0 }
+        .hoverIf(staging != nil && line.isChange) { hovering = $0 }
     }
 
     private var marker: String {
@@ -580,5 +580,12 @@ enum SyntaxPalette {
         case .function: function
         case .attribute: attribute
         }
+    }
+}
+
+extension View {
+    /// Tracks hover only when it matters. A tracking area on every row of a long diff makes scrolling stutter.
+    @ViewBuilder func hoverIf(_ enabled: Bool, _ action: @escaping (Bool) -> Void) -> some View {
+        if enabled { onHover(perform: action) } else { self }
     }
 }
