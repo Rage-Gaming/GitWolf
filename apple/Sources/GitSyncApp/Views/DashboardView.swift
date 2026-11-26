@@ -14,7 +14,6 @@ struct DashboardView: View {
                         .foregroundStyle(.white)
                         .frame(width: 84, height: 84)
                         .background(Theme.brand, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                        .shadow(color: Theme.brand.opacity(0.4), radius: 18, y: 8)
                     Text("GitSync").font(.system(size: 34, weight: .bold, design: .rounded))
                     Text("Your repositories, always in sync.").font(.title3).foregroundStyle(.secondary)
                 }
@@ -26,6 +25,14 @@ struct DashboardView: View {
                             .font(.body.weight(.semibold)).padding(.horizontal, 8).padding(.vertical, 4)
                     }
                     .buttonStyle(.borderedProminent).controlSize(.large)
+                    Button { workspace.sheet = .clone } label: {
+                        Label("Clone", systemImage: "square.and.arrow.down").padding(.vertical, 4)
+                    }
+                    .buttonStyle(.bordered).controlSize(.large)
+                    Button { workspace.sheet = .create } label: {
+                        Label("New", systemImage: "plus.rectangle.on.folder").padding(.vertical, 4)
+                    }
+                    .buttonStyle(.bordered).controlSize(.large)
                     Button { workspace.showPalette = true } label: {
                         HStack(spacing: 6) { Text("Jump to…"); Kbd(text: "⌘K") }.padding(.vertical, 4)
                     }

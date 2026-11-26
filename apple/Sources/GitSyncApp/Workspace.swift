@@ -27,6 +27,7 @@ final class Workspace {
     var selectedID: String?
     var errorMessage: String?
     var showPalette = false
+    var sheet: WorkspaceSheet?
     private(set) var recents: [URL] = RecentRepositories.load()
 
     private static var didBootstrap = false

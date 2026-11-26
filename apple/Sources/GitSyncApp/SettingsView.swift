@@ -392,6 +392,8 @@ private struct ShortcutsSettings: View {
     private let sections: [Section] = [
         Section(title: "Repositories", items: [
             Item(title: "Open repository…", keys: ["⌘", "O"]),
+            Item(title: "Clone repository…", keys: ["⇧", "⌘", "O"]),
+            Item(title: "New repository…", keys: ["⇧", "⌘", "N"]),
             Item(title: "Close repository", keys: ["⇧", "⌘", "W"]),
             Item(title: "Jump to…", keys: ["⌘", "K"]),
             Item(title: "Switch to repository 1–9", keys: ["⌘", "1…9"]),

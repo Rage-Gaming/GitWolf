@@ -262,3 +262,40 @@ import Testing
         #expect(rows.last?.left?.text == "b" && rows.last?.right == nil)
     }
 }
+
+// MARK: - Clone / init
+
+@Suite struct CreateRepositoryTests {
+    @Test func suggestsNamesFromCloneURLs() {
+        #expect(GitRepository.suggestedName(forCloneURL: "https://github.com/ipuppyyt/git-sync.git") == "git-sync")
+        #expect(GitRepository.suggestedName(forCloneURL: "git@github.com:org/repo") == "repo")
+        #expect(GitRepository.suggestedName(forCloneURL: "https://host/a/b/") == "b")
+        #expect(GitRepository.suggestedName(forCloneURL: "  /tmp/local/proj.git  ") == "proj")
+        #expect(GitRepository.suggestedName(forCloneURL: "") == "")
+    }
+
+    @Test func initialisesAndClonesRepository() async throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("gitsync-clone-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let source = try await GitRepository.initialize(at: base.appendingPathComponent("origin/nested"), initialBranch: "trunk")
+        let runner = GitRunner(workingDirectory: source)
+        try await runner.run(["config", "user.name", "T"])
+        try await runner.run(["config", "user.email", "t@example.com"])
+        try "x\\n".write(to: source.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try await runner.run(["add", "."])
+        try await runner.run(["commit", "-m", "init"])
+        let branch = try await runner.runString(["branch", "--show-current"])
+        #expect(branch.trimmingCharacters(in: .whitespacesAndNewlines) == "trunk")
+
+        let clones = base.appendingPathComponent("clones")
+        try FileManager.default.createDirectory(at: clones, withIntermediateDirectories: true)
+        let dest = try await GitRepository.clone(url: source.path, into: clones, name: "copy")
+        #expect(FileManager.default.fileExists(atPath: dest.appendingPathComponent("a.txt").path))
+
+        // Cloning again into the same non-empty folder is refused.
+        await #expect(throws: GitError.self) {
+            _ = try await GitRepository.clone(url: source.path, into: clones, name: "copy")
+        }
+    }
+}

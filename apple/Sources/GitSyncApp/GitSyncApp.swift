@@ -11,25 +11,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let path = ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT"] {
             let dark = ProcessInfo.processInfo.environment["GITSYNC_APPEARANCE"] == "dark"
             NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            let wantSettings = ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT_WINDOW"] == "settings"
-            if wantSettings {
+            let target = ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT_WINDOW"]
+            let wantSettings = target == "settings"
+            let wantSheet = target?.hasPrefix("sheet:") == true
+            if wantSettings || wantSheet {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    if let menu = NSApp.mainMenu?.items.first?.submenu,
-                       let i = menu.items.firstIndex(where: { $0.title.hasPrefix("Settings") }) {
-                        menu.performActionForItem(at: i)
+                    // `settings` opens the first menu's Settings item; `sheet:<Title>` any menu item by title.
+                    let title = wantSheet ? String(target!.dropFirst(6)) : "Settings"
+                    let menus = wantSheet ? (NSApp.mainMenu?.items.compactMap(\.submenu) ?? []) : [NSApp.mainMenu?.items.first?.submenu].compactMap { $0 }
+                    for menu in menus {
+                        if let i = menu.items.firstIndex(where: { $0.title.hasPrefix(title) }) {
+                            menu.performActionForItem(at: i)
+                            break
+                        }
                     }
                 }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                let main = NSApp.windows.first { $0.canBecomeMain && $0.isVisible && $0.title != "Settings" }
                 let window = wantSettings
                     ? NSApp.windows.first { $0.title == "Settings" && $0.isVisible }
-                    : NSApp.windows.first { $0.canBecomeMain && $0.isVisible }
+                    : (wantSheet ? main?.attachedSheet : main)
                 if let view = window?.contentView,
                    let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                     view.cacheDisplay(in: view.bounds, to: rep)
                     do { try rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path)) }
                     catch { NSLog("snapshot write failed: \(error)") }
                 } else { NSLog("snapshot: no view/rep") }
+                if wantSheet { exit(0) }
                 NSApp.terminate(nil)
             }
         }
@@ -94,9 +103,20 @@ struct RootView: View {
         .frame(minWidth: 1080, minHeight: 640)
         .containerBackground(for: .window) { WindowBackdrop() }
         .overlay { if workspace.showPalette { CommandPalette(workspace: workspace) } }
+        .sheet(item: Binding(get: { workspace.sheet }, set: { workspace.sheet = $0 })) { sheet in
+            switch sheet {
+            case .clone: CloneSheet(workspace: workspace)
+            case .create: CreateRepositorySheet(workspace: workspace)
+            }
+        }
         .focusedSceneValue(\.workspace, workspace)
         .modifier(AppearanceModifier())
-        .task { await workspace.bootstrap() }
+        .task {
+            await workspace.bootstrap()
+            #if DEBUG
+            if let name = ProcessInfo.processInfo.environment["GITSYNC_SHEET"] { workspace.sheet = WorkspaceSheet(rawValue: name) }
+            #endif
+        }
         .alert("Couldn’t Open Repository", isPresented: Binding(
             get: { workspace.errorMessage != nil },
             set: { if !$0 { workspace.errorMessage = nil } })
@@ -120,6 +140,10 @@ struct AppCommands: Commands {
         CommandGroup(after: .newItem) {
             Button("Open Repository…") { workspace?.openPanel() }
                 .keyboardShortcut("o")
+            Button("Clone Repository…") { workspace?.sheet = .clone }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+            Button("New Repository…") { workspace?.sheet = .create }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
             Button("Close Repository") { if let s = workspace?.selected { workspace?.close(s) } }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
                 .disabled(workspace?.selected == nil)

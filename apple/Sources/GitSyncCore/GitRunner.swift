@@ -16,6 +16,25 @@ private final class DataBox: @unchecked Sendable {
     var data = Data()
 }
 
+/// Lets a running git process be terminated when its Swift task is cancelled.
+private final class ProcessBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+
+    func attach(_ p: Process) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        process = p
+        return !cancelled
+    }
+
+    func cancel() {
+        lock.lock(); defer { lock.unlock() }
+        cancelled = true
+        if let process, process.isRunning { process.terminate() }
+    }
+}
+
 /// Runs the system `git` binary. Every call is an independent process, so it is safe to
 /// call concurrently from any context.
 public struct GitRunner: Sendable {
@@ -36,21 +55,28 @@ public struct GitRunner: Sendable {
         _ arguments: [String],
         readOnly: Bool = false,
         allowedExitCodes: Set<Int32> = [0],
-        input: Data? = nil
+        input: Data? = nil,
+        onProgress: (@Sendable (String) -> Void)? = nil
     ) async throws -> Data {
         let directory = workingDirectory
         let path = gitPath
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let data = try Self.execute(
-                        path: path, directory: directory, arguments: arguments,
-                        readOnly: readOnly, allowed: allowedExitCodes, input: input)
-                    continuation.resume(returning: data)
-                } catch {
-                    continuation.resume(throwing: error)
+        let box = ProcessBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let data = try Self.execute(
+                            path: path, directory: directory, arguments: arguments,
+                            readOnly: readOnly, allowed: allowedExitCodes, input: input,
+                            box: box, onProgress: onProgress)
+                        continuation.resume(returning: data)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
+        } onCancel: {
+            box.cancel()
         }
     }
 
@@ -78,7 +104,8 @@ public struct GitRunner: Sendable {
 
     private static func execute(
         path: String, directory: URL, arguments: [String],
-        readOnly: Bool, allowed: Set<Int32>, input: Data?
+        readOnly: Bool, allowed: Set<Int32>, input: Data?,
+        box: ProcessBox, onProgress: (@Sendable (String) -> Void)?
     ) throws -> Data {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
@@ -93,6 +120,7 @@ public struct GitRunner: Sendable {
         let stdin = input != nil ? Pipe() : nil
         process.standardInput = stdin ?? FileHandle.nullDevice
 
+        guard box.attach(process) else { throw CancellationError() }
         try process.run()
 
         let errorBox = DataBox()
@@ -100,7 +128,13 @@ public struct GitRunner: Sendable {
         let errorHandle = stderr.fileHandleForReading
         group.enter()
         DispatchQueue.global().async {
-            errorBox.data = errorHandle.readDataToEndOfFile()
+            // Read in chunks so progress (git writes it to stderr) can be reported as it arrives.
+            while true {
+                let chunk = errorHandle.availableData
+                if chunk.isEmpty { break }
+                errorBox.data.append(chunk)
+                if let onProgress { onProgress(String(decoding: chunk, as: UTF8.self)) }
+            }
             group.leave()
         }
         if let stdin, let input {

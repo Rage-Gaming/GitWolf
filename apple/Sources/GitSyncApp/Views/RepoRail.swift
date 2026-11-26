@@ -25,7 +25,20 @@ struct RepoRail: View {
                 .padding(.vertical, 2)
             }
 
-            RailIconButton(symbol: "plus", help: "Open repository (⌘O)", selected: false) { workspace.openPanel() }
+            Menu {
+                Button("Open Repository…") { workspace.openPanel() }
+                Button("Clone Repository…") { workspace.sheet = .clone }
+                Button("New Repository…") { workspace.sheet = .create }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.06)))
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden)
+            .fixedSize()
+            .help("Open, clone or create a repository")
         }
         .padding(.bottom, 14)
         .frame(width: 76)

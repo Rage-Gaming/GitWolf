@@ -34,6 +34,45 @@ public struct GitRepository: Sendable {
         return GitRepository(root: URL(fileURLWithPath: path, isDirectory: true))
     }
 
+    // MARK: Creating
+
+    /// A folder name for a clone URL: `https://host/org/repo.git` → `repo`, `git@host:org/repo` → `repo`.
+    public static func suggestedName(forCloneURL url: String) -> String {
+        var s = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        while s.hasSuffix("/") { s.removeLast() }
+        if s.hasSuffix(".git") { s.removeLast(4) }
+        let last = s.split(whereSeparator: { $0 == "/" || $0 == ":" || $0 == "\\" }).last.map(String.init) ?? ""
+        return last
+    }
+
+    /// Clones `url` into `parent/name` and returns the new repository's folder.
+    /// `onProgress` receives git's progress output (e.g. "Receiving objects: 40%").
+    public static func clone(
+        url: String, into parent: URL, name: String,
+        gitPath: String = "/usr/bin/git",
+        onProgress: (@Sendable (String) -> Void)? = nil
+    ) async throws -> URL {
+        let destination = parent.appendingPathComponent(name, isDirectory: true)
+        if FileManager.default.fileExists(atPath: destination.path),
+           let contents = try? FileManager.default.contentsOfDirectory(atPath: destination.path), !contents.isEmpty {
+            throw GitError(command: "clone", exitCode: 128, stderr: "“\(name)” already exists in that location and isn’t empty.")
+        }
+        let runner = GitRunner(workingDirectory: parent, gitPath: gitPath)
+        try await runner.run(["clone", "--progress", "--", url, name], onProgress: onProgress)
+        return destination
+    }
+
+    /// Creates (if needed) `directory` and initialises a repository in it.
+    public static func initialize(at directory: URL, initialBranch: String, gitPath: String = "/usr/bin/git") async throws -> URL {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let runner = GitRunner(workingDirectory: directory, gitPath: gitPath)
+        var args = ["init"]
+        let branch = initialBranch.trimmingCharacters(in: .whitespaces)
+        if !branch.isEmpty { args += ["--initial-branch", branch] }
+        try await runner.run(args)
+        return directory
+    }
+
     // MARK: Reading
 
     public func snapshot(commitLimit: Int) async throws -> RepositorySnapshot {

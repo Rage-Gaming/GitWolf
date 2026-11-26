@@ -36,6 +36,8 @@ struct CommandPalette: View {
             }
         }
         all.append(Item(id: "open", title: "Open Repository…", subtitle: "Workspace", icon: "folder.badge.plus") { workspace.openPanel() })
+        all.append(Item(id: "clone", title: "Clone Repository…", subtitle: "Workspace", icon: "square.and.arrow.down") { workspace.sheet = .clone })
+        all.append(Item(id: "create", title: "New Repository…", subtitle: "Workspace", icon: "plus.rectangle.on.folder") { workspace.sheet = .create })
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         return q.isEmpty ? all : all.filter { ($0.title + " " + $0.subtitle).lowercased().contains(q) }
     }
