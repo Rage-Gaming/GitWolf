@@ -142,7 +142,8 @@ enum RefParser {
         splitBytes(data, 10).compactMap { line in
             let f = splitBytes(line, 0x1f)
             guard f.count >= 2, !f[0].isEmpty else { return nil }
-            return GitTag(name: f[0], hash: f[1])
+            let annotated = f.count >= 3 && f[2] == "tag"
+            return GitTag(name: f[0], hash: f[1], isAnnotated: annotated, message: annotated && f.count >= 4 ? f[3] : "")
         }
     }
 

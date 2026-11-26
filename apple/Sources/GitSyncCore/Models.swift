@@ -110,7 +110,18 @@ public struct Branch: Identifiable, Hashable, Sendable {
 public struct GitTag: Identifiable, Hashable, Sendable {
     public var id: String { name }
     public var name: String
+    /// The commit the tag points at (peeled for annotated tags).
     public var hash: String
+    public var isAnnotated: Bool = false
+    /// First line of an annotated tag's message.
+    public var message: String = ""
+
+    public init(name: String, hash: String, isAnnotated: Bool = false, message: String = "") {
+        self.name = name
+        self.hash = hash
+        self.isAnnotated = isAnnotated
+        self.message = message
+    }
 }
 
 public struct Stash: Identifiable, Hashable, Sendable {

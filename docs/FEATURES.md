@@ -146,6 +146,12 @@ and should follow each platform's native idioms.
 - **Delete on Remote** (remote branch context menu): confirmation, then `git push <remote> --delete <branch>`.
 - **Clean Up Branches…** (Repository menu, palette): local branches in `git branch --merged <current>`, plus branches whose upstream is `gone` (`%(upstream:track)`). Never lists the current branch or main, master, develop, dev, trunk, release. Merged branches are pre-selected; an unmerged "gone" branch is tagged and warns that commits are lost. Merged branches use `branch -d`, unmerged `branch -D`.
 
+## 3i. Tags
+
+- **New Tag…** (commit context menu): name, optional message (non-empty → `git tag -a -m`, annotated; empty → lightweight), optional "Push to <remote>".
+- Tag rows: tooltip shows annotated message; context menu has **Push to <remote>**, **Delete on <remote>…** (confirmation, `git push <remote> --delete refs/tags/<tag>`) and **Delete Local Tag**. A "Push All Tags" link appears when there are several (`git push <remote> --tags`).
+- Tag list reads `for-each-ref` with the peeled object (`%(*objectname)`) so annotated tags point at their commit, plus `%(objecttype)` and `%(contents:subject)`.
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is

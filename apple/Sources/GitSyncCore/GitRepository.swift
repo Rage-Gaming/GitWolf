@@ -141,7 +141,9 @@ public struct GitRepository: Sendable {
 
     public func tags() async throws -> [GitTag] {
         let data = try await git.run(
-            ["for-each-ref", "--format=%(refname:short)%1f%(objectname)", "--sort=-creatordate", "refs/tags"],
+            ["for-each-ref",
+             "--format=%(refname:short)%1f%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)%1f%(objecttype)%1f%(contents:subject)",
+             "--sort=-creatordate", "refs/tags"],
             readOnly: true)
         return RefParser.parseTags(data)
     }
@@ -284,8 +286,26 @@ public struct GitRepository: Sendable {
 
     // MARK: Tags
 
-    public func createTag(_ name: String, at hash: String) async throws {
-        try await git.run(["tag", name, hash])
+    /// A non-empty `message` makes an annotated tag (with tagger and date); otherwise a lightweight one.
+    public func createTag(_ name: String, at hash: String, message: String = "") async throws {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty {
+            try await git.run(["tag", name, hash])
+        } else {
+            try await git.run(["tag", "-a", name, "-m", text, hash])
+        }
+    }
+
+    public func pushTag(_ name: String, remote: String) async throws {
+        try await networkGit().run(["push", remote, "refs/tags/\(name)"])
+    }
+
+    public func pushAllTags(remote: String) async throws {
+        try await networkGit().run(["push", remote, "--tags"])
+    }
+
+    public func deleteRemoteTag(_ name: String, remote: String) async throws {
+        try await networkGit().run(["push", remote, "--delete", "refs/tags/\(name)"])
     }
 
     public func deleteTag(_ name: String) async throws {

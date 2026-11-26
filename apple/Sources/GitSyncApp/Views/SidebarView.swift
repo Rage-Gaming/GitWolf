@@ -49,10 +49,24 @@ struct SidebarView: View {
                     if store.remotes.isEmpty { emptyNote("No remotes") }
                 }
                 SidebarSection(title: "Tags", count: store.tags.count, isOn: $showTags) {
+                    if store.tags.count > 1, let remote = store.remotes.first(where: { $0 == "origin" }) ?? store.remotes.first {
+                        Button { store.pushAllTags(to: remote) } label: { Label("Push All Tags to \(remote)", systemImage: "arrow.up.circle") }
+                            .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary).padding(.leading, 10)
+                    }
                     ForEach(store.tags) { tag in
                         SidebarRow(icon: "tag", title: tag.name, tint: .orange, trailing: nil, emphasized: false,
                                    onTap: { store.reveal(hash: tag.hash) }, onDoubleTap: {})
-                            .contextMenu { Button("Delete Tag", role: .destructive) { store.deleteTag(tag.name) } }
+                            .help(tag.isAnnotated ? (tag.message.isEmpty ? "Annotated tag" : "Annotated: \(tag.message)") : "Lightweight tag")
+                            .contextMenu {
+                                ForEach(store.remotes, id: \.self) { remote in
+                                    Button("Push to \(remote)") { store.pushTag(tag.name, to: remote) }
+                                }
+                                Divider()
+                                ForEach(store.remotes, id: \.self) { remote in
+                                    Button("Delete on \(remote)…", role: .destructive) { store.confirmDeleteRemoteTag(tag.name, remote: remote) }
+                                }
+                                Button("Delete Local Tag", role: .destructive) { store.deleteTag(tag.name) }
+                            }
                     }
                     if store.tags.isEmpty { emptyNote("No tags") }
                 }

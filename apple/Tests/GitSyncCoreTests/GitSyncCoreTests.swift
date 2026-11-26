@@ -1279,3 +1279,43 @@ import Testing
         #expect(left == ["main", "wip"])
     }
 }
+
+@Suite struct TagToolsTests {
+    @Test func annotatedAndLightweightTags() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        let head = try await t.commit("one", file: "a.txt", text: "a")
+        try await t.repo.createTag("light", at: head)
+        try await t.repo.createTag("v1", at: head, message: "Release one\n\nbody")
+        let tags = try await t.repo.tags()
+        let light = try #require(tags.first { $0.name == "light" })
+        let ann = try #require(tags.first { $0.name == "v1" })
+        #expect(!light.isAnnotated)
+        #expect(ann.isAnnotated)
+        #expect(ann.message == "Release one")
+        #expect(ann.hash == head)
+        #expect(light.hash == head)
+    }
+
+    @Test func pushAndDeleteOnRemote() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        let head = try await t.commit("one", file: "a.txt", text: "a")
+        let bare = FileManager.default.temporaryDirectory.appendingPathComponent("tag-remote-\(UUID().uuidString).git")
+        defer { try? FileManager.default.removeItem(at: bare) }
+        _ = try await GitRunner(workingDirectory: bare.deletingLastPathComponent()).run(["init", "--bare", "-q", bare.path])
+        try await t.git.run(["remote", "add", "origin", bare.path])
+        try await t.repo.createTag("v1", at: head, message: "m")
+        try await t.repo.createTag("v2", at: head)
+        try await t.repo.pushTag("v1", remote: "origin")
+        var remoteTags = String(decoding: try await t.git.run(["ls-remote", "--tags", "origin"], readOnly: true), as: UTF8.self)
+        #expect(remoteTags.contains("refs/tags/v1"))
+        #expect(!remoteTags.contains("refs/tags/v2"))
+        try await t.repo.pushAllTags(remote: "origin")
+        remoteTags = String(decoding: try await t.git.run(["ls-remote", "--tags", "origin"], readOnly: true), as: UTF8.self)
+        #expect(remoteTags.contains("refs/tags/v2"))
+        try await t.repo.deleteRemoteTag("v1", remote: "origin")
+        remoteTags = String(decoding: try await t.git.run(["ls-remote", "--tags", "origin"], readOnly: true), as: UTF8.self)
+        #expect(!remoteTags.contains("refs/tags/v1"))
+    }
+}

@@ -270,6 +270,7 @@ final class RepositoryStore: Identifiable {
             #if DEBUG
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "cleanup" { sheet = .cleanup }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "tag", let h = s.commits.first?.hash { sheet = .newTag(hash: h) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "compare" { openCompare(from: "main", to: "feature") }
             if let v = ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"], v.hasPrefix("history:") { sheet = .fileHistory(String(v.dropFirst(8))) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "stash", let first = s.stashes.first { selectStash(first) }
@@ -702,7 +703,25 @@ final class RepositoryStore: Identifiable {
     func merge(_ name: String) { perform("Merging…") { try await $0.merge(name) } }
     func cherryPick(_ hash: String) { perform("Cherry-picking…") { try await $0.cherryPick(hash) } }
     func revert(_ hash: String) { perform("Reverting…") { try await $0.revert(hash) } }
-    func createTag(_ name: String, at hash: String) { perform("Tagging…") { try await $0.createTag(name, at: hash) } }
+    func createTag(_ name: String, at hash: String, message: String = "", pushTo remote: String? = nil) {
+        perform("Tagging…") { repo in
+            try await repo.createTag(name, at: hash, message: message)
+            if let remote { try await repo.pushTag(name, remote: remote) }
+        }
+    }
+    func pushTag(_ name: String, to remote: String) { perform("Pushing tag…") { try await $0.pushTag(name, remote: remote) } }
+    func pushAllTags(to remote: String) { perform("Pushing tags…") { try await $0.pushAllTags(remote: remote) } }
+
+    func confirmDeleteRemoteTag(_ name: String, remote: String) {
+        let alert = NSAlert()
+        alert.messageText = "Delete tag “\(name)” on \(remote)?"
+        alert.informativeText = "The tag is removed from the remote for everyone. The local tag is kept."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete on Remote")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        perform("Deleting tag on \(remote)…") { try await $0.deleteRemoteTag(name, remote: remote) }
+    }
     func deleteTag(_ name: String) { perform("Deleting tag…") { try await $0.deleteTag(name) } }
     func stashPush(_ message: String) { perform("Stashing…") { try await $0.stashPush(message: message) } }
     func stashApply(_ ref: String) { perform("Applying stash…") { try await $0.stashApply(ref) } }

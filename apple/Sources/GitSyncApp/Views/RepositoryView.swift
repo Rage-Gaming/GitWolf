@@ -48,9 +48,7 @@ struct RepositoryView: View {
                     store.createBranch(name, from: from, checkout: checkout)
                 }
             case .newTag(let hash):
-                PromptSheet(title: "New Tag", placeholder: "v1.0.0", confirm: "Create") { name, _ in
-                    store.createTag(name, at: hash)
-                }
+                NewTagSheet(store: store, hash: hash)
             case .rebase(let plan):
                 RebaseSheet(store: store, plan: plan)
             case .stashHunk(let index):
