@@ -20,6 +20,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `Bisect` | `BisectState` (from `BISECT_LOG`), start/mark/reset. |
 | `Patches` | format-patch, working diff, apply/check, `am`. |
 | `Worktrees`, `Submodules` | list/add/remove worktrees; submodule status, update, add. |
+| `UpdateChecker` | `AppVersion` ordering and the GitHub latest-release lookup (injectable transport). |
 | `CustomActions` | `CustomAction` and `CustomActionRunner` (shell command at repo root, env vars). |
 | `InlineDiff` | Word-level changed ranges, line pairing, folding of long unchanged runs. |
 | `HomeLayout` | Pinned repositories and named groups for the home screen (Codable). |

@@ -395,6 +395,15 @@ Selecting a pushed commit (History) or a pull request shows a pill with the over
 | Open on provider | ⇧⌘G |
 | Settings | ⌘, |
 
+## 9a. Updates and releases
+
+- **Update check** [core `UpdateChecker`, `AppVersion`; ui `UpdateManager`]. `GET /repos/<repo>/releases/latest`
+  with no credentials. Ignored: drafts, pre-releases, 404 (no releases), and any `html_url` that is not
+  `https://github.com/...`. Offered through an alert with Download (opens the page), Later, Skip This
+  Version. Automatic check at most once a day, only for packaged builds that have a version; setting
+  `checkForUpdates` (default on). Also a menu command. Never downloads or installs.
+- Releases are produced by `Scripts/release.sh` / `docs/RELEASING.md`.
+
 ## 9b. Accessibility and localisation
 
 - Every interactive element has a spoken label; icon-only buttons use their tooltip text. Rows that

@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        Task { @MainActor in UpdateManager.checkInBackground() }
         #if DEBUG
         // GITSYNC_SNAPSHOT=/path.png renders the window to a PNG after a delay, then quits.
         // GITSYNC_APPEARANCE=dark|light forces an appearance for the capture.
@@ -150,6 +151,9 @@ struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { Task { await UpdateManager.check(userInitiated: true) } }
+        }
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { openWindow(id: "settings") }
                 .keyboardShortcut(",")

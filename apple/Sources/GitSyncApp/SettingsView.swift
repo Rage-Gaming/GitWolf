@@ -195,6 +195,7 @@ private struct GeneralSettings: View {
     @AppStorage(SettingsKey.autoFetchMinutes) private var autoFetch = 5
     @AppStorage(SettingsKey.commitPageSize) private var pageSize = 1000
     @AppStorage(SettingsKey.pullRebase) private var pullRebase = false
+    @AppStorage(UpdateManager.autoKey) private var checkUpdates = true
     @AppStorage(SettingsKey.diffContext) private var context = 4
     @AppStorage(SettingsKey.syntaxHighlighting) private var syntax = true
     @AppStorage(SettingsKey.diffLayout) private var layout = DiffLayout.unified.rawValue
@@ -249,8 +250,12 @@ private struct GeneralSettings: View {
                     ("Every 15 minutes", 15), ("Every 30 minutes", 30)])
             }
             Row(icon: "arrow.triangle.pull", tint: .orange, title: "Pull strategy",
-                detail: "Rebase keeps history linear; merge keeps a merge commit", divider: false) {
+                detail: "Rebase keeps history linear; merge keeps a merge commit") {
                 PillPicker(selection: $pullRebase, options: [("Merge", false), ("Rebase", true)])
+            }
+            Row(icon: "arrow.down.app", tint: .green, title: "Check for updates",
+                detail: "Once a day, asks GitHub for a newer release. Nothing is installed automatically", divider: false) {
+                Toggle("", isOn: $checkUpdates).labelsHidden().toggleStyle(.switch)
             }
         }
 

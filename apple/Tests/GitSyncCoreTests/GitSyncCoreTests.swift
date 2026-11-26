@@ -2457,3 +2457,39 @@ private func makeTempDir() throws -> URL {
         #expect(GitRepository.isImagePath("a/B.PNG") && !GitRepository.isImagePath("a.svg"))
     }
 }
+
+@Suite struct UpdateCheckerTests {
+    private func checker(status: Int = 200, body: String) -> UpdateChecker {
+        UpdateChecker(repository: "o/r") { request in
+            #expect(request.url?.absoluteString == "https://api.github.com/repos/o/r/releases/latest")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+        }
+    }
+
+    @Test func versionOrdering() throws {
+        let v = { try #require(AppVersion($0)) }
+        #expect(try v("1.10.0") > v("1.9.9"))
+        #expect(try v("v2.0") == v("2.0.0"))
+        #expect(try v("2.0.0-beta.2") < v("2.0.0"))
+        #expect(try v("2.0.0-beta.2") < v("2.0.0-beta.10"))
+        #expect(AppVersion("dev") == nil)
+    }
+
+    @Test func reportsNewerRelease() async throws {
+        let body = #"{"tag_name":"v1.2.0","html_url":"https://github.com/o/r/releases/tag/v1.2.0","body":"Notes","draft":false,"prerelease":false}"#
+        let found = try await checker(body: body).newerRelease(than: try #require(AppVersion("1.1.0")))
+        #expect(found?.tag == "v1.2.0" && found?.notes == "Notes")
+        #expect(try await checker(body: body).newerRelease(than: try #require(AppVersion("1.2.0"))) == nil)
+    }
+
+    @Test func ignoresPrereleasesMissingReleasesAndForeignLinks() async throws {
+        let current = try #require(AppVersion("1.0.0"))
+        let pre = #"{"tag_name":"v9.0.0","html_url":"https://github.com/o/r/x","prerelease":true}"#
+        #expect(try await checker(body: pre).newerRelease(than: current) == nil)
+        #expect(try await checker(status: 404, body: "{}").newerRelease(than: current) == nil)
+        let evil = #"{"tag_name":"v9.0.0","html_url":"https://evil.example/download"}"#
+        #expect(try await checker(body: evil).newerRelease(than: current) == nil)
+        await #expect(throws: URLError.self) { try await checker(status: 500, body: "").newerRelease(than: current) }
+    }
+}
