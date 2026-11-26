@@ -82,7 +82,12 @@ struct RepositoryView: View {
     @ViewBuilder private var detailColumn: some View {
         switch store.mode {
         case .history: CommitDetailView(store: store)
-        case .changes: DiffPane(diff: store.diff, path: store.selectedTarget?.path, staging: staging)
+        case .changes:
+            if let t = store.selectedTarget, t.source == .conflicted, store.status.conflicted.contains(where: { $0.path == t.path }) {
+                ConflictResolverView(store: store, path: t.path).id(t.path)
+            } else {
+                DiffPane(diff: store.diff, path: store.selectedTarget?.path, staging: staging)
+            }
         case .pullRequests: CollabDetailView(store: store, collab: store.pullRequests)
         case .issues: CollabDetailView(store: store, collab: store.issues)
         }

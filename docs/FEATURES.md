@@ -52,6 +52,14 @@ and should follow each platform's native idioms.
   reads the git dir (`rebase-merge/`, `rebase-apply/`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`,
   `REVERT_HEAD`, `sequencer/`), following a `gitdir:` pointer for worktrees/submodules; actions run
   `git <op> --continue|--abort|--skip`. Also in the command palette.
+- **Conflict resolution** [core `ConflictDocument`]: selecting a file in the Conflicts group opens a
+  resolver in the detail pane. The file is parsed for `<<<<<<<` / `|||||||` (diff3 base) / `=======` /
+  `>>>>>>>` blocks (exactly 7 characters; unterminated blocks stay plain text). Each block gets
+  Ours, Theirs, Both and Both-Theirs-First, shown side by side with the branch labels. **Mark as
+  Resolved** is enabled once every block has a choice; it writes the file (CRLF and missing final
+  newline preserved) and runs `git add`. Files with no markers (deleted by us/them, added by both,
+  binary) offer Keep Ours / Keep Theirs / Delete via `git checkout --ours|--theirs` and `git rm`,
+  chosen from `git ls-files -u` stages. The row context menu has Resolve Using Ours / Theirs.
 
 ## 4. Diff view
 

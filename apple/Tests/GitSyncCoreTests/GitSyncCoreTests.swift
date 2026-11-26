@@ -767,3 +767,63 @@ import Testing
         #expect(snap.operation?.kind == .merge)
     }
 }
+
+@Suite struct ConflictResolutionTests {
+    @Test func parsesBlocksAndRendersChoices() throws {
+        let text = "a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> feature\nb\n<<<<<<< HEAD\nx\n||||||| base\nw\n=======\ny\n>>>>>>> feature\n"
+        let doc = try #require(ConflictDocument.parse(text))
+        #expect(doc.blocks.count == 2)
+        #expect(doc.blocks[0].oursLabel == "HEAD" && doc.blocks[0].theirsLabel == "feature")
+        #expect(doc.blocks[1].base == ["w"])
+        #expect(doc.render([0: .ours, 1: .theirs]) == "a\nmine\nb\ny\n")
+        #expect(doc.render([0: .both, 1: .bothReversed]) == "a\nmine\ntheirs\nb\ny\nx\n")
+        // Unresolved blocks keep their markers (diff3 base included).
+        #expect(doc.render([0: .ours]).contains("||||||| base"))
+        #expect(doc.render([:]).hasPrefix("a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> feature\n"))
+    }
+
+    @Test func keepsLineEndingsAndMissingFinalNewline() throws {
+        let text = "a\r\n<<<<<<< HEAD\r\nmine\r\n=======\r\ntheirs\r\n>>>>>>> f\r\nend"
+        let doc = try #require(ConflictDocument.parse(text))
+        #expect(doc.render([0: .theirs]) == "a\r\ntheirs\r\nend")
+    }
+
+    @Test func ignoresFilesWithoutCompleteBlocks() {
+        #expect(ConflictDocument.parse("plain\n") == nil)
+        #expect(ConflictDocument.parse("<<<<<<< HEAD\nonly start\n") == nil)
+        // Markers that are not seven characters wide (e.g. Markdown rules) are ordinary text.
+        #expect(ConflictDocument.parse("=======\n>>>>>>>>\n") == nil)
+    }
+
+    @Test func resolvesFileAndStagesIt() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        let repo = t.repo
+        _ = try? await t.git.run(["merge", "feature"])
+        let stages = try await repo.conflictStages("f.txt")
+        #expect(stages.hasContentConflict)
+        let doc = try #require(try await repo.conflictDocument("f.txt"))
+        try await repo.resolveConflict("f.txt", content: doc.render([0: .both]))
+        let status = try await repo.status()
+        #expect(status.conflicted.isEmpty)
+        #expect(status.staged.contains { $0.path == "f.txt" })
+        #expect(try t.read() == "one\nMAIN\nFEATURE\nthree\n")
+        try await repo.continueOperation(try #require(repo.inProgressOperation()))
+        #expect(repo.inProgressOperation() == nil)
+    }
+
+    @Test func takesOneSideOfDeleteModifyConflict() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try await t.commit("base", file: "g.txt", text: "1\n")
+        try await t.git.run(["switch", "-c", "feature"])
+        try await t.git.run(["rm", "g.txt"]); try await t.git.run(["commit", "-m", "del"])
+        try await t.git.run(["switch", "main"])
+        try await t.commit("edit", file: "g.txt", text: "2\n")
+        _ = try? await t.git.run(["merge", "feature"])
+        let stages = try await t.repo.conflictStages("g.txt")
+        #expect(!stages.hasContentConflict && stages.title == "Deleted by them")
+        try await t.repo.resolveConflict("g.txt", taking: .delete)
+        #expect(try await t.repo.status().conflicted.isEmpty)
+    }
+}

@@ -235,6 +235,8 @@ final class RepositoryStore: Identifiable {
             if ProcessInfo.processInfo.environment["GITSYNC_MODE"] == "history" {
                 mode = .history
                 selectCommit(s.commits.first?.id)
+            } else if let c = s.status.conflicted.first {
+                selectChange(c, source: .conflicted)
             } else if let c = s.status.unstaged.first {
                 selectChange(c, source: .unstaged)
             }
@@ -414,6 +416,13 @@ final class RepositoryStore: Identifiable {
             busyLabel = nil
             requestRefresh()
         }
+    }
+
+    func resolveConflict(_ path: String, content: String) {
+        perform("Resolving…") { try await $0.resolveConflict(path, content: content) }
+    }
+    func resolveConflict(_ path: String, taking side: ConflictSide) {
+        perform("Resolving…") { try await $0.resolveConflict(path, taking: side) }
     }
 
     func continueOperation() {

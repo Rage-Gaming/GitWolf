@@ -139,7 +139,10 @@ private struct ChangeRow: View {
         .onHover { hovering = $0 }
         .onTapGesture { store.selectChange(change, source: source) }
         .contextMenu {
-            if source == .staged {
+            if source == .conflicted {
+                Button("Resolve Using Ours") { store.resolveConflict(change.path, taking: .ours) }
+                Button("Resolve Using Theirs") { store.resolveConflict(change.path, taking: .theirs) }
+            } else if source == .staged {
                 Button("Unstage") { store.unstage([change.path]) }
             } else {
                 Button("Stage") { store.stage([change.path]) }
