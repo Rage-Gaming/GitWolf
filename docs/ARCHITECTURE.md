@@ -25,6 +25,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `Signing` | `signature(of:)` (format, state, signer, key), `signingConfig()`, and the `sign` option of `commit`. |
 | `Blame` | `blame` (porcelain parser), `fileHistory` (`--follow`), `fileDiff` (rename-aware per-commit diff). |
 | `Compare` | `compare(from:to:sinceAncestor:)` returns resolved hashes, changed files, commits and ahead/behind. |
+| `Hooks` | `HookFailedError`, `HookDiagnosis.diagnose` (is this commit failure a hook?), `activeHooks()`; `commit` throws `HookFailedError`. |
 | `HistorySearch` | `HistoryQuery` (scope, text, path, dates) and `GitRepository.search`. |
 | Tags (in `GitRepository`) | `createTag(message:)`, `pushTag`, `pushAllTags`, `deleteRemoteTag`; `GitTag` carries `isAnnotated` and `message`. |
 | `BranchTools` | `renameBranch`, `setUpstream`, `cleanupCandidates` (merged or upstream gone), `deleteBranches`; `deleteRemoteBranch` lives in `GitRepository`. |

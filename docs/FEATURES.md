@@ -167,6 +167,10 @@ The History search field filters loaded commits (message, author, hash prefix). 
 
 User text is always glued to its flag (`--grep=…`, `-S…`) so it can never be read as an option.
 
+## 3k. Hook output
+
+If `git commit` fails and an executable `pre-commit`, `prepare-commit-msg` or `commit-msg` hook exists (looked up with `git rev-parse --git-path hooks`, so `core.hooksPath` is honoured), the failure is treated as a hook failure unless git's own message explains it (nothing to commit, identity unknown, GPG failure, empty message, merge in progress…). The sheet shows the hook name and its full output with ANSI colour codes removed, **Copy Output**, and **Commit Without Hooks** (`git commit --no-verify`). The commit message draft is kept. Hook stdout is redirected to stderr by git, so stderr holds all output.
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is

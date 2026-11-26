@@ -61,6 +61,8 @@ struct RepositoryView: View {
                 PromptSheet(title: "Rename Branch", placeholder: "new-name", confirm: "Rename", initial: name) { new, _ in
                     store.renameBranch(name, to: new)
                 }
+            case .hookFailure(let failure):
+                HookOutputSheet(failure: failure) { store.commit(skipHooks: true) }
             case .cleanup:
                 BranchCleanupSheet(store: store)
             case .reflog:

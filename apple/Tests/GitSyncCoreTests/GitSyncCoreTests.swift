@@ -1360,3 +1360,47 @@ import Testing
         #expect(hyphen.isEmpty)
     }
 }
+
+@Suite struct HookTests {
+    private func installHook(_ t: TestRepo, _ name: String, _ body: String) throws {
+        let url = t.dir.appendingPathComponent(".git/hooks/\(name)")
+        try body.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    }
+
+    @Test func failingPreCommitHookSurfacesItsOutput() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("base", file: "a.txt", text: "a")
+        try installHook(t, "pre-commit", "#!/bin/sh\necho 'lint: trailing whitespace in a.txt'\necho 'details on stderr' >&2\nexit 1\n")
+        try t.write("changed", "a.txt")
+        try await t.git.run(["add", "a.txt"])
+        do {
+            try await t.repo.commit(message: "try", amend: false)
+            Issue.record("commit should have failed")
+        } catch let failure as HookFailedError {
+            #expect(failure.hook == "pre-commit")
+            #expect(failure.output.contains("lint: trailing whitespace in a.txt"))
+            #expect(failure.output.contains("details on stderr"))
+        }
+        try await t.repo.commit(message: "try", amend: false, skipHooks: true)
+        #expect(try await t.repo.headMessage() == "try")
+    }
+
+    @Test func nonHookFailuresStayPlainErrors() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("base", file: "a.txt", text: "a")
+        try installHook(t, "pre-commit", "#!/bin/sh\nexit 0\n")
+        do {
+            try await t.repo.commit(message: "nothing staged", amend: false)
+            Issue.record("commit should have failed")
+        } catch is HookFailedError {
+            Issue.record("a clean tree is not a hook failure")
+        } catch {}
+        let active = await t.repo.activeHooks()
+        #expect(active == ["pre-commit"])
+        #expect(HookDiagnosis.diagnose(stderr: "\u{1B}[31mboom\u{1B}[0m", activeHooks: ["pre-commit"])?.output == "boom")
+        #expect(HookDiagnosis.diagnose(stderr: "boom", activeHooks: []) == nil)
+    }
+}

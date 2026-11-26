@@ -241,16 +241,24 @@ public struct GitRepository: Sendable {
     }
 
     /// - Parameter sign: `true` forces `-S`, `false` forces `--no-gpg-sign`, nil follows git config.
-    public func commit(message: String, amend: Bool, sign: Bool? = nil) async throws {
+    /// - Parameter skipHooks: passes `--no-verify` (skips pre-commit and commit-msg).
+    /// - Throws: `HookFailedError` when a hook refused the commit.
+    public func commit(message: String, amend: Bool, sign: Bool? = nil, skipHooks: Bool = false) async throws {
         var args = ["commit"]
         if amend { args.append("--amend") }
+        if skipHooks { args.append("--no-verify") }
         if let sign { args.append(sign ? "--gpg-sign" : "--no-gpg-sign") }
         if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             args.append("--no-edit")
         } else {
             args += ["-m", message]
         }
-        try await git.run(args)
+        do {
+            try await git.run(args)
+        } catch let error as GitError {
+            if !skipHooks, let failure = HookDiagnosis.diagnose(stderr: error.stderr, activeHooks: await activeHooks()) { throw failure }
+            throw error
+        }
     }
 
     // MARK: Branches

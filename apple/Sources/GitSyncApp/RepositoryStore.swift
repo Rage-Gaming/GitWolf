@@ -12,6 +12,7 @@ enum StoreSheet: Identifiable {
     case fileHistory(String)
     case renameBranch(String)
     case cleanup
+    case hookFailure(HookFailedError)
     var id: String {
         switch self {
         case .newBranch: "branch"
@@ -23,6 +24,7 @@ enum StoreSheet: Identifiable {
         case .fileHistory: "fileHistory"
         case .renameBranch: "renameBranch"
         case .cleanup: "cleanup"
+        case .hookFailure: "hookFailure"
         }
     }
 }
@@ -270,6 +272,7 @@ final class RepositoryStore: Identifiable {
             #if DEBUG
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "cleanup" { sheet = .cleanup }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "hook" { sheet = .hookFailure(HookFailedError(hook: "pre-commit", output: "eslint: src/app.ts\n  12:5  error  Unexpected console statement  no-console\n\n1 problem (1 error, 0 warnings)")) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "tag", let h = s.commits.first?.hash { sheet = .newTag(hash: h) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "compare" { openCompare(from: "main", to: "feature") }
             if let v = ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"], v.hasPrefix("history:") { sheet = .fileHistory(String(v.dropFirst(8))) }
@@ -548,7 +551,9 @@ final class RepositoryStore: Identifiable {
         isBusy = true
         busyLabel = label
         Task {
-            do { try await op(repo) } catch { errorMessage = error.localizedDescription }
+            do { try await op(repo) } catch let failure as HookFailedError {
+                sheet = .hookFailure(failure)
+            } catch { errorMessage = error.localizedDescription }
             isBusy = false
             busyLabel = nil
             requestRefresh()
@@ -655,16 +660,19 @@ final class RepositoryStore: Identifiable {
         }
     }
 
-    func commit() {
+    func commit(skipHooks: Bool = false) {
         let message = draftMessage
         let amend = amend
         // Only pass an explicit choice when it differs from git's own default.
         let sign: Bool? = signing.map { $0.signsByDefault == signCommit ? nil : signCommit } ?? nil
-        perform(signCommit ? "Signing & committing…" : "Committing…") { try await $0.commit(message: message, amend: amend, sign: sign) }
+        perform(signCommit ? "Signing & committing…" : "Committing…") { try await $0.commit(message: message, amend: amend, sign: sign, skipHooks: skipHooks) }
         // Cleared optimistically; restored if the commit fails.
         Task {
             while isBusy { try? await Task.sleep(for: .milliseconds(50)) }
-            if errorMessage == nil { draftMessage = ""; self.amend = false }
+            if errorMessage == nil {
+                if case .hookFailure = sheet { return }
+                draftMessage = ""; self.amend = false
+            }
         }
     }
 
