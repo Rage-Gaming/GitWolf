@@ -1,6 +1,7 @@
 # Architecture
 
-GitSync is split into a **UI-free engine** and a **platform UI**. Today both live in `apple/`.
+GitSync is split into a **UI-free engine** and a **platform UI**. Each platform has its own folder and
+its own native implementation of both (see [PORTING.md](PORTING.md)). Today only `apple/` exists.
 
 ```
 apple/Sources/GitSyncCore   engine (Foundation + CoreServices only)
@@ -15,6 +16,8 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `Parsers` | Parse `status --porcelain=v2 -z`, `log -z` with unit-separator fields, `for-each-ref`, `diff --name-status -z`, unified diffs. Byte-level splitting so CRLF files are safe. |
 | `GraphLayout` | Turns topologically ordered commits into per-row lane edges for drawing the branch graph. |
 | `GitRepository` | Stateless, `Sendable` façade for every read and write operation. |
+| `SyntaxHighlighter`, `SideBySide` | Pure helpers for diff presentation: token ranges per line, split-view row pairing. |
+| `Providers`, `ProviderClient` | Hosting provider kinds, remote URL parsing, web links, askpass credential environment, REST clients for listing/verifying. See [PROVIDERS.md](PROVIDERS.md). |
 | `FileWatcher` | FSEvents watcher that emits a coalesced "something changed" signal, filtering object-db and lock-file noise. |
 
 ## Keeping the UI in sync
@@ -43,3 +46,28 @@ or demoted to context depending on direction, and hunk offsets are recomputed. T
 `git apply --recount` with `--cached` (stage), `--cached --reverse` (unstage) or `--reverse` (discard).
 Diffs are generated with explicit `a/` `b/` prefixes and no external diff tools so user config can't
 break patch application. Renames, binary, truncated and non-UTF-8 diffs are read-only.
+
+## App layer (macOS)
+
+| File | Responsibility |
+|---|---|
+| `Workspace.swift` | Open repositories, selection, persistence, sheets (clone / create / account). |
+| `RepositoryStore.swift` | Per-repository state machine described above, plus web links and network operations. |
+| `AppSettings.swift` | Typed settings (appearance, accent, fetch interval, diff options, git path) and wiring into new `GitRepository` values (credentials, askpass). |
+| `Accounts.swift` | Keychain access, account metadata storage, askpass helper file, `AccountStore`. |
+| `Views/*`, `SettingsView.swift`, `AccountsUI.swift` | SwiftUI presentation. |
+
+## Credentials flow
+
+`AppSettings.configure(repo)` gives each `GitRepository` a `credentials` lookup (host to
+`GitCredential?`) and the askpass path. Network commands (`fetch`, `pull`, `push`, `clone`) pick the
+credential for the origin remote's host and pass it to git through `GIT_ASKPASS` plus environment
+variables; local commands never see secrets. Details in [PROVIDERS.md](PROVIDERS.md).
+
+## Docs map
+
+- [FEATURES.md](FEATURES.md): what the app does, section by section.
+- [DESIGN.md](DESIGN.md): visual and interaction rules.
+- [PROVIDERS.md](PROVIDERS.md): provider accounts, APIs, web links.
+- [PORTING.md](PORTING.md): how to build another platform.
+- [ROADMAP.md](ROADMAP.md): what is next.

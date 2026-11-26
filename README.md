@@ -27,6 +27,10 @@ A fast, clean, native Git client. Think Sourcetree, without the rough edges.
 - **Provider accounts**: GitHub, GitLab, Bitbucket, Gitea/Forgejo and Azure DevOps (cloud or self-hosted) via access tokens kept in the Keychain; browse and clone your repositories, private ones included, and jump to the repo, branch, pull request or commit on the web
 - Live file-system watching with coalesced refreshes
 
+Docs: [features](docs/FEATURES.md), [design](docs/DESIGN.md), [providers](docs/PROVIDERS.md),
+[architecture](docs/ARCHITECTURE.md), [porting guide](docs/PORTING.md) (for building the Windows and
+Linux clients).
+
 See [docs/ROADMAP.md](docs/ROADMAP.md) for what is next (syntax highlighting,
 clone, rebase, and more).
 
