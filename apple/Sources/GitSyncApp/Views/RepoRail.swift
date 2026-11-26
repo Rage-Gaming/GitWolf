@@ -32,21 +32,7 @@ struct RepoRail: View {
                 .frame(maxWidth: .infinity)
             }
 
-            Menu {
-                Button("Open Repository…") { workspace.openPanel() }
-                Button("Clone Repository…") { workspace.sheet = .clone }
-                Button("New Repository…") { workspace.sheet = .create }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: RepoRail.tile, height: RepoRail.tile)
-                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: RepoRail.radius, style: .continuous))
-            }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden)
-            .fixedSize()
-            .help("Open, clone or create a repository")
-            .accessibilityLabel("Open, clone or create a repository")
+            AddMenu(workspace: workspace)
         }
         .padding(.bottom, 12)
         .frame(width: Self.width)
@@ -148,5 +134,32 @@ private struct RepoTile: View {
                 .overlay(Capsule().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
                 .offset(x: 4, y: 4)
         }
+    }
+}
+
+/// The "+" tile: same size and shape as the others, opening a menu to open, clone or create.
+private struct AddMenu: View {
+    let workspace: Workspace
+    @State private var hovering = false
+
+    var body: some View {
+        Menu {
+            Button("Open Repository…") { workspace.openPanel() }
+            Button("Clone Repository…") { workspace.sheet = .clone }
+            Button("New Repository…") { workspace.sheet = .create }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: RepoRail.tile, height: RepoRail.tile)
+                .background(Color.primary.opacity(hovering ? 0.10 : 0.06),
+                            in: RoundedRectangle(cornerRadius: RepoRail.radius, style: .continuous))
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+        .frame(width: RepoRail.width, height: RepoRail.tile)
+        .help("Open, clone or create a repository")
+        .accessibilityLabel("Open, clone or create a repository")
+        .onHover { hovering = $0 }
     }
 }
