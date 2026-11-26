@@ -1,14 +1,16 @@
 import AppKit
+import GitSyncCore
 import SwiftUI
 
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general = "General", accounts = "Accounts", git = "Git", shortcuts = "Shortcuts"
+    case general = "General", accounts = "Accounts", git = "Git", tools = "Tools", shortcuts = "Shortcuts"
     var id: String { rawValue }
     var icon: String {
         switch self {
         case .general: "slider.horizontal.3"
         case .accounts: "person.crop.circle"
         case .git: "arrow.triangle.branch"
+        case .tools: "wrench.and.screwdriver"
         case .shortcuts: "command"
         }
     }
@@ -17,6 +19,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "Look, sync and diffs"
         case .accounts: "GitHub, GitLab and more"
         case .git: "Git executable"
+        case .tools: "Editor and custom actions"
         case .shortcuts: "Keys for everything"
         }
     }
@@ -38,6 +41,7 @@ struct SettingsView: View {
                         case .general: GeneralSettings()
                         case .accounts: AccountsSettings()
                         case .git: GitSettings()
+                        case .tools: ToolsSettings()
                         case .shortcuts: ShortcutsSettings()
                         }
                     }
@@ -460,5 +464,53 @@ private struct SettingsWindowConfigurator: NSViewRepresentable {
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
         window.isMovableByWindowBackground = true
+    }
+}
+
+
+// MARK: - Tools
+
+private struct ToolsSettings: View {
+    @AppStorage(CustomActionStore.editorKey) private var editor = ""
+    @State private var actions = CustomActionStore.load()
+
+    var body: some View {
+        Group(title: "Editor") {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(CustomActionStore.defaultEditor, text: $editor)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .background(Color.primary.opacity(0.06), in: Capsule())
+                    .accessibilityLabel("Editor application name")
+                Text("The application “Open in Editor” uses, by name, for example Xcode, Sublime Text or Zed.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(12)
+        }
+        Group(title: "Custom Actions") {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach($actions) { $action in
+                    HStack(spacing: 8) {
+                        TextField("Name", text: $action.name)
+                            .frame(width: 140)
+                            .accessibilityLabel("Action name")
+                        TextField("Command, e.g. make test", text: $action.command)
+                            .font(.system(.callout, design: .monospaced))
+                            .accessibilityLabel("Action command")
+                        Button { actions.removeAll { $0.id == action.id } } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.plain).accessibilityLabel("Remove action")
+                    }
+                    .textFieldStyle(.roundedBorder)
+                }
+                Button { actions.append(CustomAction(name: "", command: "")) } label: {
+                    Label("Add Action", systemImage: "plus")
+                }
+                .buttonStyle(.plain).font(.callout).pill()
+                Text("Runs with /bin/sh in the repository’s root folder. The environment has GITSYNC_REPO (the root path) and GITSYNC_BRANCH. Actions appear in the Open In menu, the Repository menu and the ⌘K palette.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(12)
+        }
+        .onChange(of: actions) { _, new in CustomActionStore.save(new) }
     }
 }

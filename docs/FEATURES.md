@@ -287,6 +287,17 @@ Tags [`FileIcons.tagIcon(named:isAnnotated:)`], first match wins: `nightly`/`dai
   history without a commit-graph, so if a refresh takes over 0.5s write it once with
   `commit-graph write --reachable --changed-paths` in the background.
 
+## 6c. Open in… and custom actions
+
+- **Open in Finder / Terminal / editor** [ui]. Reveal the repo root in the file manager, open a
+  terminal at it, or open it in a user-chosen editor (setting `editorApp`, default Visual Studio
+  Code). macOS uses `open -a <app> <path>` with the path as an argument. Shortcuts ⌥⌘T / ⌥⌘E / ⇧⌥⌘R.
+- **Custom actions** [core `CustomAction`, `CustomActionRunner`]. Named shell commands stored in
+  settings. Run through the system shell (`/bin/sh -c`; `cmd`/`sh` on other platforms) with the repo
+  root as working directory and `GITSYNC_REPO` / `GITSYNC_BRANCH` in the environment. Values are never
+  interpolated into the command text. Non-zero exit shows the code and the last 600 characters of
+  output. Listed in the toolbar menu, Repository menu and ⌘K palette.
+
 ## 7. Settings
 
 | Key | Values |

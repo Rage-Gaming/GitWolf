@@ -2326,3 +2326,33 @@ struct AvatarTests {
         #expect(pruned.groups.first { $0.id == id }?.paths == ["/keep"])
     }
 }
+
+private func makeTempDir() throws -> URL {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("gs-act-\(UUID().uuidString)").resolvingSymlinksInPath()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}
+
+@Suite struct CustomActionTests {
+    @Test func runsAtRepoRootWithEnvironment() async throws {
+        let dir = try makeTempDir()
+        let action = CustomAction(name: "Show", command: "pwd; echo \"branch=$GITSYNC_BRANCH\"; echo \"repo=$GITSYNC_REPO\"")
+        let result = await CustomActionRunner.run(action, root: dir, branch: "feature/x y")
+        #expect(result.succeeded)
+        #expect(result.output.contains("branch=feature/x y"))
+        #expect(result.output.contains("repo=\(dir.path)"))
+    }
+
+    @Test func reportsFailure() async throws {
+        let dir = try makeTempDir()
+        let result = await CustomActionRunner.run(CustomAction(name: "Fail", command: "echo oops >&2; exit 3"), root: dir, branch: nil)
+        #expect(result.exitCode == 3)
+        #expect(result.output.contains("oops"))
+    }
+
+    @Test func validation() {
+        #expect(!CustomAction(name: " ", command: "ls").isValid)
+        #expect(!CustomAction(name: "x", command: "").isValid)
+        #expect(CustomAction(name: "x", command: "ls").isValid)
+    }
+}

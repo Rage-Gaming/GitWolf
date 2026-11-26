@@ -156,6 +156,7 @@ struct TopBar: View {
             modeTabs
             Spacer(minLength: 12)
             syncCluster
+            openInMenu
             if NotificationsStore.shared.hasAccounts { bell }
             Button { workspace.showPalette = true } label: {
                 HStack(spacing: 7) {
@@ -208,6 +209,25 @@ struct TopBar: View {
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
         .fixedSize()
         .help("Switch branch")
+    }
+
+    private var openInMenu: some View {
+        Menu {
+            Button("Show in Finder", systemImage: "folder") { store.openInFinder() }
+            Button("Open in Terminal", systemImage: "terminal") { store.openInTerminal() }
+            Button("Open in \(CustomActionStore.editorApp)", systemImage: "chevron.left.forwardslash.chevron.right") { store.openInEditor() }
+            let actions = CustomActionStore.load().filter(\.isValid)
+            if !actions.isEmpty {
+                Divider()
+                ForEach(actions) { action in Button(action.name, systemImage: "play") { store.run(action) } }
+            }
+        } label: {
+            Image(systemName: "square.and.arrow.up.on.square").pill()
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+        .fixedSize()
+        .help("Open the repository in Finder, Terminal or your editor, or run a custom action")
+        .accessibilityLabel("Open repository in")
     }
 
     private var modeTabs: some View {

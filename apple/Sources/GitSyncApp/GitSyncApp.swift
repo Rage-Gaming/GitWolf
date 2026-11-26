@@ -204,6 +204,17 @@ struct AppCommands: Commands {
             Button("Create Patch from Changes…") { workspace?.selected?.createPatchFromChanges() }.disabled(workspace?.selected == nil)
             Button("Apply Patch…") { workspace?.selected?.applyPatches() }.disabled(workspace?.selected == nil)
             Button("Stop Bisect") { workspace?.selected?.stopBisect() }.disabled(workspace?.selected?.bisect.isActive != true)
+            Button("Show in Finder") { workspace?.selected?.openInFinder() }
+                .keyboardShortcut("r", modifiers: [.command, .shift, .option]).disabled(workspace?.selected == nil)
+            Button("Open in Terminal") { workspace?.selected?.openInTerminal() }
+                .keyboardShortcut("t", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Button("Open in \(CustomActionStore.editorApp)") { workspace?.selected?.openInEditor() }
+                .keyboardShortcut("e", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Menu("Custom Actions") {
+                ForEach(CustomActionStore.load().filter(\.isValid)) { action in
+                    Button(action.name) { workspace?.selected?.run(action) }
+                }
+            }.disabled(workspace?.selected == nil)
             Button("Manage Remotes…") { workspace?.selected?.sheet = .remotes }.disabled(workspace?.selected == nil)
             Button("Fork Repository…") { workspace?.selected?.sheet = .fork }.disabled(workspace?.selected?.canFork != true)
             Button("Notifications…") { workspace?.selected?.sheet = .notifications }.disabled(workspace?.selected == nil)

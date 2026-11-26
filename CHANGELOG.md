@@ -7,6 +7,8 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Open in Finder, Terminal and editor: a toolbar menu, Repository menu items (⌥⌘T terminal, ⌥⌘E editor, ⇧⌥⌘R Finder) and ⌘K entries open the repository root. The editor application is set in Settings > Tools.
+- Custom actions: define named shell commands in Settings > Tools. They run with `/bin/sh -c` in the repository root with `GITSYNC_REPO` and `GITSYNC_BRANCH` in the environment (never substituted into the command), and are listed in the toolbar menu, the Repository menu and the palette. A failing action shows its exit code and output.
 - Home screen pinning and groups: right-click a repository on the home screen to pin it or add it to a named group. Pinned repositories and groups get their own sections above Recent; groups can be created, renamed and deleted, and repositories removed from home. Layout is saved and paths that no longer exist are dropped.
 - Dock integration: the Dock icon shows a badge with the number of files with uncommitted changes across all open repositories (capped at 99+), right-clicking it lists recent repositories, and File > Open Recent lists them in the menu bar with Clear Menu.
 - Profile pictures: commit authors in history, commit details and file history, and comment authors on pull requests and issues, show their picture from the hosting platform (GitHub, GitLab, Gitea, Bitbucket Cloud), over their initials until it loads. Only the repository's own platform is asked; no Gravatar or other third party. Pictures are cached for a week.

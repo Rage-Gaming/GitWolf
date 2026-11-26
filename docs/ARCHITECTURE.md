@@ -20,6 +20,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `Bisect` | `BisectState` (from `BISECT_LOG`), start/mark/reset. |
 | `Patches` | format-patch, working diff, apply/check, `am`. |
 | `Worktrees`, `Submodules` | list/add/remove worktrees; submodule status, update, add. |
+| `CustomActions` | `CustomAction` and `CustomActionRunner` (shell command at repo root, env vars). |
 | `HomeLayout` | Pinned repositories and named groups for the home screen (Codable). |
 | `BadgeLabel` | Text for the app-icon badge (changes count, `99+` cap). |
 | `LFS`, `CloneOptions`, `Performance` | LFS paths and pointers; shallow/partial clone arguments; commit-graph cache. |
