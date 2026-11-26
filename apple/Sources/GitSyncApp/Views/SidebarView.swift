@@ -26,6 +26,17 @@ struct SidebarView: View {
                                 Button("Compare with Current Branch") { store.openCompare(from: store.status.branch ?? "HEAD", to: branch.name) }
                                     .disabled(branch.isCurrent)
                                 Button("New Branch from Here…") { store.sheet = .newBranch(from: branch.name) }
+                                Button("Rename…") { store.sheet = .renameBranch(branch.name) }
+                                Menu("Track Remote Branch") {
+                                    ForEach(store.remoteBranches) { remote in
+                                        Button(remote.name) { store.setUpstream(of: branch.name, to: remote.name) }
+                                    }
+                                    if branch.upstream != nil {
+                                        Divider()
+                                        Button("Stop Tracking") { store.setUpstream(of: branch.name, to: nil) }
+                                    }
+                                }
+                                .disabled(store.remoteBranches.isEmpty)
                                 Divider()
                                 Button("Delete Branch", role: .destructive) { store.deleteBranch(branch.name) }.disabled(branch.isCurrent)
                             }
@@ -135,6 +146,8 @@ private struct RemoteGroup: View {
                             Button("Merge into Current Branch") { store.merge(branch.name) }
                             Button("Rebase Current Branch onto This") { store.rebase(onto: branch.name) }
                             Button("Compare with Current Branch") { store.openCompare(from: store.status.branch ?? "HEAD", to: branch.name) }
+                            Divider()
+                            Button("Delete on \(remote)…", role: .destructive) { store.confirmDeleteRemoteBranch(branch) }
                         }
                 }
             }

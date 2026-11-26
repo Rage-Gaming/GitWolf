@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Branch tools: rename a branch, choose or clear its tracking branch, delete a branch on the remote (with confirmation), and "Clean Up Branches…" listing local branches that are merged or whose remote branch is gone (unmerged ones are flagged).
 - Compare any two refs (branches, tags, commits): ahead/behind, the commits, the changed files and a diff for each, optionally only the changes since the common ancestor.
 - Blame and file history: per-line authorship (click a line's author to jump to the commit) and a "history of this file" list with the diff of each commit, following renames.
 - Pull request and issue descriptions render as Markdown (headings, lists, task lists, quotes, code blocks, rules, inline styling).

@@ -10,6 +10,8 @@ enum StoreSheet: Identifiable {
     case rebase(RebasePlan)
     case stashHunk(Int)
     case fileHistory(String)
+    case renameBranch(String)
+    case cleanup
     var id: String {
         switch self {
         case .newBranch: "branch"
@@ -19,6 +21,8 @@ enum StoreSheet: Identifiable {
         case .rebase: "rebase"
         case .stashHunk: "stashHunk"
         case .fileHistory: "fileHistory"
+        case .renameBranch: "renameBranch"
+        case .cleanup: "cleanup"
         }
     }
 }
@@ -265,6 +269,7 @@ final class RepositoryStore: Identifiable {
             if !s.status.isClean { mode = .changes }
             #if DEBUG
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "cleanup" { sheet = .cleanup }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "compare" { openCompare(from: "main", to: "feature") }
             if let v = ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"], v.hasPrefix("history:") { sheet = .fileHistory(String(v.dropFirst(8))) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "stash", let first = s.stashes.first { selectStash(first) }
@@ -670,6 +675,30 @@ final class RepositoryStore: Identifiable {
     func deleteBranch(_ name: String, force: Bool = false) {
         perform("Deleting…") { try await $0.deleteBranch(name, force: force) }
     }
+    func renameBranch(_ old: String, to new: String) { perform("Renaming…") { try await $0.renameBranch(old, to: new) } }
+    func setUpstream(of branch: String, to upstream: String?) { perform("Updating tracking…") { try await $0.setUpstream(of: branch, to: upstream) } }
+
+    /// Deletes a branch on its remote after saying so.
+    func confirmDeleteRemoteBranch(_ branch: Branch) {
+        guard let remote = branch.remote else { return }
+        let name = branch.shortName
+        let alert = NSAlert()
+        alert.messageText = "Delete “\(name)” on \(remote)?"
+        alert.informativeText = "The branch is removed from the remote for everyone. Local copies are not affected."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete on Remote")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        perform("Deleting on \(remote)…") { try await $0.deleteRemoteBranch(remote: remote, branch: name) }
+    }
+
+    func deleteBranches(_ items: [BranchCleanupItem]) {
+        perform("Deleting branches…") { repo in
+            let failed = await repo.deleteBranches(items)
+            if !failed.isEmpty { throw GitError(command: "branch", exitCode: 1, stderr: "Couldn’t delete: \(failed.joined(separator: ", "))") }
+        }
+    }
+
     func merge(_ name: String) { perform("Merging…") { try await $0.merge(name) } }
     func cherryPick(_ hash: String) { perform("Cherry-picking…") { try await $0.cherryPick(hash) } }
     func revert(_ hash: String) { perform("Reverting…") { try await $0.revert(hash) } }

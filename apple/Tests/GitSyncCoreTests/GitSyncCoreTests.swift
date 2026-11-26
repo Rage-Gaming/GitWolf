@@ -1214,3 +1214,68 @@ import Testing
         await #expect(throws: (any Error).self) { try await t.repo.compare(from: "--all", to: "main", sinceAncestor: false) }
     }
 }
+
+@Suite struct BranchToolsTests {
+    /// A clone of a bare "remote" with main pushed.
+    private func cloned() async throws -> (TestRepo, GitRunner, URL) {
+        let t = try await TestRepo.make()
+        try await t.commit("base", file: "a.txt", text: "a\n")
+        let bare = FileManager.default.temporaryDirectory.appendingPathComponent("bare-\(UUID().uuidString).git")
+        try await GitRunner(workingDirectory: t.dir).run(["init", "-q", "--bare", bare.path])
+        try await t.git.run(["remote", "add", "origin", bare.path])
+        try await t.git.run(["push", "-q", "-u", "origin", "main"])
+        return (t, GitRunner(workingDirectory: bare), bare)
+    }
+
+    @Test func renamesAndValidates() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        try await t.commit("base", text: "a\n")
+        try await t.git.run(["branch", "old"])
+        try await t.repo.renameBranch("old", to: "new-name")
+        #expect(try await t.repo.branches().local.map(\.name).contains("new-name"))
+        await #expect(throws: (any Error).self) { try await t.repo.renameBranch("new-name", to: "bad name~") }
+    }
+
+    @Test func setsAndClearsUpstream() async throws {
+        let (t, _, bare) = try await cloned(); defer { t.cleanup(); try? FileManager.default.removeItem(at: bare) }
+        try await t.git.run(["push", "-q", "origin", "main:other"])
+        try await t.git.run(["fetch", "-q"])
+        try await t.repo.setUpstream(of: "main", to: "origin/other")
+        #expect(try await t.repo.branches().local.first { $0.name == "main" }?.upstream == "origin/other")
+        try await t.repo.setUpstream(of: "main", to: nil)
+        #expect(try await t.repo.branches().local.first { $0.name == "main" }?.upstream == nil)
+    }
+
+    @Test func deletesBranchOnRemote() async throws {
+        let (t, remote, bare) = try await cloned(); defer { t.cleanup(); try? FileManager.default.removeItem(at: bare) }
+        try await t.git.run(["push", "-q", "origin", "main:topic"])
+        #expect(try await remote.runString(["branch", "--list", "topic"]).contains("topic"))
+        try await t.repo.deleteRemoteBranch(remote: "origin", branch: "topic")
+        #expect(try await remote.runString(["branch", "--list", "topic"]).isEmpty)
+    }
+
+    @Test func cleanupFindsMergedAndGoneBranchesAndKeepsTheRest() async throws {
+        let (t, remote, bare) = try await cloned(); defer { t.cleanup(); try? FileManager.default.removeItem(at: bare) }
+        // merged: points at main already
+        try await t.git.run(["branch", "merged-one"])
+        // unmerged work that must NOT be listed
+        try await t.git.run(["switch", "-q", "-c", "wip"]); try await t.commit("wip", file: "w.txt", text: "w\n")
+        // gone: pushed, then deleted on the remote
+        try await t.git.run(["switch", "-q", "-c", "shipped"]); try await t.commit("ship", file: "s.txt", text: "s\n")
+        try await t.git.run(["push", "-q", "-u", "origin", "shipped"])
+        try await t.git.run(["switch", "-q", "main"])
+        try await remote.run(["branch", "-D", "shipped"])
+        try await t.git.run(["fetch", "-q", "--prune"])
+
+        let items = try await t.repo.cleanupCandidates(base: "main")
+        #expect(Set(items.map(\.name)) == ["merged-one", "shipped"])
+        let gone = try #require(items.first { $0.name == "shipped" })
+        #expect(gone.reason == .upstreamGone && !gone.isMerged)
+        #expect(try #require(items.first { $0.name == "merged-one" }).isMerged)
+
+        let failed = await t.repo.deleteBranches(items)
+        #expect(failed.isEmpty)
+        let left = Set(try await t.repo.branches().local.map(\.name))
+        #expect(left == ["main", "wip"])
+    }
+}

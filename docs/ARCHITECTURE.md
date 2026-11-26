@@ -25,6 +25,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `Signing` | `signature(of:)` (format, state, signer, key), `signingConfig()`, and the `sign` option of `commit`. |
 | `Blame` | `blame` (porcelain parser), `fileHistory` (`--follow`), `fileDiff` (rename-aware per-commit diff). |
 | `Compare` | `compare(from:to:sinceAncestor:)` returns resolved hashes, changed files, commits and ahead/behind. |
+| `BranchTools` | `renameBranch`, `setUpstream`, `cleanupCandidates` (merged or upstream gone), `deleteBranches`; `deleteRemoteBranch` lives in `GitRepository`. |
 | `FileWatcher` | FSEvents watcher that emits a coalesced "something changed" signal, filtering object-db and lock-file noise. |
 
 ## Keeping the UI in sync

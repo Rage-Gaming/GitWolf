@@ -92,6 +92,8 @@ public struct Branch: Identifiable, Hashable, Sendable {
     public var ahead: Int
     public var behind: Int
     public var hash: String
+    /// The upstream branch was deleted on the remote (`[gone]`).
+    public var upstreamGone: Bool = false
 
     /// `origin` for `refs/remotes/origin/main`.
     public var remote: String? {

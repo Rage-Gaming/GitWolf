@@ -173,6 +173,7 @@ struct AppCommands: Commands {
                 .keyboardShortcut("z", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
             Button("Compare Refs…") { workspace?.selected?.openCompare() }
                 .keyboardShortcut("c", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Button("Clean Up Branches…") { workspace?.selected?.sheet = .cleanup }.disabled(workspace?.selected == nil)
             Button("Reflog…") { workspace?.selected?.sheet = .reflog }.disabled(workspace?.selected == nil)
             Divider()
             Button("Show History") { workspace?.selected?.mode = .history }

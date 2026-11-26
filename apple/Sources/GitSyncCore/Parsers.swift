@@ -132,7 +132,8 @@ enum RefParser {
             }
             result.append(Branch(
                 name: f[1], fullRef: full, isRemote: isRemote, isCurrent: f[2] == "*",
-                upstream: f[3].isEmpty ? nil : f[3], ahead: ahead, behind: behind, hash: f[5]))
+                upstream: f[3].isEmpty ? nil : f[3], ahead: ahead, behind: behind, hash: f[5],
+                upstreamGone: f[4] == "gone"))
         }
         return result
     }

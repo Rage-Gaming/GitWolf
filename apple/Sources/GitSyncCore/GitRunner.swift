@@ -6,6 +6,12 @@ public struct GitError: Error, LocalizedError, Sendable {
     public let exitCode: Int32
     public let stderr: String
 
+    public init(command: String, exitCode: Int32, stderr: String) {
+        self.command = command
+        self.exitCode = exitCode
+        self.stderr = stderr
+    }
+
     public var errorDescription: String? {
         let message = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
         return message.isEmpty ? "git \(command) failed (exit code \(exitCode))" : message

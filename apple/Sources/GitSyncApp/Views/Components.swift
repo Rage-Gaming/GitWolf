@@ -248,6 +248,7 @@ struct PromptSheet: View {
     let confirm: String
     var toggleTitle: String?
     var allowEmpty = false
+    var initial = ""
     let onConfirm: (String, Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -276,7 +277,7 @@ struct PromptSheet: View {
         }
         .padding(22)
         .frame(width: 400)
-        .onAppear { focused = true }
+        .onAppear { text = initial; focused = true }
     }
 
     private func submit() {

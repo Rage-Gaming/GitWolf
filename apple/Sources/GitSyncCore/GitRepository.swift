@@ -349,6 +349,11 @@ public struct GitRepository: Sendable {
         }
     }
 
+    /// Deletes a branch on the remote (`git push <remote> --delete <branch>`).
+    public func deleteRemoteBranch(remote: String, branch: String) async throws {
+        try await networkGit().run(["push", remote, "--delete", branch])
+    }
+
     public func push(status: WorkingStatus, remotes: [String]) async throws {
         if status.upstream == nil, let branch = status.branch {
             let remote = remotes.contains("origin") ? "origin" : (remotes.first ?? "origin")

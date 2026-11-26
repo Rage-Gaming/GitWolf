@@ -59,6 +59,12 @@ struct RepositoryView: View {
                 }
             case .fileHistory(let path):
                 FileHistorySheet(store: store, path: path)
+            case .renameBranch(let name):
+                PromptSheet(title: "Rename Branch", placeholder: "new-name", confirm: "Rename", initial: name) { new, _ in
+                    store.renameBranch(name, to: new)
+                }
+            case .cleanup:
+                BranchCleanupSheet(store: store)
             case .reflog:
                 ReflogSheet(store: store)
             case .stash:

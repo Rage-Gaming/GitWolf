@@ -139,6 +139,13 @@ and should follow each platform's native idioms.
   names (`-x`) give a plain message. Diffs use `DiffTarget.Source.compare(base:head:)` with the
   resolved hashes.
 
+## 3h. Branch tools
+
+- **Rename** (local branch context menu): `git branch -m old new`, name validated with `git check-ref-format --branch`.
+- **Track Remote Branch / Stop Tracking**: `git branch --set-upstream-to=<remote/branch>` / `--unset-upstream`.
+- **Delete on Remote** (remote branch context menu): confirmation, then `git push <remote> --delete <branch>`.
+- **Clean Up Branches…** (Repository menu, palette): local branches in `git branch --merged <current>`, plus branches whose upstream is `gone` (`%(upstream:track)`). Never lists the current branch or main, master, develop, dev, trunk, release. Merged branches are pre-selected; an unmerged "gone" branch is tagged and warns that commits are lost. Merged branches use `branch -d`, unmerged `branch -D`.
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is
