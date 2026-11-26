@@ -1,7 +1,6 @@
 # Roadmap
 
 ## Next
-- Hunk and line staging
 - Syntax highlighting and side-by-side diff
 - Clone, init, and recent-repo management
 - Interactive rebase, reset, conflict resolution UI

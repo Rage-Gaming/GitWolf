@@ -182,17 +182,31 @@ enum DiffParser {
         var diff = FileDiff.empty
         var oldNo = 0, newNo = 0
         var inHunk = false
+        var hunk = -1
+
+        func append(_ kind: DiffLine.Kind, old: Int? = nil, new: Int? = nil, text: String, raw: String) {
+            diff.lines.append(DiffLine(
+                id: diff.lines.count, kind: kind, hunkIndex: hunk,
+                oldNumber: old, newNumber: new, text: text, raw: raw))
+        }
 
         for raw in splitBytes(data, 10) {
             if raw.hasPrefix("@@") {
                 inHunk = true
-                if let (o, n) = hunkStart(raw) { oldNo = o; newNo = n }
                 if diff.lines.count >= maxLines { diff.isTruncated = true; break }
-                diff.lines.append(DiffLine(id: diff.lines.count, kind: .hunkHeader, oldNumber: nil, newNumber: nil, text: raw))
+                hunk += 1
+                if let (o, n, section) = parseHunkHeader(raw) {
+                    oldNo = o; newNo = n
+                    diff.hunks.append(DiffHunk(index: hunk, oldStart: o, newStart: n, section: section))
+                } else {
+                    diff.hunks.append(DiffHunk(index: hunk, oldStart: oldNo, newStart: newNo, section: ""))
+                }
+                append(.hunkHeader, text: raw, raw: raw)
                 continue
             }
             if !inHunk {
                 if raw.hasPrefix("Binary files") || raw.hasPrefix("GIT binary patch") { diff.isBinary = true }
+                if !raw.isEmpty { diff.header.append(raw) }
                 continue
             }
             guard let marker = raw.utf8.first else { continue }
@@ -201,19 +215,19 @@ enum DiffParser {
             let text = body.hasSuffix("\r") ? String(body.dropLast()) : body
             switch marker {
             case UInt8(ascii: "+"):
-                diff.lines.append(DiffLine(id: diff.lines.count, kind: .addition, oldNumber: nil, newNumber: newNo, text: text))
+                append(.addition, new: newNo, text: text, raw: body)
                 newNo += 1
                 diff.additions += 1
             case UInt8(ascii: "-"):
-                diff.lines.append(DiffLine(id: diff.lines.count, kind: .deletion, oldNumber: oldNo, newNumber: nil, text: text))
+                append(.deletion, old: oldNo, text: text, raw: body)
                 oldNo += 1
                 diff.deletions += 1
             case UInt8(ascii: " "):
-                diff.lines.append(DiffLine(id: diff.lines.count, kind: .context, oldNumber: oldNo, newNumber: newNo, text: text))
+                append(.context, old: oldNo, new: newNo, text: text, raw: body)
                 oldNo += 1
                 newNo += 1
             case UInt8(ascii: "\\"):
-                diff.lines.append(DiffLine(id: diff.lines.count, kind: .note, oldNumber: nil, newNumber: nil, text: raw))
+                append(.note, text: raw, raw: raw)
             default:
                 break
             }
@@ -221,13 +235,17 @@ enum DiffParser {
         return diff
     }
 
-    /// `@@ -12,5 +14,7 @@` → (12, 14)
-    static func hunkStart(_ header: String) -> (Int, Int)? {
+    /// `@@ -12,5 +14,7 @@ func foo()` → (12, 14, " func foo()")
+    static func parseHunkHeader(_ header: String) -> (Int, Int, String)? {
         let parts = header.split(separator: " ", omittingEmptySubsequences: true)
         guard parts.count >= 3, parts[1].hasPrefix("-"), parts[2].hasPrefix("+") else { return nil }
         guard let old = parts[1].dropFirst().split(separator: ",").first.flatMap({ Int($0) }),
               let new = parts[2].dropFirst().split(separator: ",").first.flatMap({ Int($0) })
         else { return nil }
-        return (old, new)
+        var section = ""
+        if let close = header.range(of: " @@", range: header.index(header.startIndex, offsetBy: 2)..<header.endIndex) {
+            section = String(header[close.upperBound...])
+        }
+        return (old, new, section)
     }
 }

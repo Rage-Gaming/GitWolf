@@ -34,3 +34,12 @@ apple/Sources/GitSyncApp    SwiftUI app
 Identical behaviour to the user's terminal: hooks, config, credential helpers, SSH setup, LFS,
 and every future Git feature. The cost is process spawn overhead, mitigated by batching and
 read-only, lock-free commands.
+
+## Hunk and line staging
+
+`DiffParser` keeps the file header, hunks and each line's exact bytes (CRLF intact). `PatchBuilder`
+turns a selection of changed lines into a minimal patch: unselected additions/deletions are dropped
+or demoted to context depending on direction, and hunk offsets are recomputed. The patch is fed to
+`git apply --recount` with `--cached` (stage), `--cached --reverse` (unstage) or `--reverse` (discard).
+Diffs are generated with explicit `a/` `b/` prefixes and no external diff tools so user config can't
+break patch application. Renames, binary, truncated and non-UTF-8 diffs are read-only.

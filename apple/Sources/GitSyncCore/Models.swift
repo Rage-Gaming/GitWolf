@@ -122,21 +122,50 @@ public struct Stash: Identifiable, Hashable, Sendable {
 
 public struct DiffLine: Identifiable, Hashable, Sendable {
     public enum Kind: Hashable, Sendable { case context, addition, deletion, hunkHeader, note }
+    /// Index into `FileDiff.lines`.
     public var id: Int
     public var kind: Kind
+    public var hunkIndex: Int
     public var oldNumber: Int?
     public var newNumber: Int?
+    /// Display text (trailing CR removed).
     public var text: String
+    /// Exact content as git emitted it (CR kept), used to build patches.
+    public var raw: String
+
+    public var isChange: Bool { kind == .addition || kind == .deletion }
+}
+
+public struct DiffHunk: Hashable, Sendable {
+    public var index: Int
+    public var oldStart: Int
+    public var newStart: Int
+    /// Text after the closing `@@` (usually the enclosing function), including its leading space.
+    public var section: String
 }
 
 public struct FileDiff: Equatable, Sendable {
+    /// Lines before the first hunk (`diff --git`, `index`, `---`, `+++`).
+    public var header: [String]
+    public var hunks: [DiffHunk]
     public var lines: [DiffLine]
     public var isBinary: Bool
     public var additions: Int
     public var deletions: Int
     public var isTruncated: Bool
 
-    public static let empty = FileDiff(lines: [], isBinary: false, additions: 0, deletions: 0, isTruncated: false)
+    public static let empty = FileDiff(
+        header: [], hunks: [], lines: [], isBinary: false, additions: 0, deletions: 0, isTruncated: false)
+
+    /// Whether hunks/lines of this diff can safely be turned back into a patch.
+    public var canPatch: Bool {
+        !isBinary && !isTruncated && !hunks.isEmpty && !header.isEmpty
+            && !lines.contains { $0.raw.contains("\u{FFFD}") }
+    }
+
+    public func changedLineIDs(inHunk index: Int) -> Set<Int> {
+        Set(lines.filter { $0.hunkIndex == index && $0.isChange }.map(\.id))
+    }
 }
 
 public struct DiffTarget: Hashable, Sendable {

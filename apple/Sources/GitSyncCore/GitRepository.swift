@@ -103,7 +103,10 @@ public struct GitRepository: Sendable {
     public func diff(for target: DiffTarget, commits: [String: Commit] = [:], maxLines: Int = 6000) async throws -> FileDiff {
         var paths = [target.path]
         if let original = target.originalPath { paths.insert(original, at: 0) }
-        let common = ["diff", "--no-color", "-U4", "-M"]
+        // Explicit prefixes and no external tools so output is stable regardless of user config
+        // (diff.noprefix, diff.mnemonicPrefix, ...), which `git apply` depends on.
+        let common = ["diff", "--no-color", "--no-ext-diff", "--no-textconv",
+                      "--src-prefix=a/", "--dst-prefix=b/", "-U4", "-M"]
         let data: Data
         switch target.source {
         case .unstaged, .conflicted:
@@ -128,6 +131,15 @@ public struct GitRepository: Sendable {
     }
 
     // MARK: Staging & committing
+
+    /// Applies a patch built by `PatchBuilder` (hunk / line staging, unstaging and discarding).
+    public func apply(patch: String, action: PatchAction) async throws {
+        var args = ["apply", "--recount", "--whitespace=nowarn"]
+        if action.cached { args.append("--cached") }
+        if action.reverse { args.append("--reverse") }
+        args.append("-")
+        try await git.run(args, input: Data(patch.utf8))
+    }
 
     public func stage(_ paths: [String]) async throws {
         guard !paths.isEmpty else { return }

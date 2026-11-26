@@ -88,3 +88,125 @@ import Testing
         #expect(files.map(\.path) == ["a.txt"])
     }
 }
+
+// MARK: - Hunk / line staging
+
+@Suite struct PatchTests {
+    private func makeRepo() async throws -> (GitRepository, GitRunner, URL) {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("gitsync-patch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let runner = GitRunner(workingDirectory: dir)
+        try await runner.run(["init", "-b", "main"])
+        try await runner.run(["config", "user.name", "Tester"])
+        try await runner.run(["config", "user.email", "t@example.com"])
+        // Even if the user's config would change diff prefixes, our diffs must stay applicable.
+        try await runner.run(["config", "diff.noprefix", "true"])
+        return (GitRepository(root: dir), runner, dir)
+    }
+
+    private func write(_ lines: [String], to dir: URL, name: String = "f.txt") throws {
+        try (lines.joined(separator: "\n") + "\n").write(to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+
+    /// 40 numbered lines committed, then lines 3 and 38 edited → two separate hunks.
+    private func twoHunkRepo() async throws -> (GitRepository, GitRunner, URL) {
+        let (repo, runner, dir) = try await makeRepo()
+        let base = (1...40).map { "line \($0)" }
+        try write(base, to: dir)
+        try await repo.stage(["f.txt"])
+        try await repo.commit(message: "base", amend: false)
+        var edited = base
+        edited[2] = "line 3 CHANGED"
+        edited[37] = "line 38 CHANGED"
+        try write(edited, to: dir)
+        return (repo, runner, dir)
+    }
+
+    @Test func stagesSingleHunk() async throws {
+        let (repo, _, dir) = try await twoHunkRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let diff = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        #expect(diff.hunks.count == 2 && diff.canPatch)
+
+        // Stage only the second hunk.
+        let patch = try #require(PatchBuilder.make(diff: diff, selecting: diff.changedLineIDs(inHunk: 1), action: .stage))
+        try await repo.apply(patch: patch, action: .stage)
+
+        let staged = try await repo.diff(for: DiffTarget(source: .staged, path: "f.txt"))
+        let unstaged = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        #expect(staged.hunks.count == 1 && staged.lines.contains { $0.text == "line 38 CHANGED" })
+        #expect(unstaged.hunks.count == 1 && unstaged.lines.contains { $0.text == "line 3 CHANGED" })
+    }
+
+    @Test func stagesSingleLinesAndUnstagesThem() async throws {
+        let (repo, _, dir) = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try write(["a", "b", "c"], to: dir)
+        try await repo.stage(["f.txt"])
+        try await repo.commit(message: "base", amend: false)
+        try write(["a", "NEW1", "b", "NEW2", "c"], to: dir)
+
+        var diff = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        let first = try #require(diff.lines.first { $0.text == "NEW1" })
+        try await repo.apply(patch: try #require(PatchBuilder.make(diff: diff, selecting: [first.id], action: .stage)), action: .stage)
+
+        var staged = try await repo.diff(for: DiffTarget(source: .staged, path: "f.txt"))
+        var unstaged = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        #expect(staged.additions == 1 && staged.lines.contains { $0.text == "NEW1" })
+        #expect(unstaged.additions == 1 && unstaged.lines.contains { $0.text == "NEW2" })
+
+        // Now unstage that single line again.
+        staged = try await repo.diff(for: DiffTarget(source: .staged, path: "f.txt"))
+        let line = try #require(staged.lines.first { $0.text == "NEW1" })
+        try await repo.apply(patch: try #require(PatchBuilder.make(diff: staged, selecting: [line.id], action: .unstage)), action: .unstage)
+        staged = try await repo.diff(for: DiffTarget(source: .staged, path: "f.txt"))
+        unstaged = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        #expect(staged.lines.isEmpty)
+        #expect(unstaged.additions == 2)
+    }
+
+    @Test func stagesPartialDeletionsAndModifications() async throws {
+        let (repo, _, dir) = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try write(["a", "b", "c", "d"], to: dir)
+        try await repo.stage(["f.txt"])
+        try await repo.commit(message: "base", amend: false)
+        try write(["a", "B2", "d"], to: dir) // b→B2, c deleted
+
+        let diff = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        let delC = try #require(diff.lines.first { $0.kind == .deletion && $0.text == "c" })
+        try await repo.apply(patch: try #require(PatchBuilder.make(diff: diff, selecting: [delC.id], action: .stage)), action: .stage)
+
+        let staged = try await repo.diff(for: DiffTarget(source: .staged, path: "f.txt"))
+        #expect(staged.deletions == 1 && staged.additions == 0)
+        #expect(staged.lines.contains { $0.kind == .deletion && $0.text == "c" })
+    }
+
+    @Test func discardsHunk() async throws {
+        let (repo, _, dir) = try await twoHunkRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let diff = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        let patch = try #require(PatchBuilder.make(diff: diff, selecting: diff.changedLineIDs(inHunk: 0), action: .discard))
+        try await repo.apply(patch: patch, action: .discard)
+
+        let contents = try String(contentsOf: dir.appendingPathComponent("f.txt"), encoding: .utf8)
+        #expect(contents.contains("line 3\n") && !contents.contains("line 3 CHANGED"))
+        #expect(contents.contains("line 38 CHANGED"))
+    }
+
+    @Test func preservesCRLFAndMissingTrailingNewline() async throws {
+        let (repo, _, dir) = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try "a\r\nb\r\nc".write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+        try await repo.stage(["f.txt"])
+        try await repo.commit(message: "base", amend: false)
+        try "a\r\nB\r\nc".write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+
+        let diff = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        try await repo.apply(patch: try #require(PatchBuilder.make(diff: diff, selecting: Set(diff.lines.filter(\.isChange).map(\.id)), action: .stage)), action: .stage)
+        let status = try await repo.status()
+        #expect(status.unstaged.isEmpty && status.staged.map(\.path) == ["f.txt"])
+    }
+}

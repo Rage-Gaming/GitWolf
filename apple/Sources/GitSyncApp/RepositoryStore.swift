@@ -49,6 +49,8 @@ final class RepositoryStore: Identifiable {
     private(set) var commitFiles: [FileChange] = []
     private(set) var commitMessage = ""
     private(set) var diff: FileDiff?
+    private(set) var lineSelection: Set<Int> = []
+    private var selectionAnchor: Int?
     var sheet: StoreSheet?
     var draftMessage = ""
     var amend = false { didSet { if amend && draftMessage.isEmpty { loadHeadMessage() } } }
@@ -170,6 +172,7 @@ final class RepositoryStore: Identifiable {
         selectedTarget = nil
         selectedCommitID = nil
         diff = nil
+        clearLineSelection()
         commitFiles = []
         commitMessage = ""
         diffToken += 1
@@ -237,6 +240,7 @@ final class RepositoryStore: Identifiable {
 
     func selectTarget(_ target: DiffTarget?) {
         guard target != selectedTarget else { return }
+        clearLineSelection()
         selectedTarget = target
         guard let target else { diff = nil; diffToken += 1; return }
         loadDiff(for: target)
@@ -248,12 +252,69 @@ final class RepositoryStore: Identifiable {
         Task {
             let result = (try? await repo.diff(for: target)) ?? .empty
             guard token == diffToken else { return }
-            if diff != result { diff = result }
+            if diff != result {
+                diff = result; clearLineSelection()
+                #if DEBUG
+                demoHook(result)
+                #endif
+            }
         }
     }
 
     private func loadHeadMessage() {
         Task { if let m = try? await repo.headMessage(), draftMessage.isEmpty { draftMessage = m } }
+    }
+
+    #if DEBUG
+    private var demoDone = false
+    /// GITSYNC_DEMO=select|stagehunk exercises the real store actions for screenshots.
+    private func demoHook(_ d: FileDiff) {
+        guard !demoDone, d.hunks.count > 1, let mode = ProcessInfo.processInfo.environment["GITSYNC_DEMO"] else { return }
+        demoDone = true
+        if mode == "stagehunk" { applyHunk(1, action: .stage) }
+        if mode == "select" { d.lines.filter(\.isChange).prefix(2).forEach { toggleLine($0.id, extend: false) } }
+    }
+    #endif
+
+    // MARK: Hunk & line staging
+
+    /// Hunk/line operations are offered for plain staged or unstaged text diffs only
+    /// (not renames, binaries, truncated or non-UTF-8 diffs, which can't be patched safely).
+    var canPatch: Bool {
+        guard mode == .changes, let t = selectedTarget, t.originalPath == nil, diff?.canPatch == true else { return false }
+        return t.source == .staged || t.source == .unstaged
+    }
+
+    func clearLineSelection() {
+        if !lineSelection.isEmpty { lineSelection = [] }
+        selectionAnchor = nil
+    }
+
+    /// Toggles a changed line; with `extend` selects every changed line between the anchor and `id`.
+    func toggleLine(_ id: Int, extend: Bool) {
+        guard let diff, diff.lines.indices.contains(id), diff.lines[id].isChange else { return }
+        if extend, let anchor = selectionAnchor, diff.lines.indices.contains(anchor) {
+            for i in min(anchor, id)...max(anchor, id) where diff.lines[i].isChange { lineSelection.insert(i) }
+        } else {
+            if lineSelection.contains(id) { lineSelection.remove(id) } else { lineSelection.insert(id) }
+            selectionAnchor = id
+        }
+    }
+
+    func applyHunk(_ index: Int, action: PatchAction) {
+        guard let diff else { return }
+        applyPatch(diff, ids: diff.changedLineIDs(inHunk: index), action: action)
+    }
+
+    func applySelectedLines(action: PatchAction) {
+        guard let diff else { return }
+        applyPatch(diff, ids: lineSelection, action: action)
+    }
+
+    private func applyPatch(_ diff: FileDiff, ids: Set<Int>, action: PatchAction) {
+        guard let patch = PatchBuilder.make(diff: diff, selecting: ids, action: action) else { return }
+        let label = action == .stage ? "Staging…" : (action == .unstage ? "Unstaging…" : "Discarding…")
+        perform(label) { try await $0.apply(patch: patch, action: action) }
     }
 
     // MARK: Operations

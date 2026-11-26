@@ -20,13 +20,13 @@ A fast, clean, native Git client. Think Sourcetree, without the rough edges.
 - **Multiple repositories at once**: a repo rail with live change badges; every open repo keeps syncing in the background, and open repos are restored on relaunch
 - **⌘K jump palette** for switching repositories and branches and running actions
 - Commit history with branch graph, search, and per-commit file diffs
-- Working copy: stage / unstage / discard per file, commit and amend
+- Working copy: stage / unstage / discard per file, **per hunk and per line** (click the gutter, shift-click for a range), commit and amend
 - Branches, remotes, tags and stashes in the sidebar, with checkout / merge / delete
 - Fetch, pull, push with ahead/behind badges; automatic background fetch
 - Cherry-pick, revert, create tag or branch from any commit
 - Live file-system watching with coalesced refreshes
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for what is next (hunk/line staging, syntax highlighting,
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what is next (syntax highlighting,
 clone, rebase, and more).
 
 ## Building (macOS)

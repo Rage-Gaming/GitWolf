@@ -60,10 +60,21 @@ struct RepositoryView: View {
         }
     }
 
+    private var staging: DiffStaging? {
+        guard store.canPatch, let target = store.selectedTarget else { return nil }
+        return DiffStaging(
+            staged: target.source == .staged,
+            selection: store.lineSelection,
+            toggle: { store.toggleLine($0, extend: $1) },
+            clear: { store.clearLineSelection() },
+            hunk: { store.applyHunk($0, action: $1) },
+            lines: { store.applySelectedLines(action: $0) })
+    }
+
     @ViewBuilder private var detailColumn: some View {
         switch store.mode {
         case .history: CommitDetailView(store: store)
-        case .changes: DiffPane(diff: store.diff, path: store.selectedTarget?.path)
+        case .changes: DiffPane(diff: store.diff, path: store.selectedTarget?.path, staging: staging)
         }
     }
 }

@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Hunk and line staging, unstaging and discarding (`PatchBuilder` + `git apply`).
 - Multi-repository workspace with a repo rail, persisted across launches.
 - ⌘K command palette; frameless window with floating panels and resizable columns.
 - `--open=/path` launch flag.
