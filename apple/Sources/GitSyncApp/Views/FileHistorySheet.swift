@@ -92,9 +92,8 @@ struct FileHistorySheet: View {
 
     private func select(_ commit: Commit) async {
         selected = commit
-        diff = nil
         let result = try? await store.repo.fileDiff(path: path, at: commit.hash)
-        if selected == commit { diff = result ?? .empty }
+        if selected == commit { withAnimation(.easeOut(duration: 0.15)) { diff = result ?? .empty } }
     }
 
     // MARK: Blame

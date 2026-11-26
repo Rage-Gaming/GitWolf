@@ -163,7 +163,7 @@ struct DiffPane: View {
             }
             return out
         }.value
-        if !Task.isCancelled { highlights = result }
+        if !Task.isCancelled { withAnimation(.easeOut(duration: 0.12)) { highlights = result } }
     }
 
     @ViewBuilder

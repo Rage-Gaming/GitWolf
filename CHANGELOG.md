@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Changed
+- More smoothing: syntax highlighting fades in instead of popping, the file-history diff keeps the old one until the next arrives, and pull request / issue lists and comments fade in.
 - Smoother transitions: turning on a history filter (dates, file, author…) keeps the current list, dims it while git searches and then fades the results in instead of flashing an empty state; stash and compare selections fade in the same way.
 - Every pane in the repository window is now resizable and remembers its size: the sidebar and list column (wider ranges), the file list above the diff in a commit, and the commit message box in Changes (drag the divider; the pointer changes to a resize cursor).
 - Notifications sheet redesigned: a header with icon and subtitle, a compact empty state, a labelled reload button and a footer bar with Mark All as Read and Close.
