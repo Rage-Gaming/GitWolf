@@ -7,25 +7,20 @@ struct CommitDetailView: View {
     var body: some View {
         if let commit = store.selectedCommit {
             VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    header(commit)
-                    Divider()
-                    List(selection: Binding(
-                        get: { store.selectedTarget?.path },
-                        set: { path in
-                            if let change = store.commitFiles.first(where: { $0.path == path }) {
+                header(commit)
+                Divider()
+                ScrollView {
+                    VStack(spacing: 1) {
+                        ForEach(store.commitFiles) { change in
+                            CommitFileRow(change: change,
+                                          selected: store.selectedTarget?.path == change.path) {
                                 store.selectChange(change, source: .commit(commit.hash))
                             }
-                        })
-                    ) {
-                        ForEach(store.commitFiles) { change in
-                            FileRow(change: change).tag(change.path)
                         }
                     }
-                    .listStyle(.plain)
-                    // Sized to its content (capped) so the diff gets the remaining space.
-                    .frame(height: min(max(CGFloat(store.commitFiles.count) * 30 + 8, 48), 200))
+                    .padding(6)
                 }
+                .frame(height: min(max(CGFloat(store.commitFiles.count) * 33 + 14, 52), 190))
                 Divider()
                 DiffPane(diff: store.diff, path: store.selectedTarget?.path)
                     .frame(maxHeight: .infinity)
@@ -37,17 +32,18 @@ struct CommitDetailView: View {
     }
 
     private func header(_ c: Commit) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             let parts = store.commitMessage.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-            Text(parts.first.map(String.init) ?? c.subject).font(.title3.weight(.semibold)).textSelection(.enabled)
+            Text(parts.first.map(String.init) ?? c.subject)
+                .font(.system(size: 18, weight: .semibold, design: .rounded)).textSelection(.enabled)
             if parts.count > 1, !parts[1].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(parts[1].trimmingCharacters(in: .whitespacesAndNewlines))
                     .foregroundStyle(.secondary).textSelection(.enabled)
             }
             HStack(spacing: 10) {
-                AvatarView(name: c.authorName, email: c.authorEmail, size: 28)
+                AvatarView(name: c.authorName, email: c.authorEmail, size: 30)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(c.authorName).fontWeight(.medium)
+                    Text(c.authorName).fontWeight(.semibold)
                     Text(c.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -55,21 +51,42 @@ struct CommitDetailView: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(c.hash, forType: .string)
                 } label: {
-                    Label(c.shortHash, systemImage: "doc.on.doc").font(.system(.caption, design: .monospaced))
+                    HStack(spacing: 5) {
+                        Image(systemName: "doc.on.doc")
+                        Text(c.shortHash).font(.system(.caption, design: .monospaced))
+                    }
+                    .pill()
                 }
-                .buttonStyle(.bordered).controlSize(.small).help("Copy full hash")
+                .buttonStyle(.plain).help("Copy full hash")
             }
             if !c.parents.isEmpty {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Text(c.parents.count > 1 ? "Parents" : "Parent").font(.caption).foregroundStyle(.secondary)
                     ForEach(c.parents, id: \.self) { p in
                         Button(String(p.prefix(7))) { store.selectCommit(p) }
-                            .buttonStyle(.link).font(.system(.caption, design: .monospaced))
+                            .buttonStyle(.plain).foregroundStyle(Theme.brand)
+                            .font(.system(.caption, design: .monospaced).weight(.medium))
                     }
                 }
             }
         }
-        .padding(14)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct CommitFileRow: View {
+    let change: FileChange
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        FileRow(change: change)
+            .padding(.horizontal, 8).frame(height: 32)
+            .rowBackground(selected: selected, hovering: hovering)
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+            .onTapGesture(perform: action)
     }
 }

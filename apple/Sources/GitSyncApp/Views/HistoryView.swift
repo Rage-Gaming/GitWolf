@@ -23,6 +23,16 @@ struct HistoryView: View {
 
     var body: some View {
         let items = items
+        VStack(spacing: 0) {
+            SearchField(text: $query, prompt: "Search commits")
+                .padding(.horizontal, 12).padding(.vertical, 10)
+            Divider()
+            list(items)
+        }
+    }
+
+    @ViewBuilder
+    private func list(_ items: [HistoryItem]) -> some View {
         Group {
             if !store.isLoaded {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -57,7 +67,6 @@ struct HistoryView: View {
                 }
             }
         }
-        .searchable(text: $query, prompt: "Search commits")
     }
 
     private func move(_ delta: Int, _ items: [HistoryItem]) {
@@ -97,10 +106,8 @@ private struct CommitRow: View {
         }
         .padding(.horizontal, 10)
         .frame(height: Theme.historyRowHeight)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(selected ? Color.accentColor.opacity(0.2) : (hovering ? Color.primary.opacity(0.06) : .clear))
-                .padding(.horizontal, 4))
+        .rowBackground(selected: selected, hovering: hovering, radius: 12)
+        .padding(.horizontal, 6)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .contextMenu {
@@ -139,14 +146,14 @@ struct GraphCell: View {
                     let cy = (y1 + y2) / 2
                     p.addCurve(to: CGPoint(x: x2, y: y2), control1: CGPoint(x: x1, y: cy), control2: CGPoint(x: x2, y: cy))
                 }
-                ctx.stroke(p, with: .color(Theme.lane(lane)), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                ctx.stroke(p, with: .color(Theme.lane(lane)), style: StrokeStyle(lineWidth: 2, lineCap: .round))
             }
             for e in row.top { stroke(x(e.from), 0, x(e.to), mid, lane: e.from) }
             for e in row.bottom { stroke(x(e.from), mid, x(e.to), size.height, lane: e.to) }
 
             let center = CGPoint(x: x(row.lane), y: mid)
             let dot = CGRect(x: center.x - 4.5, y: center.y - 4.5, width: 9, height: 9)
-            ctx.fill(Path(ellipseIn: dot.insetBy(dx: -2, dy: -2)), with: .color(Color(nsColor: .windowBackgroundColor)))
+            ctx.fill(Path(ellipseIn: dot.insetBy(dx: -2, dy: -2)), with: .color(Color(nsColor: .textBackgroundColor)))
             ctx.fill(Path(ellipseIn: dot), with: .color(Theme.lane(row.lane)))
         }
         .frame(width: CGFloat(laneCount) * Theme.laneWidth, height: Theme.historyRowHeight)

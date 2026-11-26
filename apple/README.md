@@ -7,7 +7,7 @@ Swift package containing the macOS app and the git engine.
 - `Tests/GitSyncCoreTests`: Swift Testing suite
 - `Scripts/bundle.sh`: builds `build/GitSync.app`
 
-Requires macOS 14+ and Xcode (for the SwiftUI macro plugins):
+Requires macOS 15+ and Xcode (for the SwiftUI macro plugins):
 
 ```bash
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # if xcode-select points at CLT

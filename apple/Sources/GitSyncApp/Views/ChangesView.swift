@@ -4,117 +4,91 @@ import SwiftUI
 struct ChangesView: View {
     @Bindable var store: RepositoryStore
 
-    private var selection: Binding<DiffTarget?> {
-        Binding(get: { store.selectedTarget }, set: { store.selectTarget($0) })
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             if store.status.isClean {
-                ContentUnavailableView("Working Tree Clean", systemImage: "checkmark.circle",
-                                       description: Text("No changes to commit."))
+                ContentUnavailableView("Working Tree Clean", systemImage: "checkmark.seal",
+                                       description: Text("Nothing to commit. You’re all caught up."))
             } else {
-                List(selection: selection) {
-                    if !store.status.conflicted.isEmpty {
-                        Section("Conflicts (\(store.status.conflicted.count))") {
-                            rows(store.status.conflicted, .conflicted)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        if !store.status.conflicted.isEmpty {
+                            group("Conflicts", store.status.conflicted.map { ($0, .conflicted) }, action: nil)
+                        }
+                        if !store.status.staged.isEmpty {
+                            group("Staged", store.status.staged.map { ($0, .staged) }, action: ("Unstage All", store.unstageAll))
+                        }
+                        let rest = store.status.unstaged.map { ($0, DiffTarget.Source.unstaged) }
+                            + store.status.untracked.map { ($0, DiffTarget.Source.untracked) }
+                        if !rest.isEmpty {
+                            group("Changes", rest, action: ("Stage All", store.stageAll))
                         }
                     }
-                    if !store.status.staged.isEmpty {
-                        Section {
-                            rows(store.status.staged, .staged)
-                        } header: {
-                            header("Staged", store.status.staged.count, "Unstage All") { store.unstageAll() }
-                        }
-                    }
-                    let unstaged = store.status.unstaged
-                    let untracked = store.status.untracked
-                    if !unstaged.isEmpty || !untracked.isEmpty {
-                        Section {
-                            rows(unstaged, .unstaged)
-                            rows(untracked, .untracked)
-                        } header: {
-                            header("Changes", unstaged.count + untracked.count, "Stage All") { store.stageAll() }
-                        }
-                    }
+                    .padding(10)
                 }
-                .listStyle(.inset)
             }
             Divider()
             composer
         }
     }
 
-    private func header(_ title: String, _ count: Int, _ action: String, _ perform: @escaping () -> Void) -> some View {
-        HStack {
-            Text("\(title) (\(count))")
-            Spacer()
-            Button(action, action: perform).buttonStyle(.link).font(.caption)
-        }
-    }
-
-    @ViewBuilder
-    private func rows(_ changes: [FileChange], _ source: DiffTarget.Source) -> some View {
-        ForEach(changes) { change in
+    private func group(_ title: String, _ items: [(FileChange, DiffTarget.Source)],
+                       action: (String, () -> Void)?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
             HStack {
-                FileRow(change: change)
-                if source == .staged {
-                    RowButton(icon: "minus.circle", help: "Unstage") { store.unstage([change.path]) }
-                } else if source != .conflicted {
-                    RowButton(icon: "plus.circle", help: "Stage") { store.stage([change.path]) }
+                Text(title.uppercased()).font(.system(size: 11, weight: .semibold)).tracking(0.7)
+                Text("\(items.count)").font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .padding(.horizontal, 5).background(Color.primary.opacity(0.07), in: Capsule())
+                Spacer()
+                if let action {
+                    Button(action.0, action: action.1).buttonStyle(.plain)
+                        .font(.caption.weight(.semibold)).foregroundStyle(Theme.brand)
                 }
             }
-            .tag(DiffTarget(source: source, path: change.path, originalPath: change.originalPath))
-            .contextMenu {
-                if source == .staged {
-                    Button("Unstage") { store.unstage([change.path]) }
-                } else {
-                    Button("Stage") { store.stage([change.path]) }
-                    Button("Discard Changes…", role: .destructive) { confirmDiscard(change, untracked: source == .untracked) }
-                }
-                Button("Reveal in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([store.repo.root.appendingPathComponent(change.path)])
-                }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8).padding(.bottom, 4)
+            ForEach(items, id: \.0.id) { change, source in
+                ChangeRow(store: store, change: change, source: source)
             }
         }
-    }
-
-    private func confirmDiscard(_ change: FileChange, untracked: Bool) {
-        let alert = NSAlert()
-        alert.messageText = "Discard changes to “\(change.fileName)”?"
-        alert.informativeText = untracked ? "This untracked file will be deleted. This can’t be undone."
-                                          : "Your modifications will be lost. This can’t be undone."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Discard")
-        alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn { store.discard([change], untracked: untracked) }
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $store.draftMessage)
                     .font(.body)
                     .scrollContentBackground(.hidden)
-                    .padding(6)
+                    .padding(8)
                 if store.draftMessage.isEmpty {
-                    Text("Commit message").foregroundStyle(.tertiary).padding(.horizontal, 11).padding(.vertical, 14)
-                        .allowsHitTesting(false)
+                    Text("Describe your changes…").foregroundStyle(.tertiary)
+                        .padding(.horizontal, 13).padding(.vertical, 16).allowsHitTesting(false)
                 }
             }
-            .frame(height: 92)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(height: 96)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.06)))
 
             HStack {
                 Toggle("Amend last commit", isOn: $store.amend).toggleStyle(.checkbox).controlSize(.small)
-                Spacer()
-                Button {
-                    store.commit()
-                } label: {
-                    Text(store.amend ? "Amend" : "Commit \(store.status.staged.count) file\(store.status.staged.count == 1 ? "" : "s")")
-                        .padding(.horizontal, 6)
+                let subject = store.draftMessage.split(separator: "\n").first.map(String.init) ?? ""
+                if subject.count > 72 {
+                    Text("\(subject.count)").font(.caption.monospacedDigit()).foregroundStyle(.orange)
+                        .help("Subject line is longer than 72 characters")
                 }
-                .buttonStyle(.borderedProminent)
+                Spacer()
+                Button { store.commit() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark")
+                        Text(store.amend ? "Amend" : "Commit")
+                        if !store.amend { Text("\(store.status.staged.count)").opacity(0.75) }
+                    }
+                    .fontWeight(.semibold).foregroundStyle(.white)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+                    .background(canCommit ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(Color.primary.opacity(0.15)), in: Capsule())
+                    .shadow(color: canCommit ? Theme.brand.opacity(0.35) : .clear, radius: 8, y: 3)
+                }
+                .buttonStyle(.plain)
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!canCommit)
             }
@@ -130,12 +104,57 @@ struct ChangesView: View {
     }
 }
 
-private struct RowButton: View {
-    let icon: String
-    let help: String
-    let action: () -> Void
+private struct ChangeRow: View {
+    let store: RepositoryStore
+    let change: FileChange
+    let source: DiffTarget.Source
+    @State private var hovering = false
+
+    private var selected: Bool {
+        store.selectedTarget?.path == change.path && store.selectedTarget?.source == source
+    }
+
     var body: some View {
-        Button(action: action) { Image(systemName: icon).foregroundStyle(.secondary) }
-            .buttonStyle(.plain).help(help)
+        HStack(spacing: 6) {
+            FileRow(change: change)
+            if hovering || selected, source != .conflicted {
+                Button {
+                    if source == .staged { store.unstage([change.path]) } else { store.stage([change.path]) }
+                } label: {
+                    Image(systemName: source == .staged ? "minus.circle.fill" : "plus.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(source == .staged ? Color.secondary : Theme.brand)
+                }
+                .buttonStyle(.plain)
+                .help(source == .staged ? "Unstage" : "Stage")
+            }
+        }
+        .padding(.horizontal, 8).frame(height: 34)
+        .rowBackground(selected: selected, hovering: hovering)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture { store.selectChange(change, source: source) }
+        .contextMenu {
+            if source == .staged {
+                Button("Unstage") { store.unstage([change.path]) }
+            } else {
+                Button("Stage") { store.stage([change.path]) }
+                Button("Discard Changes…", role: .destructive) { confirmDiscard(untracked: source == .untracked) }
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([store.repo.root.appendingPathComponent(change.path)])
+            }
+        }
+    }
+
+    private func confirmDiscard(untracked: Bool) {
+        let alert = NSAlert()
+        alert.messageText = "Discard changes to “\(change.fileName)”?"
+        alert.informativeText = untracked ? "This untracked file will be deleted. This can’t be undone."
+                                          : "Your modifications will be lost. This can’t be undone."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Discard")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn { store.discard([change], untracked: untracked) }
     }
 }

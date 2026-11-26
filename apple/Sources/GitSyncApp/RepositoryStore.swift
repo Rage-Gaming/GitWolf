@@ -24,10 +24,11 @@ private final class TaskBag: @unchecked Sendable {
 /// file watcher, app activation, a periodic fetch, and every mutating operation, so the UI
 /// always converges on the real repository state.
 @MainActor @Observable
-final class RepositoryStore {
+final class RepositoryStore: Identifiable {
     enum Mode: Hashable { case history, changes }
 
     let repo: GitRepository
+    nonisolated var id: String { repo.root.path }
     var name: String { repo.name }
 
     // Repository state

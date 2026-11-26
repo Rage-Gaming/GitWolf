@@ -7,14 +7,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         #if DEBUG
         // GITSYNC_SNAPSHOT=/path.png renders the window to a PNG after a delay, then quits.
+        // GITSYNC_APPEARANCE=dark|light forces an appearance for the capture.
         if let path = ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT"] {
-            NSApp.appearance = NSAppearance(named: .aqua)
+            let dark = ProcessInfo.processInfo.environment["GITSYNC_APPEARANCE"] == "dark"
+            NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
-                if let view = NSApp.windows.first?.contentView,
+                let window = NSApp.windows.first { $0.canBecomeMain && $0.isVisible }
+                if let view = window?.contentView,
                    let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                     view.cacheDisplay(in: view.bounds, to: rep)
-                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
-                }
+                    do { try rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path)) }
+                    catch { NSLog("snapshot write failed: \(error)") }
+                } else { NSLog("snapshot: no view/rep") }
                 NSApp.terminate(nil)
             }
         }
@@ -31,67 +35,96 @@ struct GitSyncApp: App {
         WindowGroup {
             RootView()
         }
-        .defaultSize(width: 1360, height: 840)
-        .windowToolbarStyle(.unified)
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1440, height: 880)
         .commands { AppCommands() }
     }
 }
 
 struct RootView: View {
-    @State private var model = WindowModel()
+    @State private var workspace = Workspace()
 
     var body: some View {
-        Group {
-            if let store = model.store {
-                RepositoryView(store: store)
-            } else {
-                WelcomeView(model: model)
+        HStack(spacing: 0) {
+            RepoRail(workspace: workspace)
+            ZStack {
+                if let store = workspace.selected {
+                    RepositoryView(store: store, workspace: workspace).id(store.id)
+                } else {
+                    DashboardView(workspace: workspace)
+                }
             }
         }
-        .focusedSceneValue(\.windowModel, model)
-        .task {
-            // `GitSync /path/to/repo` opens that repository directly.
-            if model.store == nil, let path = CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("-") }) {
-                model.open(URL(fileURLWithPath: path, isDirectory: true))
-            }
-        }
+        .frame(minWidth: 1080, minHeight: 640)
+        .containerBackground(.ultraThinMaterial, for: .window)
+        .overlay { if workspace.showPalette { CommandPalette(workspace: workspace) } }
+        .focusedSceneValue(\.workspace, workspace)
+        .tint(Theme.brand)
+        .task { await workspace.bootstrap() }
         .alert("Couldn’t Open Repository", isPresented: Binding(
-            get: { model.errorMessage != nil },
-            set: { if !$0 { model.errorMessage = nil } })
+            get: { workspace.errorMessage != nil },
+            set: { if !$0 { workspace.errorMessage = nil } })
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(model.errorMessage ?? "")
+            Text(workspace.errorMessage ?? "")
         }
     }
 }
 
 struct AppCommands: Commands {
-    @FocusedValue(\.windowModel) private var model
+    @FocusedValue(\.workspace) private var workspace
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            Button("Open Repository…") { model?.openPanel() }
+            Button("Open Repository…") { workspace?.openPanel() }
                 .keyboardShortcut("o")
-            Button("Close Repository") { model?.closeRepository() }
+            Button("Close Repository") { if let s = workspace?.selected { workspace?.close(s) } }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
-                .disabled(model?.store == nil)
+                .disabled(workspace?.selected == nil)
         }
         CommandMenu("Repository") {
-            Button("Refresh") { model?.store?.requestRefresh() }
-                .keyboardShortcut("r").disabled(model?.store == nil)
+            Button("Jump To…") { workspace?.showPalette.toggle() }
+                .keyboardShortcut("k")
             Divider()
-            Button("Fetch") { model?.store?.fetch() }
-                .keyboardShortcut("f", modifiers: [.command, .shift]).disabled(model?.store == nil)
-            Button("Pull") { model?.store?.pull() }
-                .keyboardShortcut("l", modifiers: [.command, .shift]).disabled(model?.store == nil)
-            Button("Push") { model?.store?.push() }
-                .keyboardShortcut("p", modifiers: [.command, .shift]).disabled(model?.store == nil)
+            Button("Refresh") { workspace?.selected?.requestRefresh() }
+                .keyboardShortcut("r").disabled(workspace?.selected == nil)
+            Button("Fetch") { workspace?.selected?.fetch() }
+                .keyboardShortcut("f", modifiers: [.command, .shift]).disabled(workspace?.selected == nil)
+            Button("Pull") { workspace?.selected?.pull() }
+                .keyboardShortcut("l", modifiers: [.command, .shift]).disabled(workspace?.selected == nil)
+            Button("Push") { workspace?.selected?.push() }
+                .keyboardShortcut("p", modifiers: [.command, .shift]).disabled(workspace?.selected == nil)
             Divider()
-            Button("Show History") { model?.store?.mode = .history }
-                .keyboardShortcut("1").disabled(model?.store == nil)
-            Button("Show Changes") { model?.store?.mode = .changes }
-                .keyboardShortcut("2").disabled(model?.store == nil)
+            Button("Show History") { workspace?.selected?.mode = .history }
+                .keyboardShortcut("1", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Button("Show Changes") { workspace?.selected?.mode = .changes }
+                .keyboardShortcut("2", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+        }
+        CommandMenu("Repositories") {
+            Button("Next Repository") { workspace?.cycle(1) }
+                .keyboardShortcut(.tab, modifiers: .control)
+            Button("Previous Repository") { workspace?.cycle(-1) }
+                .keyboardShortcut(.tab, modifiers: [.control, .shift])
+            Divider()
+            Button("Repository 1") { workspace?.selectIndex(0) }
+                .keyboardShortcut("1")
+            Button("Repository 2") { workspace?.selectIndex(1) }
+                .keyboardShortcut("2")
+            Button("Repository 3") { workspace?.selectIndex(2) }
+                .keyboardShortcut("3")
+            Button("Repository 4") { workspace?.selectIndex(3) }
+                .keyboardShortcut("4")
+            Button("Repository 5") { workspace?.selectIndex(4) }
+                .keyboardShortcut("5")
+            Button("Repository 6") { workspace?.selectIndex(5) }
+                .keyboardShortcut("6")
+            Button("Repository 7") { workspace?.selectIndex(6) }
+                .keyboardShortcut("7")
+            Button("Repository 8") { workspace?.selectIndex(7) }
+                .keyboardShortcut("8")
+            Button("Repository 9") { workspace?.selectIndex(8) }
+                .keyboardShortcut("9")
         }
     }
 }

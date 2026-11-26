@@ -17,6 +17,8 @@ A fast, clean, native Git client. Think Sourcetree, without the rough edges.
 
 ## Features (v0.1, macOS)
 
+- **Multiple repositories at once**: a repo rail with live change badges; every open repo keeps syncing in the background, and open repos are restored on relaunch
+- **⌘K jump palette** for switching repositories and branches and running actions
 - Commit history with branch graph, search, and per-commit file diffs
 - Working copy: stage / unstage / discard per file, commit and amend
 - Branches, remotes, tags and stashes in the sidebar, with checkout / merge / delete
@@ -29,13 +31,13 @@ clone, rebase, and more).
 
 ## Building (macOS)
 
-Requirements: macOS 14+, Xcode 16+ (the SwiftUI macros ship with Xcode), Git.
+Requirements: macOS 15+, Xcode 16+ (the SwiftUI macros ship with Xcode), Git.
 
 ```bash
 cd apple
 swift build          # debug build
 swift test           # run the test suite
-swift run GitSync    # launch
+swift run GitSync    # launch (add --open=/path/to/repo to open a repo directly)
 ./Scripts/bundle.sh  # produce build/GitSync.app
 ```
 

@@ -3,30 +3,29 @@ import SwiftUI
 
 struct RepositoryView: View {
     @Bindable var store: RepositoryStore
+    let workspace: Workspace
+    @AppStorage("sidebarWidth") private var sidebarWidth = 248.0
+    @AppStorage("contentWidth") private var contentWidth = 480.0
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView(store: store)
-                .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 380)
-        } content: {
-            Group {
-                switch store.mode {
-                case .history: HistoryView(store: store)
-                case .changes: ChangesView(store: store)
+        VStack(spacing: 0) {
+            TopBar(store: store, workspace: workspace)
+            GeometryReader { geo in
+                let sidebar = CGFloat(sidebarWidth)
+                let content = min(CGFloat(contentWidth), max(320, geo.size.width - sidebar - 380 - 24))
+                HStack(spacing: 0) {
+                    SidebarView(store: store).frame(width: sidebar)
+                    SplitHandle(width: $sidebarWidth, range: 200...360)
+                    mainColumn.frame(width: content).panel()
+                    SplitHandle(width: $contentWidth, range: 340...760)
+                    detailColumn.frame(minWidth: 360, maxWidth: .infinity).panel()
                 }
-            }
-            .navigationSplitViewColumnWidth(min: 360, ideal: 480, max: 760)
-        } detail: {
-            switch store.mode {
-            case .history: CommitDetailView(store: store)
-            case .changes: DiffPane(diff: store.diff, path: store.selectedTarget?.path)
+                .padding(.trailing, 10).padding(.bottom, 10)
             }
         }
-        .navigationTitle(store.name)
-        .navigationSubtitle(store.status.branchDisplay)
-        .toolbar { toolbar }
         .task { store.start() }
         .overlay(alignment: .bottom) { if let label = store.busyLabel { BusyPill(label: label) } }
+        .animation(.snappy, value: store.busyLabel)
         .alert("Git Error", isPresented: Binding(
             get: { store.errorMessage != nil },
             set: { if !$0 { store.errorMessage = nil } })
@@ -54,61 +53,155 @@ struct RepositoryView: View {
         }
     }
 
-    @ToolbarContentBuilder
-    private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            Menu {
-                ForEach(store.localBranches) { branch in
-                    Button {
-                        store.checkout(branch)
-                    } label: {
-                        if branch.isCurrent { Label(branch.name, systemImage: "checkmark") } else { Text(branch.name) }
-                    }
-                }
-                Divider()
-                Button("New Branch…", systemImage: "plus") { store.sheet = .newBranch(from: nil) }
-            } label: {
-                Label(store.status.branchDisplay, systemImage: "arrow.triangle.branch")
-            }
-            .help("Switch branch")
-        }
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button { store.fetch() } label: { Label("Fetch", systemImage: "arrow.triangle.2.circlepath") }
-                .help("Fetch from all remotes (⇧⌘F)")
-            Button { store.pull() } label: {
-                badged("Pull", "arrow.down", store.status.behind)
-            }
-            .help("Pull (⇧⌘L)")
-            Button { store.push() } label: {
-                badged("Push", "arrow.up", store.status.ahead)
-            }
-            .help("Push (⇧⌘P)")
-            Button { store.sheet = .stash } label: { Label("Stash", systemImage: "tray.and.arrow.down") }
-                .help("Stash changes")
-                .disabled(store.status.isClean)
+    @ViewBuilder private var mainColumn: some View {
+        switch store.mode {
+        case .history: HistoryView(store: store)
+        case .changes: ChangesView(store: store)
         }
     }
 
-    private func badged(_ title: String, _ icon: String, _ count: Int) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon)
-            if count > 0 { Text("\(count)").font(.caption.monospacedDigit().weight(.semibold)) }
+    @ViewBuilder private var detailColumn: some View {
+        switch store.mode {
+        case .history: CommitDetailView(store: store)
+        case .changes: DiffPane(diff: store.diff, path: store.selectedTarget?.path)
         }
-        .accessibilityLabel(count > 0 ? "\(title), \(count)" : title)
     }
 }
 
-struct BusyPill: View {
-    let label: String
+// MARK: - Top bar
+
+struct TopBar: View {
+    @Bindable var store: RepositoryStore
+    let workspace: Workspace
+    @Namespace private var tabs
+
     var body: some View {
-        HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
-            Text(label).font(.callout)
+        HStack(spacing: 14) {
+            branchMenu
+            modeTabs
+            Spacer(minLength: 12)
+            syncCluster
+            Button { workspace.showPalette = true } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "magnifyingglass")
+                    Text("Jump to…").foregroundStyle(.secondary)
+                    Kbd(text: "⌘K")
+                }
+                .font(.callout)
+                .pill()
+            }
+            .buttonStyle(.plain)
+            .help("Jump to a repository, branch or action")
         }
-        .padding(.horizontal, 14).padding(.vertical, 8)
-        .background(.regularMaterial, in: Capsule())
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
-        .padding(.bottom, 18)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .padding(.horizontal, 10)
+        .frame(height: 56)
+        .background { Color.clear.contentShape(Rectangle()).gesture(WindowDragGesture()) }
+    }
+
+    private var branchMenu: some View {
+        Menu {
+            ForEach(store.localBranches) { branch in
+                Button {
+                    store.checkout(branch)
+                } label: {
+                    if branch.isCurrent { Label(branch.name, systemImage: "checkmark") } else { Text(branch.name) }
+                }
+            }
+            Divider()
+            Button("New Branch…", systemImage: "plus") { store.sheet = .newBranch(from: nil) }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "arrow.triangle.branch").foregroundStyle(Theme.brand)
+                Text(store.status.branchDisplay).fontWeight(.semibold).lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
+            }
+            .pill()
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+        .fixedSize()
+        .help("Switch branch")
+    }
+
+    private var modeTabs: some View {
+        HStack(spacing: 2) {
+            tab("History", "clock.arrow.circlepath", .history, badge: nil)
+            tab("Changes", "square.and.pencil", .changes, badge: store.status.changeCount)
+        }
+        .padding(3)
+        .background(Color.primary.opacity(0.06), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06)))
+    }
+
+    private func tab(_ title: String, _ icon: String, _ mode: RepositoryStore.Mode, badge: Int?) -> some View {
+        let selected = store.mode == mode
+        return Button {
+            withAnimation(.snappy(duration: 0.22)) { store.mode = mode }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                Text(title).fontWeight(.medium)
+                if let badge, badge > 0 {
+                    Text("\(badge)").font(.system(size: 10.5, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.orange)
+                }
+            }
+            .foregroundStyle(selected ? .primary : .secondary)
+            .padding(.horizontal, 13).padding(.vertical, 6)
+            .background {
+                if selected {
+                    Capsule().fill(Color(nsColor: .textBackgroundColor))
+                        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                        .matchedGeometryEffect(id: "selected-tab", in: tabs)
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var syncCluster: some View {
+        HStack(spacing: 0) {
+            SyncButton(icon: "arrow.triangle.2.circlepath", count: 0, help: "Fetch (⇧⌘F)") { store.fetch() }
+            Divider().frame(height: 16)
+            SyncButton(icon: "arrow.down", count: store.status.behind, help: "Pull (⇧⌘L)") { store.pull() }
+            Divider().frame(height: 16)
+            SyncButton(icon: "arrow.up", count: store.status.ahead, help: "Push (⇧⌘P)") { store.push() }
+            Divider().frame(height: 16)
+            SyncButton(icon: "tray.and.arrow.down", count: 0, help: "Stash changes") { store.sheet = .stash }
+                .disabled(store.status.isClean)
+        }
+        .background(Color.primary.opacity(0.06), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06)))
+        .clipShape(Capsule())
+    }
+}
+
+private struct SyncButton: View {
+    let icon: String
+    let count: Int
+    let help: String
+    let action: () -> Void
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var enabled
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                if count > 0 {
+                    Text("\(count)").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(Theme.brand)
+                }
+            }
+            .frame(minWidth: 40, minHeight: 30)
+            .padding(.horizontal, 4)
+            .background(hovering && enabled ? Color.primary.opacity(0.07) : .clear)
+            .opacity(enabled ? 1 : 0.4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .onHover { hovering = $0 }
     }
 }

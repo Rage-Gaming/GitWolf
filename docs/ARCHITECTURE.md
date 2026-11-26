@@ -19,7 +19,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 
 ## Keeping the UI in sync
 
-`RepositoryStore` (one per open repo) is the single source of truth.
+`Workspace` owns every open repository; `RepositoryStore` (one per open repo, all kept alive and watching) is the single source of truth for that repo.
 
 1. Triggers: file watcher, app becoming active, any mutating operation, a 5-minute background fetch.
 2. `requestRefresh()` coalesces triggers: if a refresh is running, it is re-run once afterwards.

@@ -1,0 +1,126 @@
+import AppKit
+import GitSyncCore
+import Observation
+import SwiftUI
+
+enum RecentRepositories {
+    private static let key = "recentRepositories"
+
+    static func load() -> [URL] {
+        (UserDefaults.standard.stringArray(forKey: key) ?? [])
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    static func add(_ url: URL) {
+        var paths = (UserDefaults.standard.stringArray(forKey: key) ?? []).filter { $0 != url.path }
+        paths.insert(url.path, at: 0)
+        UserDefaults.standard.set(Array(paths.prefix(12)), forKey: key)
+    }
+}
+
+/// All repositories open in one window. Every open repository keeps its own store (and file
+/// watcher) alive, so badges and state stay current even when it is not the visible one.
+@MainActor @Observable
+final class Workspace {
+    private(set) var repos: [RepositoryStore] = []
+    var selectedID: String?
+    var errorMessage: String?
+    var showPalette = false
+    private(set) var recents: [URL] = RecentRepositories.load()
+
+    private static var didBootstrap = false
+    private static let openKey = "openRepositories"
+    private static let selectedKey = "selectedRepository"
+    private var isRestoring = false
+
+    var selected: RepositoryStore? { repos.first { $0.id == selectedID } }
+
+    // MARK: Opening & closing
+
+    func open(_ url: URL) { Task { await openAsync(url) } }
+
+    func openAsync(_ url: URL) async {
+        do {
+            let repo = try await GitRepository.open(at: url)
+            let id = repo.root.path
+            if repos.contains(where: { $0.id == id }) { selectedID = id; persist(); return }
+            let store = RepositoryStore(repo: repo)
+            repos.append(store)
+            selectedID = id
+            store.start()
+            RecentRepositories.add(repo.root)
+            recents = RecentRepositories.load()
+            persist()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func openPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Open"
+        panel.message = "Choose Git repositories"
+        if panel.runModal() == .OK { panel.urls.forEach(open) }
+    }
+
+    func close(_ store: RepositoryStore) {
+        store.stop()
+        repos.removeAll { $0.id == store.id }
+        if selectedID == store.id { selectedID = repos.last?.id }
+        persist()
+    }
+
+    func select(_ id: String?) {
+        selectedID = id
+        persist()
+    }
+
+    func selectIndex(_ index: Int) {
+        guard repos.indices.contains(index) else { return }
+        select(repos[index].id)
+    }
+
+    func cycle(_ delta: Int) {
+        guard !repos.isEmpty else { return }
+        let current = repos.firstIndex { $0.id == selectedID } ?? (delta > 0 ? -1 : 0)
+        select(repos[(current + delta + repos.count) % repos.count].id)
+    }
+
+    // MARK: Persistence
+
+    private func persist() {
+        guard !isRestoring else { return }
+        UserDefaults.standard.set(repos.map(\.id), forKey: Self.openKey)
+        UserDefaults.standard.set(selectedID, forKey: Self.selectedKey)
+    }
+
+    /// Opens repositories given on the command line, otherwise restores last session's tabs.
+    func bootstrap() async {
+        guard !Self.didBootstrap else { return }
+        Self.didBootstrap = true
+        // `GitSync --open=/path/to/repo` (repeatable). A bare path would be treated by AppKit
+        // as a document to open and suppress the window, hence the explicit flag.
+        let args = CommandLine.arguments.dropFirst().filter { $0.hasPrefix("--open=") }.map { String($0.dropFirst(7)) }
+        if !args.isEmpty {
+            for path in args { await openAsync(URL(fileURLWithPath: path, isDirectory: true)) }
+            return
+        }
+        isRestoring = true
+        let paths = UserDefaults.standard.stringArray(forKey: Self.openKey) ?? []
+        let selected = UserDefaults.standard.string(forKey: Self.selectedKey)
+        for path in paths where FileManager.default.fileExists(atPath: path) {
+            await openAsync(URL(fileURLWithPath: path, isDirectory: true))
+        }
+        isRestoring = false
+        if let selected, repos.contains(where: { $0.id == selected }) { selectedID = selected }
+        persist()
+    }
+}
+
+extension FocusedValues {
+    @Entry var workspace: Workspace?
+}
