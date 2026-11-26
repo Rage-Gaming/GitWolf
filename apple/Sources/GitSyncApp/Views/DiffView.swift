@@ -21,8 +21,16 @@ struct DiffPane: View {
     let diff: FileDiff?
     let path: String?
     var staging: DiffStaging?
+    /// Re-reads the diff after a display option changes. Nil hides the options (read-only previews).
+    var reload: (() -> Void)?
+    /// Loads both versions of an image file. Nil shows binary files as plain "Binary File".
+    var images: (() async -> (old: Data?, new: Data?))?
 
     @AppStorage(SettingsKey.syntaxHighlighting) private var syntaxOn = true
+    @AppStorage(SettingsKey.ignoreWhitespace) private var ignoreWhitespace = false
+    @AppStorage(SettingsKey.fullFileDiffs) private var fullFile = false
+    @State private var expandedRuns: Set<Int> = []
+    @State private var imageData: (old: Data?, new: Data?)?
     @AppStorage(SettingsKey.diffLayout) private var layoutRaw = DiffLayout.unified.rawValue
     @State private var highlights: [Int: AttributedString] = [:]
 
@@ -38,6 +46,10 @@ struct DiffPane: View {
                     if !dir.isEmpty { Text(dir + "/").foregroundStyle(.secondary).lineLimit(1).truncationMode(.head) }
                     Text((path as NSString).lastPathComponent).fontWeight(.semibold).lineLimit(1)
                     Spacer()
+                    if reload != nil, let diff, !diff.isBinary || ignoreWhitespace || fullFile {
+                        optionToggle("Ignore whitespace", systemImage: "text.alignleft", isOn: $ignoreWhitespace)
+                        optionToggle("Show whole file", systemImage: "doc.plaintext", isOn: $fullFile)
+                    }
                     if let diff, !diff.isBinary {
                         layoutToggle
                         Text("+\(diff.additions)").foregroundStyle(.green)
@@ -53,6 +65,25 @@ struct DiffPane: View {
             content
         }
         .task(id: HighlightKey(path: path, enabled: syntaxOn, diff: diff)) { await computeHighlights() }
+    }
+
+    private func optionToggle(_ title: String, systemImage: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+            expandedRuns = []
+            reload?()
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(isOn.wrappedValue ? Color.white : Color.secondary)
+                .frame(width: 26, height: 20)
+                .background(isOn.wrappedValue ? AnyShapeStyle(Theme.brand) : AnyShapeStyle(Color.primary.opacity(0.07)),
+                            in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
     }
 
     private var layoutToggle: some View {
@@ -98,17 +129,29 @@ struct DiffPane: View {
         }
     }
 
+    private struct ImageKey: Hashable { let path: String; let signature: [String] }
+
     private func computeHighlights() async {
-        guard syntaxOn, let diff, let path, !diff.isBinary else {
+        guard let diff, let path, !diff.isBinary else {
             if !highlights.isEmpty { highlights = [:] }
             return
         }
+        let syntaxOn = syntaxOn
         let result = await Task.detached(priority: .userInitiated) { () -> [Int: AttributedString] in
-            let tokens = SyntaxHighlighter.tokens(for: diff, path: path)
+            let tokens = syntaxOn ? SyntaxHighlighter.tokens(for: diff, path: path) : [:]
+            let inline = diff.inlineRanges()
             var out: [Int: AttributedString] = [:]
             for line in diff.lines {
-                guard let spans = tokens[line.id] else { continue }
+                guard tokens[line.id] != nil || inline[line.id] != nil else { continue }
+                let spans = tokens[line.id] ?? []
                 var text = AttributedString(line.text)
+                for range in inline[line.id] ?? [] {
+                    let chars = text.characters
+                    guard range.upperBound <= chars.count else { continue }
+                    let lower = chars.index(chars.startIndex, offsetBy: range.lowerBound)
+                    let upper = chars.index(chars.startIndex, offsetBy: range.upperBound)
+                    text[lower..<upper].backgroundColor = (line.kind == .addition ? Color.green : Color.red).opacity(0.38)
+                }
                 for span in spans {
                     let chars = text.characters
                     guard span.start < chars.count, span.end <= chars.count else { continue }
@@ -127,10 +170,19 @@ struct DiffPane: View {
     private var content: some View {
         if let diff {
             if diff.isBinary {
-                ContentUnavailableView("Binary File", systemImage: "doc.zipper", description: Text("No preview available."))
+                if let path, let images, GitRepository.isImagePath(path) {
+                    ImageDiffView(data: imageData)
+                        .task(id: ImageKey(path: path, signature: diff.header)) { imageData = nil; imageData = await images() }
+                } else {
+                    ContentUnavailableView("Binary File", systemImage: "doc.zipper", description: Text("No preview available."))
+                }
             } else if diff.lines.isEmpty {
                 ContentUnavailableView("No Differences", systemImage: "equal.circle")
             } else {
+                let staging = diff.ignoresWhitespace ? nil : staging
+                let runs = diff.collapsibleRuns().filter { !expandedRuns.contains($0.lowerBound) }
+                let hidden = Set(runs.flatMap { Array($0) })
+                let runStarts = Dictionary(uniqueKeysWithValues: runs.map { ($0.lowerBound, $0.count) })
                 GeometryReader { geo in
                     // Lazy stacks don't report the width of rows that aren't on screen yet, so give
                     // the content an explicit width; otherwise long lines can't be scrolled to.
@@ -144,8 +196,13 @@ struct DiffPane: View {
                     ScrollView(layout == .split ? [.vertical] : [.vertical, .horizontal]) {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             if layout == .split {
-                                ForEach(SideBySide.rows(for: diff)) { row in
-                                    if let header = row.header {
+                                ForEach(SideBySide.rows(for: diff).filter { row in
+                                    guard let l = row.left, row.left?.id == row.right?.id else { return true }
+                                    return !hidden.contains(l.id) || runStarts[l.id] != nil
+                                }) { row in
+                                    if let l = row.left, row.left?.id == row.right?.id, let count = runStarts[l.id] {
+                                        FoldedRow(count: count, minWidth: width) { expandedRuns.insert(l.id) }
+                                    } else if let header = row.header {
                                         HunkHeaderRow(line: header, minWidth: width, staging: staging, confirmDiscard: confirmDiscard)
                                     } else {
                                         HStack(alignment: .top, spacing: 0) {
@@ -157,13 +214,19 @@ struct DiffPane: View {
                                     }
                                 }
                             } else {
-                                ForEach(diff.lines) { line in
-                                    if line.kind == .hunkHeader {
+                                ForEach(diff.lines.filter { !hidden.contains($0.id) || runStarts[$0.id] != nil }) { line in
+                                    if let count = runStarts[line.id] {
+                                        FoldedRow(count: count, minWidth: width) { expandedRuns.insert(line.id) }
+                                    } else if line.kind == .hunkHeader {
                                         HunkHeaderRow(line: line, minWidth: width, staging: staging, confirmDiscard: confirmDiscard)
                                     } else {
                                         DiffLineRow(line: line, minWidth: width, staging: staging, highlight: highlights[line.id])
                                     }
                                 }
+                            }
+                            if diff.ignoresWhitespace {
+                                Text("Whitespace changes are hidden, so staging is turned off for this view.")
+                                    .font(.caption).foregroundStyle(.secondary).padding(12)
                             }
                             if diff.isTruncated {
                                 Text("Diff truncated — file is too large to display in full.")
@@ -218,6 +281,71 @@ struct DiffPane: View {
         alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn { action() }
+    }
+}
+
+/// A long stretch of unchanged lines, folded away until clicked.
+private struct FoldedRow: View {
+    let count: Int
+    let minWidth: CGFloat
+    let expand: () -> Void
+
+    var body: some View {
+        Button(action: expand) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.up.and.down.text.horizontal")
+                Text("\(count) unchanged lines")
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 11.5, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.leading, 70).padding(.vertical, 4)
+            .frame(minWidth: minWidth, alignment: .leading)
+            .background(Color.primary.opacity(0.05))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(count) unchanged lines, folded")
+        .accessibilityHint("Shows the unchanged lines")
+    }
+}
+
+/// Old and new versions of an image side by side.
+private struct ImageDiffView: View {
+    let data: (old: Data?, new: Data?)?
+
+    var body: some View {
+        if let data {
+            HStack(spacing: 1) {
+                pane("Before", data.old, tint: .red)
+                pane("After", data.new, tint: .green)
+            }
+            .background(Color.primary.opacity(0.10))
+        } else {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func pane(_ title: String, _ data: Data?, tint: Color) -> some View {
+        VStack(spacing: 8) {
+            Text(title.uppercased()).font(.system(size: 11, weight: .semibold)).tracking(0.8).foregroundStyle(tint)
+            if let data, let image = NSImage(data: data) {
+                Image(nsImage: image).resizable().scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityLabel("\(title) image")
+                let rep = image.representations.first
+                Text("\(rep?.pixelsWide ?? Int(image.size.width)) × \(rep?.pixelsHigh ?? Int(image.size.height)) px · \(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if data != nil {
+                Text("Can’t preview this image").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Text(title == "Before" ? "Did not exist" : "Deleted").foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .textBackgroundColor))
     }
 }
 

@@ -2356,3 +2356,104 @@ private func makeTempDir() throws -> URL {
         #expect(CustomAction(name: "x", command: "ls").isValid)
     }
 }
+
+@Suite struct DiffImprovementTests {
+    private func makeRepo() async throws -> (GitRepository, GitRunner, URL) {
+        let dir = try makeTempDir()
+        let runner = GitRunner(workingDirectory: dir)
+        try await runner.run(["init", "-b", "main"])
+        try await runner.run(["config", "user.name", "Tester"])
+        try await runner.run(["config", "user.email", "t@example.com"])
+        return (GitRepository(root: dir), runner, dir)
+    }
+
+    @Test func wordLevelChanges() {
+        let c = InlineDiff.changes(old: "let total = price * qty", new: "let total = price * quantity")
+        #expect(c.old == [20..<23])
+        #expect(c.new == [20..<28])
+        // Unrelated lines get no inline highlight.
+        let none = InlineDiff.changes(old: "alpha beta gamma", new: "one two three four")
+        #expect(none.old.isEmpty && none.new.isEmpty)
+        // Identical lines have nothing to highlight.
+        #expect(InlineDiff.changes(old: "same", new: "same").old.isEmpty)
+    }
+
+    @Test func inlineRangesPairDeletionsWithAdditions() async throws {
+        let (repo, _, dir) = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try "a\nvalue = 1\nb\n".write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+        try await repo.stage(["f.txt"]); try await repo.commit(message: "base", amend: false)
+        try "a\nvalue = 2\nb\n".write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+        let diff = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        let ranges = diff.inlineRanges()
+        let del = try #require(diff.lines.first { $0.kind == .deletion })
+        let add = try #require(diff.lines.first { $0.kind == .addition })
+        #expect(ranges[del.id] == [8..<9])
+        #expect(ranges[add.id] == [8..<9])
+    }
+
+    @Test func ignoreWhitespaceAndFullFile() async throws {
+        var (repo, _, dir) = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let base = (1...30).map { "line \($0)" }
+        try (base.joined(separator: "\n") + "\n").write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+        try await repo.stage(["f.txt"]); try await repo.commit(message: "base", amend: false)
+        var edited = base
+        edited[14] = "line   15"          // whitespace only
+        edited[2] = "line 3 CHANGED"
+        try (edited.joined(separator: "\n") + "\n").write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+
+        let normal = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        #expect(normal.additions == 2 && normal.canPatch)
+
+        repo.ignoreWhitespace = true
+        let ignoring = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        #expect(ignoring.additions == 1)
+        #expect(!ignoring.canPatch)
+        repo.ignoreWhitespace = false
+
+        repo.fullFileDiffs = true
+        let full = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        #expect(full.hunks.count == 1)
+        #expect(full.lines.filter { $0.kind == .context }.count == 28)
+        // Long unchanged stretches can be folded, keeping 3 lines beside each change.
+        let runs = full.collapsibleRuns()
+        #expect(!runs.isEmpty)
+        for run in runs { #expect(full.lines[run].allSatisfy { $0.kind == .context }) }
+    }
+
+    @Test func collapsibleRunsRespectsEdges() {
+        func line(_ id: Int, _ kind: DiffLine.Kind) -> DiffLine {
+            DiffLine(id: id, kind: kind, hunkIndex: 0, oldNumber: id, newNumber: id, text: "x", raw: " x")
+        }
+        var diff = FileDiff.empty
+        diff.lines = [line(0, .addition)] + (1...20).map { line($0, .context) } + [line(21, .deletion)]
+        #expect(diff.collapsibleRuns() == [4..<18])
+        diff.lines = (0..<5).map { line($0, .context) }
+        #expect(diff.collapsibleRuns().isEmpty)
+    }
+
+    @Test func imageVersionsReadBothSides() async throws {
+        let (repo, runner, dir) = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("pic.png")
+        try Data([1, 2, 3]).write(to: file)
+        try await repo.stage(["pic.png"]); try await repo.commit(message: "add", amend: false)
+        try Data([4, 5, 6, 7]).write(to: file)
+
+        let unstaged = await repo.imageVersions(for: DiffTarget(source: .unstaged, path: "pic.png"))
+        #expect(unstaged.old == Data([1, 2, 3]) && unstaged.new == Data([4, 5, 6, 7]))
+        try await repo.stage(["pic.png"])
+        let staged = await repo.imageVersions(for: DiffTarget(source: .staged, path: "pic.png"))
+        #expect(staged.old == Data([1, 2, 3]) && staged.new == Data([4, 5, 6, 7]))
+        try await repo.commit(message: "edit", amend: false)
+        let hash = try await runner.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let commit = await repo.imageVersions(for: DiffTarget(source: .commit(hash), path: "pic.png"))
+        #expect(commit.old == Data([1, 2, 3]) && commit.new == Data([4, 5, 6, 7]))
+        // The first commit has no parent version.
+        let first = try await runner.runString(["rev-list", "--max-parents=0", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let added = await repo.imageVersions(for: DiffTarget(source: .commit(first), path: "pic.png"))
+        #expect(added.old == nil && added.new == Data([1, 2, 3]))
+        #expect(GitRepository.isImagePath("a/B.PNG") && !GitRepository.isImagePath("a.svg"))
+    }
+}

@@ -536,6 +536,15 @@ final class RepositoryStore: Identifiable {
         loadDiff(for: target)
     }
 
+    /// Re-reads the selected diff, e.g. after a diff display option changed.
+    func reloadDiff() { if let selectedTarget { loadDiff(for: selectedTarget) } }
+
+    /// Both sides of the selected file, for image previews.
+    func imageVersions() async -> (old: Data?, new: Data?) {
+        guard let target = selectedTarget else { return (nil, nil) }
+        return await repo.imageVersions(for: target)
+    }
+
     private func loadDiff(for target: DiffTarget) {
         diffToken += 1
         let token = diffToken

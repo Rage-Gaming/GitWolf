@@ -56,6 +56,8 @@ enum SettingsKey {
     static let diffContext = "settings.diffContext"
     static let syntaxHighlighting = "settings.syntaxHighlighting"
     static let diffLayout = "settings.diffLayout"
+    static let ignoreWhitespace = "settings.ignoreWhitespace"
+    static let fullFileDiffs = "settings.fullFileDiffs"
     static let gitPath = "settings.gitPath"
     static let pullRebase = "settings.pullRebase"
 }
@@ -89,6 +91,8 @@ struct AppSettings: Sendable {
         var r = repo
         r.gitPath = gitPath
         r.contextLines = diffContext
+        r.ignoreWhitespace = defaults.bool(forKey: SettingsKey.ignoreWhitespace)
+        r.fullFileDiffs = defaults.bool(forKey: SettingsKey.fullFileDiffs)
         r.credentials = { await AccountStorage.credential(forHost: $0) }
         r.askpassPath = AskPass.path
         return r

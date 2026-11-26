@@ -25,7 +25,7 @@ struct CommitDetailView: View {
                 }
                 .frame(height: min(max(CGFloat(store.commitFiles.count) * 33 + 14, 52), 190))
                 Divider()
-                DiffPane(diff: store.diff, path: store.selectedTarget?.path)
+                DiffPane(diff: store.diff, path: store.selectedTarget?.path, reload: { store.reloadDiff() }, images: { await store.imageVersions() })
                     .frame(maxHeight: .infinity)
             }
         } else {

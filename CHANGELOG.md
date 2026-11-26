@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Diff improvements: changed words are highlighted inside modified lines (paired deleted/added lines), an *Ignore whitespace* toggle (`git diff -w`; staging is switched off while it is on because the hunks no longer match the file), a *Show whole file* toggle, long runs of unchanged lines fold into a clickable "N unchanged lines" row, and image files (PNG, JPEG, GIF, WebP, BMP, TIFF, HEIC, ICO) show a before/after preview with size and dimensions.
 - Open in Finder, Terminal and editor: a toolbar menu, Repository menu items (⌥⌘T terminal, ⌥⌘E editor, ⇧⌥⌘R Finder) and ⌘K entries open the repository root. The editor application is set in Settings > Tools.
 - Custom actions: define named shell commands in Settings > Tools. They run with `/bin/sh -c` in the repository root with `GITSYNC_REPO` and `GITSYNC_BRANCH` in the environment (never substituted into the command), and are listed in the toolbar menu, the Repository menu and the palette. A failing action shows its exit code and output.
 - Home screen pinning and groups: right-click a repository on the home screen to pin it or add it to a named group. Pinned repositories and groups get their own sections above Recent; groups can be created, renamed and deleted, and repositories removed from home. Layout is saved and paths that no longer exist are dropped.

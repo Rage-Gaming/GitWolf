@@ -196,6 +196,20 @@ A menu button next to "Amend last commit":
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is
   [core `SideBySide.rows`]: consecutive deletions/additions are paired row by row.
+- **Word-level highlighting** [core `InlineDiff`, `FileDiff.inlineRanges`]: each run of deleted lines is
+  paired in order with the added run that follows; both lines are tokenised (words, whitespace, single
+  punctuation), an LCS marks the differing tokens, and those character ranges get a stronger
+  background. Skipped when more than 70% of a line changed or a line has over 600 tokens.
+- **Ignore whitespace** [core `GitRepository.ignoreWhitespace`]: adds `-w`. `FileDiff.ignoresWhitespace`
+  makes `canPatch` false, so hunk/line staging is disabled while it is on.
+- **Show whole file** [core `GitRepository.fullFileDiffs`]: `-U1000000`. Combined with **folding**
+  [core `FileDiff.collapsibleRuns(minimum: 8, keep: 3)`]: unchanged runs of 8+ lines collapse to a row
+  "N unchanged lines" (3 lines stay beside every change); click to expand. Both toggles are in the diff
+  header and stored in settings.
+- **Image diffs** [core `GitRepository.imageVersions`, `isImagePath`]: for binary image files the
+  old/new bytes are read (`git show :path`, `HEAD:path`, `<commit>^:path`, or the working file) and shown
+  side by side with pixel size and file size; a missing side reads "Did not exist" / "Deleted". SVG stays
+  a text diff.
 - Line numbers for both sides, hunk headers, "no newline" notes, CRLF preserved, long lines scroll
   horizontally (do not wrap).
 - **Syntax highlighting** [core `SyntaxHighlighter`]: a deliberately small lexer, not a grammar

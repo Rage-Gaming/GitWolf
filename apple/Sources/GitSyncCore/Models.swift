@@ -166,13 +166,15 @@ public struct FileDiff: Equatable, Sendable {
     public var additions: Int
     public var deletions: Int
     public var isTruncated: Bool
+    /// Produced with `-w`; hunks no longer match the file exactly, so they can't be applied.
+    public var ignoresWhitespace = false
 
     public static let empty = FileDiff(
         header: [], hunks: [], lines: [], isBinary: false, additions: 0, deletions: 0, isTruncated: false)
 
     /// Whether hunks/lines of this diff can safely be turned back into a patch.
     public var canPatch: Bool {
-        !isBinary && !isTruncated && !hunks.isEmpty && !header.isEmpty
+        !isBinary && !isTruncated && !ignoresWhitespace && !hunks.isEmpty && !header.isEmpty
             && !lines.contains { $0.raw.contains("\u{FFFD}") }
     }
 

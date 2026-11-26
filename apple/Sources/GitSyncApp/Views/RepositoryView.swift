@@ -130,12 +130,12 @@ struct RepositoryView: View {
     @ViewBuilder private var detailColumn: some View {
         switch store.mode {
         case .history: CommitDetailView(store: store)
-        case .stash, .compare: DiffPane(diff: store.diff, path: store.selectedTarget?.path)
+        case .stash, .compare: DiffPane(diff: store.diff, path: store.selectedTarget?.path, reload: { store.reloadDiff() }, images: { await store.imageVersions() })
         case .changes:
             if let t = store.selectedTarget, t.source == .conflicted, store.status.conflicted.contains(where: { $0.path == t.path }) {
                 ConflictResolverView(store: store, path: t.path).id(t.path)
             } else {
-                DiffPane(diff: store.diff, path: store.selectedTarget?.path, staging: staging)
+                DiffPane(diff: store.diff, path: store.selectedTarget?.path, staging: staging, reload: { store.reloadDiff() }, images: { await store.imageVersions() })
             }
         case .pullRequests: CollabDetailView(store: store, collab: store.pullRequests)
         case .issues: CollabDetailView(store: store, collab: store.issues)
