@@ -3,11 +3,13 @@ import SwiftUI
 
 /// A flat, colourful icon for a file type (React atom for .tsx/.jsx, brand tiles for languages).
 struct FileIconView: View {
-    let path: String
+    let icon: FileIcon
     var size: CGFloat = 17
 
+    init(path: String, size: CGFloat = 17) { self.icon = FileIcons.icon(forPath: path); self.size = size }
+    init(icon: FileIcon, size: CGFloat = 17) { self.icon = icon; self.size = size }
+
     var body: some View {
-        let icon = FileIcons.icon(forPath: path)
         let color = Color(red: Double((icon.color >> 16) & 0xFF) / 255,
                           green: Double((icon.color >> 8) & 0xFF) / 255,
                           blue: Double(icon.color & 0xFF) / 255)
@@ -19,6 +21,14 @@ struct FileIconView: View {
             case .symbol(let name):
                 Image(systemName: name).font(.system(size: size * 0.82, weight: .semibold))
                     .symbolRenderingMode(.monochrome).foregroundStyle(color)
+            case .folder(let inner):
+                Image(systemName: "folder.fill").font(.system(size: size * 0.95)).foregroundStyle(color)
+                    .overlay {
+                        if let inner {
+                            Image(systemName: inner).font(.system(size: size * 0.34, weight: .heavy))
+                                .foregroundStyle(.white.opacity(0.95)).offset(y: size * 0.07)
+                        }
+                    }
             case .letters(let text):
                 RoundedRectangle(cornerRadius: size * 0.24, style: .continuous).fill(color)
                     .overlay(

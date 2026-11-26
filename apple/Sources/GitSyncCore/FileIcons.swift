@@ -10,6 +10,8 @@ public struct FileIcon: Equatable, Sendable {
         case symbol(String)
         /// The React atom: three ellipses and a dot.
         case react
+        /// A folder in the brand colour, with an optional small symbol on it (e.g. "book.fill" for docs).
+        case folder(String?)
     }
 
     public var name: String
@@ -44,6 +46,63 @@ public enum FileIcons {
         if let icon = extensions[ext] { return icon }
         return generic
     }
+
+    /// The icon for a folder, by its own name (`src`, `docs`, `node_modules`, `.github`…).
+    public static func folderIcon(named name: String) -> FileIcon {
+        let lower = name.lowercased()
+        return folders[lower] ?? FileIcon("Folder", .folder(nil), 0x6FA8DC)
+    }
+
+    /// The icon for the folder that directly contains `path` (nil for files at the top level).
+    public static func folderIcon(containing path: String) -> FileIcon? {
+        let dir = (path as NSString).deletingLastPathComponent
+        guard !dir.isEmpty else { return nil }
+        let parts = dir.split(separator: "/").map { $0.lowercased() }
+        if let last = parts.last, folders[last] != nil { return folderIcon(named: last) }
+        // Inside a dependency, CI or build folder, everything below it keeps that folder's look.
+        if let outer = parts.last(where: { containers.contains($0) }) { return folderIcon(named: outer) }
+        return folderIcon(named: parts.last ?? dir)
+    }
+
+    private static let containers: Set<String> = [
+        "node_modules", "vendor", "third_party", "pods", ".github", ".gitlab", ".circleci", ".git",
+        "dist", "build", "out", "target", ".build", "deriveddata",
+    ]
+
+    private static func folder(_ name: String, _ inner: String?, _ color: UInt32) -> FileIcon {
+        FileIcon(name, .folder(inner), color)
+    }
+
+    static let folders: [String: FileIcon] = {
+        var m: [String: FileIcon] = [:]
+        func add(_ names: [String], _ icon: FileIcon) { for n in names { m[n] = icon } }
+        add(["src", "source", "sources"], folder("Source", "chevron.left.forwardslash.chevron.right", 0x42A5F5))
+        add(["lib", "libs", "library", "libraries"], folder("Library", "books.vertical.fill", 0x8D6E63))
+        add(["docs", "doc", "documentation"], folder("Docs", "book.fill", 0x4DB6AC))
+        add(["test", "tests", "__tests__", "spec", "specs"], folder("Tests", "checkmark", 0x66BB6A))
+        add(["assets", "static", "resources", "res"], folder("Assets", "photo.fill", 0xAB47BC))
+        add(["images", "img", "icons", "media"], folder("Images", "photo.fill", 0x9575CD))
+        add(["public", "www", "web"], folder("Public", "globe", 0x26C6DA))
+        add(["components", "views", "ui"], folder("Components", "square.grid.2x2.fill", 0x29B6F6))
+        add(["scripts", "script", "tools", "bin"], folder("Scripts", "terminal.fill", 0x7CB342))
+        add(["config", "configs", "conf", "settings"], folder("Config", "gearshape.fill", 0x9E9E9E))
+        add([".github", ".gitlab", ".circleci"], folder("CI", "arrow.triangle.branch", 0xF05032))
+        add([".git"], folder("Git", "arrow.triangle.branch", 0xF05032))
+        add([".vscode", ".idea", ".xcode"], folder("Editor", "wrench.and.screwdriver.fill", 0x1E88E5))
+        add(["node_modules", "vendor", "third_party", "pods", "packages"], folder("Dependencies", "shippingbox.fill", 0x8BC34A))
+        add(["build", "dist", "out", "target", "release", "debug", ".build", "deriveddata"], folder("Build output", "hammer.fill", 0xFF9800))
+        add(["api", "routes", "controllers", "server"], folder("API", "network", 0xEF5350))
+        add(["models", "model", "db", "database", "migrations"], folder("Data", "cylinder.split.1x2.fill", 0x26A69A))
+        add(["styles", "css", "themes"], folder("Styles", "paintpalette.fill", 0xEC407A))
+        add(["utils", "util", "helpers", "common", "shared", "core"], folder("Shared", "wrench.fill", 0x78909C))
+        add(["docker", ".docker"], folder("Docker", "shippingbox.fill", 0x2496ED))
+        add(["fonts"], folder("Fonts", "textformat", 0x8E8E93))
+        add(["hooks"], folder("Hooks", "link", 0x7E57C2))
+        add(["types", "typings", "interfaces"], folder("Types", "t.square.fill", 0x3178C6))
+        add(["localization", "locales", "i18n", "l10n"], folder("Localization", "character.bubble.fill", 0x5C6BC0))
+        add(["examples", "example", "samples", "demo"], folder("Examples", "lightbulb.fill", 0xFFCA28))
+        return m
+    }()
 
     private static let generic = FileIcon("File", .symbol("doc"), 0x8E8E93)
     private static let env = FileIcon("Environment", .symbol("key.fill"), 0xECD53F)

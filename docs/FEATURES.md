@@ -236,7 +236,12 @@ exact lowercase file name first (`package.json`, `dockerfile`, `.gitignore`, `ma
 (`.env*`, `readme*`, `license*`, `dockerfile*`), then `.d.ts`/`.min.js`, then the last extension, else a grey
 generic file. Glyphs are `letters` (short text on a rounded square in the brand colour, dark text on light
 colours like JS yellow), `symbol` (SF Symbol name; use the nearest icon on other platforms) or `react` (three
-ellipses at 0°, 60° and 120° plus a centre dot, stroked in #61DAFB). Flat colours only, no gradients. Draw it at
+ellipses at 0°, 60° and 120° plus a centre dot, stroked in #61DAFB). Flat colours only, no gradients. Folders use the glyph
+`folder(innerSymbol?)`: `FileIcons.folderIcon(named:)` looks the name up (case-insensitive: `src`, `docs`,
+`tests`, `assets`, `components`, `scripts`, `config`, `.github`, `node_modules`, `dist`…), and
+`folderIcon(containing: path)` uses the nearest folder, falling back to a container folder (`node_modules`,
+`vendor`, `.github`, `dist`, `build`…) higher up. Draw a folder in the brand colour with the inner symbol small and
+white on it, before the directory text of a file row. Draw it at
 the start of every file row (after the status badge), in the diff header and file history.
 
 ## 6b. Scale and power

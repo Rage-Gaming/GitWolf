@@ -34,6 +34,7 @@ struct DiffPane: View {
                 HStack(spacing: 8) {
                     FileIconView(path: path)
                     let dir = (path as NSString).deletingLastPathComponent
+                    if !dir.isEmpty, let folder = FileIcons.folderIcon(containing: path) { FileIconView(icon: folder, size: 14) }
                     if !dir.isEmpty { Text(dir + "/").foregroundStyle(.secondary).lineLimit(1).truncationMode(.head) }
                     Text((path as NSString).lastPathComponent).fontWeight(.semibold).lineLimit(1)
                     Spacer()

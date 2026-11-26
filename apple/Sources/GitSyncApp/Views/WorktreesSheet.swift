@@ -59,7 +59,7 @@ struct WorktreesSheet: View {
 
     private func worktreeRow(_ tree: Worktree) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: tree.isMain ? "folder.fill" : "folder").foregroundStyle(.secondary)
+            FileIconView(icon: FileIcons.folderIcon(named: tree.name), size: 18)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(tree.branch ?? "detached @ \(tree.head.prefix(7))").fontWeight(.semibold)

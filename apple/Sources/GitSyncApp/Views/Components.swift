@@ -235,6 +235,7 @@ struct FileRow: View {
                     .help("Stored with Git LFS")
             }
             if !change.directory.isEmpty {
+                if let folder = FileIcons.folderIcon(containing: change.path) { FileIconView(icon: folder, size: 13) }
                 Text(change.directory).foregroundStyle(.secondary).font(.caption).lineLimit(1).truncationMode(.head)
             }
             Spacer(minLength: 0)

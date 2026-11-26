@@ -2161,8 +2161,22 @@ struct FileIconTests {
         #expect(FileIcons.icon(forPath: ".gitignore").name == "Git")
     }
 
+    @Test func foldersByName() {
+        #expect(FileIcons.folderIcon(named: "src").name == "Source")
+        #expect(FileIcons.folderIcon(named: "Docs").name == "Docs")
+        #expect(FileIcons.folderIcon(named: "node_modules").name == "Dependencies")
+        #expect(FileIcons.folderIcon(named: ".github").name == "CI")
+        #expect(FileIcons.folderIcon(named: "randomthing").glyph == .folder(nil))
+        #expect(FileIcons.folderIcon(containing: "src/components/Button.tsx")?.name == "Components")
+        #expect(FileIcons.folderIcon(containing: "README.md") == nil)
+        #expect(FileIcons.folderIcon(containing: "node_modules/react/lib/x.js")?.name == "Library")
+        #expect(FileIcons.folderIcon(containing: "node_modules/react/x.js")?.name == "Dependencies")
+        #expect(FileIcons.folderIcon(containing: ".github/workflows/ci.yml")?.name == "CI")
+        #expect(FileIcons.folderIcon(containing: "src/random/x.ts")?.name == "Folder")
+    }
+
     @Test func everyIconHasAFlatBrandColour() {
-        for icon in Array(FileIcons.extensions.values) + Array(FileIcons.names.values) {
+        for icon in Array(FileIcons.extensions.values) + Array(FileIcons.names.values) + Array(FileIcons.folders.values) {
             #expect(icon.color <= 0xFFFFFF)
         }
     }
