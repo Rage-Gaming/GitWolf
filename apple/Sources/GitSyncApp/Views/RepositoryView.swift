@@ -63,6 +63,8 @@ struct RepositoryView: View {
                 }
             case .hookFailure(let failure):
                 HookOutputSheet(failure: failure) { store.commit(skipHooks: true) }
+            case .newCollab(let kind):
+                NewCollabSheet(store: store, kind: kind)
             case .cleanup:
                 BranchCleanupSheet(store: store)
             case .reflog:

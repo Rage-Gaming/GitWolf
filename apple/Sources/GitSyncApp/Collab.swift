@@ -82,6 +82,103 @@ final class CollabStore {
         }
     }
 
+    // MARK: Actions (comments, merge, close, labels, create)
+
+    private(set) var comments: [CollabComment] = []
+    private(set) var isLoadingComments = false
+    private(set) var isWorking = false
+    private(set) var repoLabels: [String] = []
+    var actionError: String?
+    private var commentsFor: Int?
+
+    var canWrite: Bool {
+        guard let (account, _) = context?() else { return false }
+        return account.kind.supportsWriting(kind, host: account.host) && AccountStorage.account(forHost: account.hostName) != nil
+    }
+
+    private func makeClient() async -> (ProviderClient, String)? {
+        guard let (account, path) = context?() else { return nil }
+        var secret = ""
+        if AccountStorage.account(forHost: account.hostName) != nil { secret = await AccountStorage.secret(for: account) ?? "" }
+        return (ProviderClient(account: account, token: secret), path)
+    }
+
+    func loadComments() {
+        guard let number = selectedNumber else { comments = []; commentsFor = nil; return }
+        guard commentsFor != number else { return }
+        commentsFor = number
+        comments = []
+        isLoadingComments = true
+        let kind = kind
+        Task {
+            defer { if commentsFor == number { isLoadingComments = false } }
+            guard let (client, path) = await makeClient() else { return }
+            let result = try? await client.comments(kind, repoPath: path, number: number)
+            if commentsFor == number { comments = result ?? [] }
+        }
+        if repoLabels.isEmpty {
+            Task {
+                guard let (client, path) = await makeClient() else { return }
+                repoLabels = (try? await client.repositoryLabels(repoPath: path)) ?? []
+            }
+        }
+    }
+
+    /// Runs a change against the provider, then reloads the list and the conversation.
+    private func act(_ work: @escaping @Sendable (ProviderClient, String) async throws -> Void) {
+        guard !isWorking else { return }
+        isWorking = true
+        Task {
+            defer { isWorking = false }
+            guard let (client, path) = await makeClient() else { return }
+            do {
+                try await work(client, path)
+                commentsFor = nil
+                load()
+                loadComments()
+            } catch {
+                actionError = error.localizedDescription
+            }
+        }
+    }
+
+    func addComment(_ text: String) {
+        guard let number = selectedNumber else { return }
+        let kind = kind
+        act { try await $0.addComment(kind, repoPath: $1, number: number, body: text) }
+    }
+
+    func merge(_ method: MergeMethod) {
+        guard let number = selectedNumber else { return }
+        act { try await $0.merge(repoPath: $1, number: number, method: method) }
+    }
+
+    func setOpen(_ open: Bool) {
+        guard let number = selectedNumber else { return }
+        let kind = kind
+        act { try await $0.setOpen(open, kind: kind, repoPath: $1, number: number) }
+    }
+
+    func setLabels(_ labels: [String]) {
+        guard let number = selectedNumber else { return }
+        let kind = kind
+        act { try await $0.setLabels(labels, kind: kind, repoPath: $1, number: number) }
+    }
+
+    /// Creates a pull request or issue and selects it. Throws the provider's explanation on failure.
+    func create(title: String, body: String, head: String = "", base: String = "", draft: Bool = false, labels: [String] = []) async throws {
+        guard let (client, path) = await makeClient() else { throw ProviderError.unsupported("No hosting account for this repository.") }
+        let item: CollabItem
+        if kind == .pullRequest {
+            item = try await client.createPullRequest(repoPath: path, title: title, body: body, head: head, base: base, draft: draft)
+        } else {
+            item = try await client.createIssue(repoPath: path, title: title, body: body, labels: labels)
+        }
+        filter = .open
+        selectedNumber = item.number
+        load()
+    }
+
     private static func describe(_ error: Error, signedIn: Bool, provider: String) -> String {
         if case ProviderError.unauthorized = error {
             return signedIn

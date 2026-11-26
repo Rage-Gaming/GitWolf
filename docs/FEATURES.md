@@ -263,6 +263,19 @@ Full details in [PROVIDERS.md](PROVIDERS.md). Summary:
   when the tab opens.
 - API details in [PROVIDERS.md](PROVIDERS.md#pull-requests-and-issues).
 
+### Actions (need a connected account)
+
+- **New Pull Request…** / **New Issue…**: "+" in the list header, Repository menu, palette. The PR form
+  shows `current branch → base` (base defaults to main/master/develop/trunk), title (the branch's only
+  commit subject, otherwise the humanised branch name), Markdown description, "Open as draft". If the
+  branch has no upstream or unpushed commits it is pushed first. A rejected request shows the
+  server's reason (for example "a pull request already exists"). The new item is selected.
+- Detail pane: **Merge** menu (merge commit / squash / rebase) with a confirmation, disabled for drafts;
+  **Close** / **Reopen**; **Labels** menu with checkmarks (GitHub, GitLab); a **Conversation** with the
+  comments (Markdown, GitLab system notes hidden) and a comment box (⌘↩).
+- Not supported: reopening a declined Bitbucket PR, labels on Gitea (they need ids), rebase on GitLab,
+  anything for Azure DevOps, assignees and formal reviews.
+
 ## 9. Keyboard shortcuts (macOS; map ⌘ to Ctrl on Windows/Linux)
 
 | Action | Keys |

@@ -54,6 +54,13 @@ struct CollabListView: View {
                 HStack {
                     Text(title).font(.system(size: 15, weight: .semibold, design: .rounded))
                     Spacer()
+                    if collab.canWrite {
+                        Button { store.sheet = .newCollab(collab.kind) } label: {
+                            Image(systemName: "plus").font(.system(size: 12, weight: .semibold))
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .help(collab.kind == .pullRequest ? "New \(store.webLinks?.pullRequestsWord ?? "Pull Request")" : "New Issue")
+                    }
                     Button { collab.load() } label: {
                         Image(systemName: "arrow.clockwise").font(.system(size: 12, weight: .semibold))
                     }
@@ -165,7 +172,21 @@ struct CollabDetailView: View {
 
     var body: some View {
         if let item = collab.selected {
-            ScrollView {
+            detail(item)
+                .task(id: item.number) { collab.loadComments() }
+                .alert("Couldn’t Complete", isPresented: Binding(get: { collab.actionError != nil }, set: { if !$0 { collab.actionError = nil } })) {
+                    Button("OK", role: .cancel) {}
+                } message: { Text(collab.actionError ?? "") }
+        } else {
+            ContentUnavailableView(collab.kind == .pullRequest ? "No \(store.pullRequestsTitle) Selected" : "No Issue Selected",
+                                   systemImage: collab.kind == .pullRequest ? "arrow.triangle.pull" : "smallcircle.filled.circle",
+                                   description: Text("Select an item to read it here."))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder private func detail(_ item: CollabItem) -> some View {
+        ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(item.title).font(.system(size: 20, weight: .semibold, design: .rounded)).textSelection(.enabled)
 
@@ -208,22 +229,19 @@ struct CollabDetailView: View {
                         }
                     }
 
+                    if collab.canWrite { CollabActionBar(collab: collab, item: item) }
+
                     Divider()
                     if item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("No description provided.").foregroundStyle(.secondary)
                     } else {
                         MarkdownView(source: item.body)
                     }
+                    if collab.canWrite { ConversationView(collab: collab) }
                 }
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-        } else {
-            ContentUnavailableView(collab.kind == .pullRequest ? "No \(store.pullRequestsTitle) Selected" : "No Issue Selected",
-                                   systemImage: collab.kind == .pullRequest ? "arrow.triangle.pull" : "smallcircle.filled.circle",
-                                   description: Text("Select an item to read it here."))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
     }
 
     private func branchChip(_ name: String) -> some View {
@@ -238,5 +256,102 @@ struct CollabDetailView: View {
         if let created = item.created { parts.append(created.formatted(date: .abbreviated, time: .omitted)) }
         if item.comments > 0 { parts.append("\(item.comments) comment\(item.comments == 1 ? "" : "s")") }
         return parts.joined(separator: " · ")
+    }
+}
+
+// MARK: - Actions and conversation
+
+private struct CollabActionBar: View {
+    @Bindable var collab: CollabStore
+    let item: CollabItem
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if collab.kind == .pullRequest, item.state == .open {
+                Menu {
+                    ForEach(MergeMethod.allCases) { method in
+                        Button(method.title) { confirmMerge(method) }
+                    }
+                } label: { Label("Merge", systemImage: "arrow.triangle.merge") }
+                    .menuStyle(.borderedButton).fixedSize()
+                    .disabled(item.isDraft)
+                    .help(item.isDraft ? "Mark the draft as ready on the website before merging" : "Merge this pull request")
+            }
+            if item.state == .open {
+                Button { collab.setOpen(false) } label: { Label("Close", systemImage: "xmark.circle") }.buttonStyle(.bordered)
+            } else if item.state == .closed {
+                Button { collab.setOpen(true) } label: { Label("Reopen", systemImage: "arrow.counterclockwise") }.buttonStyle(.bordered)
+            }
+            if !collab.repoLabels.isEmpty {
+                Menu {
+                    ForEach(collab.repoLabels, id: \.self) { label in
+                        Button { toggle(label) } label: {
+                            if item.labels.contains(label) { Label(label, systemImage: "checkmark") } else { Text(label) }
+                        }
+                    }
+                } label: { Label("Labels", systemImage: "tag") }
+                    .menuStyle(.borderedButton).fixedSize()
+            }
+            if collab.isWorking { ProgressView().controlSize(.small) }
+        }
+    }
+
+    private func toggle(_ label: String) {
+        var labels = item.labels
+        if let i = labels.firstIndex(of: label) { labels.remove(at: i) } else { labels.append(label) }
+        collab.setLabels(labels)
+    }
+
+    private func confirmMerge(_ method: MergeMethod) {
+        let alert = NSAlert()
+        alert.messageText = "\(method.title) #\(item.number)?"
+        alert.informativeText = "“\(item.title)” will be merged into \(item.targetBranch). This can’t be undone from GitSync."
+        alert.addButton(withTitle: "Merge")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn { collab.merge(method) }
+    }
+}
+
+private struct ConversationView: View {
+    @Bindable var collab: CollabStore
+    @State private var draft = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Divider()
+            Text(collab.comments.isEmpty ? "Conversation" : "Conversation · \(collab.comments.count)")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+            if collab.isLoadingComments { ProgressView().controlSize(.small) }
+            ForEach(collab.comments) { comment in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        AvatarView(name: comment.author, email: "", size: 22)
+                        Text(comment.author).fontWeight(.semibold)
+                        if let date = comment.created {
+                            Text(date.formatted(.relative(presentation: .named))).foregroundStyle(.secondary)
+                        }
+                    }
+                    .font(.callout)
+                    MarkdownView(source: comment.body)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            TextField("Leave a comment…", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain).lineLimit(3...8)
+                .padding(12)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            HStack {
+                Spacer()
+                Button("Comment") {
+                    collab.addComment(draft.trimmingCharacters(in: .whitespacesAndNewlines))
+                    draft = ""
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || collab.isWorking)
+            }
+        }
     }
 }

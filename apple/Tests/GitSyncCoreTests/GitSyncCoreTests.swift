@@ -1480,3 +1480,91 @@ import Testing
         #expect(await t.repo.recentMessages() == ["second", "first\n\nwith body"])
     }
 }
+
+@Suite struct CollabActionTests {
+    final class Recorder: @unchecked Sendable {
+        var requests: [(method: String, url: String, body: [String: Any])] = []
+    }
+
+    private func client(_ kind: ProviderKind, host: String? = nil, status: Int = 200, reply: String = "{}", _ rec: Recorder) -> ProviderClient {
+        let account = ProviderAccount(kind: kind, host: host ?? kind.defaultHost, username: "me")
+        return ProviderClient(account: account, token: "tok", transport: { r in
+            let body = (r.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
+            rec.requests.append((r.httpMethod ?? "GET", r.url!.absoluteString, body))
+            return (Data(reply.utf8), HTTPURLResponse(url: r.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+        })
+    }
+
+    @Test func githubCreateMergeCloseComment() async throws {
+        let rec = Recorder()
+        let pr = #"{"number":7,"title":"Add x","state":"open","user":{"login":"me"},"html_url":"https://github.com/o/r/pull/7","head":{"ref":"feat"},"base":{"ref":"main"},"draft":true}"#
+        let c = client(.github, reply: pr, rec)
+        let item = try await c.createPullRequest(repoPath: "o/r", title: "Add x", body: "why", head: "feat", base: "main", draft: true)
+        #expect(item.number == 7 && item.isDraft && item.sourceBranch == "feat")
+        #expect(rec.requests[0].method == "POST" && rec.requests[0].url == "https://api.github.com/repos/o/r/pulls")
+        #expect(rec.requests[0].body["head"] as? String == "feat" && rec.requests[0].body["draft"] as? Bool == true)
+        try await c.merge(repoPath: "o/r", number: 7, method: .squash)
+        #expect(rec.requests[1].method == "PUT" && rec.requests[1].url.hasSuffix("/pulls/7/merge") && rec.requests[1].body["merge_method"] as? String == "squash")
+        try await c.setOpen(false, kind: .pullRequest, repoPath: "o/r", number: 7)
+        #expect(rec.requests[2].method == "PATCH" && rec.requests[2].body["state"] as? String == "closed")
+        try await c.addComment(.issue, repoPath: "o/r", number: 3, body: "hi")
+        #expect(rec.requests[3].url.hasSuffix("/issues/3/comments") && rec.requests[3].body["body"] as? String == "hi")
+        try await c.setLabels(["bug"], kind: .issue, repoPath: "o/r", number: 3)
+        #expect(rec.requests[4].method == "PUT" && rec.requests[4].url.hasSuffix("/issues/3/labels"))
+    }
+
+    @Test func gitlabUsesNotesAndStateEvents() async throws {
+        let rec = Recorder()
+        let mr = #"{"iid":4,"title":"Draft: t","state":"opened","web_url":"https://gitlab.com/g/p/-/merge_requests/4","source_branch":"a","target_branch":"main"}"#
+        let c = client(.gitlab, reply: mr, rec)
+        let item = try await c.createPullRequest(repoPath: "g/p", title: "t", body: "", head: "a", base: "main", draft: true)
+        #expect(item.number == 4)
+        #expect(rec.requests[0].url == "https://gitlab.com/api/v4/projects/g%2Fp/merge_requests")
+        #expect(rec.requests[0].body["title"] as? String == "Draft: t")
+        try await c.addComment(.pullRequest, repoPath: "g/p", number: 4, body: "x")
+        #expect(rec.requests[1].url.hasSuffix("/merge_requests/4/notes"))
+        try await c.setOpen(false, kind: .issue, repoPath: "g/p", number: 9)
+        #expect(rec.requests[2].method == "PUT" && rec.requests[2].body["state_event"] as? String == "close" && rec.requests[2].url.hasSuffix("/issues/9"))
+        try await c.merge(repoPath: "g/p", number: 4, method: .merge)
+        #expect(rec.requests[3].body["squash"] as? Bool == false)
+        await #expect(throws: ProviderError.self) { try await c.merge(repoPath: "g/p", number: 4, method: .rebase) }
+    }
+
+    @Test func bitbucketAndGiteaShapes() async throws {
+        let rec = Recorder()
+        let bb = client(.bitbucket, reply: #"{"id":2,"title":"t","state":"OPEN","source":{"branch":{"name":"a"}},"destination":{"branch":{"name":"main"}}}"#, rec)
+        let item = try await bb.createPullRequest(repoPath: "w/r", title: "t", body: "d", head: "a", base: "main", draft: false)
+        #expect(item.number == 2 && item.targetBranch == "main")
+        #expect(rec.requests[0].url == "https://api.bitbucket.org/2.0/repositories/w/r/pullrequests")
+        try await bb.merge(repoPath: "w/r", number: 2, method: .rebase)
+        #expect(rec.requests[1].body["merge_strategy"] as? String == "fast_forward")
+        try await bb.setOpen(false, kind: .pullRequest, repoPath: "w/r", number: 2)
+        #expect(rec.requests[2].url.hasSuffix("/pullrequests/2/decline"))
+        await #expect(throws: ProviderError.self) { try await bb.setOpen(true, kind: .pullRequest, repoPath: "w/r", number: 2) }
+        await #expect(throws: ProviderError.self) { _ = try await bb.createIssue(repoPath: "w/r", title: "x", body: "") }
+
+        let gt = client(.gitea, host: "git.corp.io", reply: #"{"number":1,"title":"t","state":"open"}"#, rec)
+        try await gt.merge(repoPath: "o/r", number: 1, method: .squash)
+        #expect(rec.requests.last?.method == "POST" && rec.requests.last?.body["Do"] as? String == "squash")
+    }
+
+    @Test func serverReasonIsReportedForRejectedWrites() async throws {
+        let rec = Recorder()
+        let c = client(.github, status: 422, reply: #"{"message":"Validation Failed","errors":[{"message":"A pull request already exists for o:feat."}]}"#, rec)
+        do {
+            _ = try await c.createPullRequest(repoPath: "o/r", title: "t", body: "", head: "feat", base: "main", draft: false)
+            Issue.record("should fail")
+        } catch let ProviderError.api(code, message) {
+            #expect(code == 422 && message.contains("already exists"))
+        }
+    }
+
+    @Test func parsesComments() async throws {
+        let rec = Recorder()
+        let gh = client(.github, reply: #"[{"id":1,"user":{"login":"ann"},"body":"first","created_at":"2026-01-02T03:04:05Z"}]"#, rec)
+        let list = try await gh.comments(.issue, repoPath: "o/r", number: 1)
+        #expect(list.count == 1 && list[0].author == "ann" && list[0].body == "first" && list[0].created != nil)
+        let gl = client(.gitlab, reply: #"[{"id":5,"author":{"username":"bo"},"body":"real","system":false},{"id":6,"author":{"username":"bo"},"body":"added 1 commit","system":true}]"#, rec)
+        #expect(try await gl.comments(.pullRequest, repoPath: "g/p", number: 1).map(\.body) == ["real"])
+    }
+}

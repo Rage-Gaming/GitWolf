@@ -33,6 +33,10 @@ struct CommandPalette: View {
             ]
             all.append(Item(id: "undo", title: "Undo Last Change…", subtitle: "Repository action", icon: "arrow.uturn.backward") { s.undoLastChange() })
             all.append(Item(id: "compare", title: "Compare Refs…", subtitle: "Repository action", icon: "arrow.left.arrow.right") { s.openCompare() })
+            if s.providerTitle != nil {
+                all.append(Item(id: "new-pr", title: "New \(s.webLinks?.pullRequestsWord ?? "Pull Request")…", subtitle: "Hosting", icon: "arrow.triangle.pull") { s.sheet = .newCollab(.pullRequest) })
+                all.append(Item(id: "new-issue", title: "New Issue…", subtitle: "Hosting", icon: "smallcircle.filled.circle") { s.sheet = .newCollab(.issue) })
+            }
             all.append(Item(id: "cleanup", title: "Clean Up Branches…", subtitle: "Repository action", icon: "trash.slash") { s.sheet = .cleanup })
             all.append(Item(id: "reflog", title: "Open Reflog…", subtitle: "Repository action", icon: "clock.arrow.circlepath") { s.sheet = .reflog })
             if let op = s.operation {

@@ -18,6 +18,8 @@ public struct RemoteRepository: Identifiable, Hashable, Sendable {
 public enum ProviderError: Error, LocalizedError, Sendable {
     case unauthorized
     case http(Int)
+    /// A rejected request with the server's own explanation (for example "a pull request already exists").
+    case api(Int, String)
     case invalidResponse
     case unsupported(String)
 
@@ -25,6 +27,7 @@ public enum ProviderError: Error, LocalizedError, Sendable {
         switch self {
         case .unauthorized: "The server rejected this token. Check that it is valid and has repository access."
         case .http(let code): "The server returned an error (HTTP \(code))."
+        case .api(_, let message): message
         case .invalidResponse: "The server sent a response GitSync couldn’t understand."
         case .unsupported(let what): what
         }
@@ -53,7 +56,7 @@ public struct ProviderClient: Sendable {
 
     // MARK: Endpoints
 
-    private var apiBase: String {
+    var apiBase: String {
         let h = account.host
         let o = account.origin
         switch account.kind {
@@ -69,7 +72,7 @@ public struct ProviderClient: Sendable {
         }
     }
 
-    private func request(_ url: String) throws -> URLRequest {
+    func request(_ url: String) throws -> URLRequest {
         guard let u = URL(string: url) else { throw ProviderError.invalidResponse }
         var r = URLRequest(url: u)
         r.timeoutInterval = 30
@@ -104,13 +107,49 @@ public struct ProviderClient: Sendable {
         return r
     }
 
-    private func fetch(_ url: String) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await transport(try request(url))
+    func fetch(_ url: String) async throws -> (Data, HTTPURLResponse) {
+        try await send(request(url))
+    }
+
+    /// Sends a request that changes something (POST, PUT, PATCH, DELETE) with a JSON body.
+    func send(_ method: String, _ url: String, json: [String: Any]? = nil) async throws -> (Data, HTTPURLResponse) {
+        var r = try request(url)
+        r.httpMethod = method
+        if let json {
+            r.httpBody = try JSONSerialization.data(withJSONObject: json)
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        return try await send(r)
+    }
+
+    private func send(_ r: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await transport(r)
+        let isRead = r.httpMethod == nil || r.httpMethod == "GET"
         switch response.statusCode {
         case 200..<300: return (data, response)
-        case 401, 403: throw ProviderError.unauthorized
-        default: throw ProviderError.http(response.statusCode)
+        case 401: throw ProviderError.unauthorized
+        case 403 where isRead: throw ProviderError.unauthorized
+        default:
+            // Writes report the server's own reason; reads keep plain codes so callers can react to 404.
+            if !isRead, let message = Self.errorMessage(data) { throw ProviderError.api(response.statusCode, message) }
+            if response.statusCode == 403 { throw ProviderError.unauthorized }
+            throw ProviderError.http(response.statusCode)
         }
+    }
+
+    /// The human-readable reason in a provider's JSON error body.
+    static func errorMessage(_ data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        var parts: [String] = []
+        if let m = json["message"] as? String { parts.append(m) }
+        else if let m = json["error"] as? String { parts.append(m) }
+        else if let m = (json["error"] as? [String: Any])?["message"] as? String { parts.append(m) }
+        // GitHub adds details such as "A pull request already exists for owner:branch".
+        if let errors = json["errors"] as? [[String: Any]] {
+            parts += errors.compactMap { $0["message"] as? String }
+        }
+        let text = parts.joined(separator: ": ")
+        return text.isEmpty ? nil : text
     }
 
     // MARK: Verify

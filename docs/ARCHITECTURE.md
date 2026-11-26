@@ -17,6 +17,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `GraphLayout` | Turns topologically ordered commits into per-row lane edges for drawing the branch graph. |
 | `GitRepository` | Stateless, `Sendable` façade for every read and write operation. |
 | `SyntaxHighlighter`, `SideBySide` | Pure helpers for diff presentation: token ranges per line, split-view row pairing. |
+| `CollabActions` | Write calls on `ProviderClient` (create PR/issue, comments, merge, close/reopen, labels) with a shared `send` that reports the server's error text. |
 | `Providers`, `ProviderClient` | Hosting provider kinds, remote URL parsing, web links, askpass credential environment, REST clients for listing/verifying. See [PROVIDERS.md](PROVIDERS.md). |
 | `Operations` | Detects an in-progress merge/rebase/cherry-pick/revert from files in the git dir and runs `--continue`, `--abort`, `--skip`. The snapshot carries it so the UI banner follows the refresh loop. |
 | `Reset` | `reset(to:mode:)`, `reflog()` and `resetImpact(to:)` (commits dropped, files modified) so the UI can warn before a hard reset. |
