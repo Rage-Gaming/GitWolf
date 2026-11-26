@@ -356,13 +356,16 @@ public struct CollabItem: Identifiable, Hashable, Sendable {
     public var body: String
     public var sourceBranch: String
     public var targetBranch: String
+    /// Commit at the tip of the pull request branch, used to look up CI checks.
+    public var headSHA: String = ""
 
     public init(number: Int, title: String, author: String = "", state: CollabState = .open, isDraft: Bool = false,
                 labels: [String] = [], comments: Int = 0, created: Date? = nil, updated: Date? = nil, url: URL? = nil,
-                body: String = "", sourceBranch: String = "", targetBranch: String = "") {
+                body: String = "", sourceBranch: String = "", targetBranch: String = "", headSHA: String = "") {
         self.number = number; self.title = title; self.author = author; self.state = state; self.isDraft = isDraft
         self.labels = labels; self.comments = comments; self.created = created; self.updated = updated
         self.url = url; self.body = body; self.sourceBranch = sourceBranch; self.targetBranch = targetBranch
+        self.headSHA = headSHA
     }
 }
 
@@ -463,7 +466,8 @@ public extension ProviderClient {
                 comments: r["comments"] as? Int ?? 0, created: date(r["created_at"]), updated: date(r["updated_at"]),
                 url: link(r["html_url"]), body: r["body"] as? String ?? "",
                 sourceBranch: (r["head"] as? [String: Any])?["ref"] as? String ?? "",
-                targetBranch: (r["base"] as? [String: Any])?["ref"] as? String ?? "")
+                targetBranch: (r["base"] as? [String: Any])?["ref"] as? String ?? "",
+                headSHA: (r["head"] as? [String: Any])?["sha"] as? String ?? "")
         }
     }
 
@@ -481,7 +485,8 @@ public extension ProviderClient {
                 labels: r["labels"] as? [String] ?? [], comments: r["user_notes_count"] as? Int ?? 0,
                 created: date(r["created_at"]), updated: date(r["updated_at"]), url: link(r["web_url"]),
                 body: r["description"] as? String ?? "",
-                sourceBranch: r["source_branch"] as? String ?? "", targetBranch: r["target_branch"] as? String ?? "")
+                sourceBranch: r["source_branch"] as? String ?? "", targetBranch: r["target_branch"] as? String ?? "",
+                headSHA: r["sha"] as? String ?? "")
         }
     }
 
@@ -499,7 +504,8 @@ public extension ProviderClient {
                 comments: r["comments"] as? Int ?? 0, created: date(r["created_at"]), updated: date(r["updated_at"]),
                 url: link(r["html_url"]), body: r["body"] as? String ?? "",
                 sourceBranch: (r["head"] as? [String: Any])?["ref"] as? String ?? "",
-                targetBranch: (r["base"] as? [String: Any])?["ref"] as? String ?? "")
+                targetBranch: (r["base"] as? [String: Any])?["ref"] as? String ?? "",
+                headSHA: (r["head"] as? [String: Any])?["sha"] as? String ?? "")
         }
     }
 
@@ -522,7 +528,8 @@ public extension ProviderClient {
                 number: number, title: title, author: author?["display_name"] as? String ?? author?["nickname"] as? String ?? "",
                 state: state, comments: r["comment_count"] as? Int ?? 0,
                 created: date(r["created_on"]), updated: date(r["updated_on"]), url: link(html),
-                body: r["description"] as? String ?? "", sourceBranch: branch("source"), targetBranch: branch("destination"))
+                body: r["description"] as? String ?? "", sourceBranch: branch("source"), targetBranch: branch("destination"),
+                headSHA: ((r["source"] as? [String: Any])?["commit"] as? [String: Any])?["hash"] as? String ?? "")
         }
     }
 }

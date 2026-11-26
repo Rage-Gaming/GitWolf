@@ -109,6 +109,19 @@ comment count, created/updated, web URL, body, source/target branch.
 
 With no account for the host, send the request without an `Authorization` header (public data).
 
+### CI checks
+
+`GET` per commit SHA (only hex SHAs are sent):
+
+| Provider | Endpoint | State mapping |
+|---|---|---|
+| GitHub | `/repos/{o}/{r}/commits/{sha}/check-runs` plus the legacy `/commits/{sha}/status` | `status != completed` → pending; `success` → success; `skipped`/`neutral` → neutral; `failure`, `cancelled`, `timed_out`, `action_required`… → failure |
+| GitLab | `/projects/:id/repository/commits/{sha}/statuses` | `success`; `failed`/`canceled` → failure; `running`/`pending`/`created`/`manual` → pending |
+| Gitea | `/repos/{o}/{r}/commits/{sha}/status` (`statuses[]`) | same words as GitHub statuses |
+| Bitbucket Cloud | `/repositories/{w}/{r}/commit/{sha}/statuses` | `SUCCESSFUL`, `FAILED`/`STOPPED`, `INPROGRESS` |
+
+The same name reported twice (re-runs) keeps the first entry. Azure DevOps and Bitbucket Server are not supported.
+
 ### Write calls
 
 All send JSON with the same auth headers; non-2xx replies surface the body's `message` / `error` (plus GitHub's `errors[].message`) so users see why (e.g. "A pull request already exists").

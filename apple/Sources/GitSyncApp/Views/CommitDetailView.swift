@@ -63,6 +63,7 @@ struct CommitDetailView: View {
                 .buttonStyle(.plain).help("Copy full hash")
             }
             if let sig = store.selectedSignature { SignatureBadge(signature: sig) }
+            ChecksSection(store: store, sha: c.hash)
             if !c.parents.isEmpty {
                 HStack(spacing: 6) {
                     Text(c.parents.count > 1 ? "Parents" : "Parent").font(.caption).foregroundStyle(.secondary)

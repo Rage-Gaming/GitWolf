@@ -173,7 +173,7 @@ struct CollabDetailView: View {
     var body: some View {
         if let item = collab.selected {
             detail(item)
-                .task(id: item.number) { collab.loadComments() }
+                .task(id: item.number) { collab.loadComments(); store.loadChecks(sha: item.headSHA) }
                 .alert("Couldn’t Complete", isPresented: Binding(get: { collab.actionError != nil }, set: { if !$0 { collab.actionError = nil } })) {
                     Button("OK", role: .cancel) {}
                 } message: { Text(collab.actionError ?? "") }
@@ -229,6 +229,7 @@ struct CollabDetailView: View {
                         }
                     }
 
+                    if collab.kind == .pullRequest { ChecksSection(store: store, sha: item.headSHA) }
                     if collab.canWrite { CollabActionBar(collab: collab, item: item) }
 
                     Divider()

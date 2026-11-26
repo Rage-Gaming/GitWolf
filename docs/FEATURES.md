@@ -263,6 +263,10 @@ Full details in [PROVIDERS.md](PROVIDERS.md). Summary:
   when the tab opens.
 - API details in [PROVIDERS.md](PROVIDERS.md#pull-requests-and-issues).
 
+### CI checks
+
+Selecting a pushed commit (History) or a pull request shows a pill with the overall result (worst state wins: failure, then pending, then success) that expands to each check with a **Details** link. Looked up by commit SHA (a pull request uses its head commit), cached for 60 s, hidden when the server has no checks or doesn't know the commit. Works without an account on public repositories. Endpoints in [PROVIDERS.md](PROVIDERS.md#ci-checks).
+
 ### Actions (need a connected account)
 
 - **New Pull Request…** / **New Issue…**: "+" in the list header, Repository menu, palette. The PR form

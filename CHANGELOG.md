@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- CI status: a checks summary ("All 38 checks passed", "2 of 9 checks failed") with an expandable list and links to each run, on the selected commit and on pull requests (GitHub check runs and statuses, GitLab pipeline jobs, Gitea and Bitbucket Cloud statuses). Works for public repositories without an account.
 - Pull request and issue actions: create a pull/merge request from the current branch (title and base picker, draft, pushes the branch first), create issues, read and add comments, merge (merge commit, squash or rebase, with confirmation), close and reopen, and edit labels. GitHub, GitLab and Gitea; Bitbucket Cloud for pull requests. Needs a connected account; the server's own error text is shown when a request is rejected.
 - Commit message helpers: a menu beside the commit box with a conventional-commit type picker (plus scopes taken from the staged folders), an issue reference picker (Closes or Refs, from your open issues), your `commit.template`, reuse of recent messages, and spell checking while typing (on by default, can be turned off).
 - Ignore helper: right-click a changed file, then Ignore, to ignore that file, any file with its name, all files with its extension, or its folder; written to `.gitignore` or, with "Only on This Machine", to `.git/info/exclude`. Already-tracked files are untracked (kept on disk) so the rule takes effect.

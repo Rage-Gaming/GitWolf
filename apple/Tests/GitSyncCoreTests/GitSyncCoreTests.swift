@@ -1568,3 +1568,55 @@ import Testing
         #expect(try await gl.comments(.pullRequest, repoPath: "g/p", number: 1).map(\.body) == ["real"])
     }
 }
+
+@Suite struct CIStatusTests {
+    private func client(_ kind: ProviderKind, replies: [String: String]) -> ProviderClient {
+        ProviderClient(account: ProviderAccount(kind: kind, host: kind.defaultHost, username: "me"), token: "t", transport: { r in
+            let url = r.url!.absoluteString
+            let body = replies.first { url.contains($0.key) }?.value ?? "{}"
+            return (Data(body.utf8), HTTPURLResponse(url: r.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+    }
+
+    @Test func githubCombinesCheckRunsAndStatuses() async throws {
+        let c = client(.github, replies: [
+            "check-runs": #"{"check_runs":[{"name":"build","status":"completed","conclusion":"success","html_url":"https://x/1"},{"name":"test","status":"completed","conclusion":"failure"},{"name":"lint","status":"in_progress"},{"name":"docs","status":"completed","conclusion":"skipped"}]}"#,
+            "/status": #"{"statuses":[{"context":"legacy/ci","state":"success","target_url":"https://ci"}]}"#,
+        ])
+        let s = try await c.ciStatus(repoPath: "o/r", sha: "abc123")
+        #expect(s.checks.count == 5)
+        #expect(s.overall == .failure)
+        #expect(s.summary == "1 of 5 checks failed")
+        #expect(s.checks.first?.name == "test")
+        #expect(s.checks.first { $0.name == "build" }?.url?.absoluteString == "https://x/1")
+        #expect(s.checks.first { $0.name == "docs" }?.state == .neutral)
+    }
+
+    @Test func otherProvidersMapStates() async throws {
+        let gl = client(.gitlab, replies: ["statuses": #"[{"name":"unit","status":"success"},{"name":"unit","status":"failed"},{"name":"e2e","status":"running"},{"name":"x","status":"canceled"}]"#])
+        let s = try await gl.ciStatus(repoPath: "g/p", sha: "deadbeef")
+        // The second "unit" is a duplicate name and is dropped.
+        #expect(s.checks.count == 3)
+        #expect(s.overall == .pending || s.overall == .failure)
+        let gt = client(.gitea, replies: ["status": #"{"statuses":[{"context":"ci","status":"pending"}]}"#])
+        #expect(try await gt.ciStatus(repoPath: "o/r", sha: "abc").overall == .pending)
+        let bb = client(.bitbucket, replies: ["statuses": #"{"values":[{"name":"pipe","state":"SUCCESSFUL","url":"https://bb"}]}"#])
+        let st = try await bb.ciStatus(repoPath: "w/r", sha: "abc")
+        #expect(st.overall == .success && st.summary == "All 1 checks passed")
+        #expect(CIStatus(checks: []).overall == nil)
+    }
+
+    @Test func rejectsNonHexShas() async throws {
+        let c = client(.github, replies: [:])
+        #expect(try await c.ciStatus(repoPath: "o/r", sha: "../../x").isEmpty)
+    }
+
+    @Test func pullRequestsCarryTheirHeadCommit() throws {
+        let gh = try ProviderClient.parseGitHubCollab(Data(#"[{"number":1,"title":"t","state":"open","head":{"ref":"a","sha":"abc"},"base":{"ref":"main"}}]"#.utf8), kind: .pullRequest)
+        #expect(gh[0].headSHA == "abc")
+        let gl = try ProviderClient.parseGitLabCollab(Data(#"[{"iid":2,"title":"t","state":"opened","sha":"def"}]"#.utf8), kind: .pullRequest)
+        #expect(gl[0].headSHA == "def")
+        let bb = try ProviderClient.parseBitbucketCollab(Data(#"{"values":[{"id":3,"title":"t","state":"OPEN","source":{"branch":{"name":"a"},"commit":{"hash":"123"}}}]}"#.utf8))
+        #expect(bb[0].headSHA == "123")
+    }
+}

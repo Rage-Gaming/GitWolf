@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let wantSettings = target == "settings"
             let wantSheet = target?.hasPrefix("sheet:") == true
             if wantSettings || wantSheet {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + (Double(ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT_DELAY"] ?? "") ?? 3)) {
                     // `settings` opens the first menu's Settings item; `sheet:<Title>` any menu item by title.
                     let title = wantSheet ? String(target!.dropFirst(6)) : "Settings"
                     let menus = wantSheet ? (NSApp.mainMenu?.items.compactMap(\.submenu) ?? []) : [NSApp.mainMenu?.items.first?.submenu].compactMap { $0 }

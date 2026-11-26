@@ -135,6 +135,32 @@ final class RepositoryStore: Identifiable {
         return (account, location.path)
     }
 
+    /// A client for this repository's hosting provider (with the saved account's token, if any) and the `owner/repo` path.
+    func providerClient() async -> (ProviderClient, String)? {
+        guard let (account, path) = collabContext(), account.kind.supportsChecks else { return nil }
+        var secret = ""
+        if AccountStorage.account(forHost: account.hostName) != nil { secret = await AccountStorage.secret(for: account) ?? "" }
+        return (ProviderClient(account: account, token: secret), path)
+    }
+
+    // MARK: CI checks
+
+    /// CI results by commit, fetched from the hosting provider. Commits the server doesn't know stay absent.
+    private(set) var checksBySHA: [String: CIStatus] = [:]
+    private var checksRequested: [String: Date] = [:]
+
+    func loadChecks(sha: String) {
+        guard !sha.isEmpty else { return }
+        // Pending runs change, so a result is reused for a minute at most.
+        if let at = checksRequested[sha], Date().timeIntervalSince(at) < 60 { return }
+        guard providerKind != nil, remoteLocation != nil else { return }
+        checksRequested[sha] = Date()
+        Task {
+            guard let (client, path) = await providerClient() else { return }
+            if let status = try? await client.ciStatus(repoPath: path, sha: sha), !status.isEmpty { checksBySHA[sha] = status }
+        }
+    }
+
     func start() {
         guard !started else { return }
         started = true
@@ -197,7 +223,11 @@ final class RepositoryStore: Identifiable {
         Task { [weak self] in
             guard let self else { return }
             let location = await self.repo.remoteLocation()
-            if location != self.remoteLocation { self.remoteLocation = location }
+            if location != self.remoteLocation {
+                self.remoteLocation = location
+                // Commits selected before the provider was known can be looked up now.
+                if let id = self.selectedCommitID { self.loadChecks(sha: id) }
+            }
         }
     }
 
@@ -347,6 +377,7 @@ final class RepositoryStore: Identifiable {
     func selectCommit(_ id: String?) {
         guard id != selectedCommitID else { return }
         selectedCommitID = id
+        if let id { loadChecks(sha: id) }
         selectedTarget = nil
         diff = nil
         commitFiles = []
