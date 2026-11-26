@@ -196,6 +196,7 @@ private struct GeneralSettings: View {
     @AppStorage(SettingsKey.commitPageSize) private var pageSize = 1000
     @AppStorage(SettingsKey.pullRebase) private var pullRebase = false
     @AppStorage(UpdateManager.autoKey) private var checkUpdates = true
+    @AppStorage(MenuBarSetting.key) private var menuBarExtra = true
     @AppStorage(SettingsKey.diffContext) private var context = 4
     @AppStorage(SettingsKey.syntaxHighlighting) private var syntax = true
     @AppStorage(SettingsKey.diffLayout) private var layout = DiffLayout.unified.rawValue
@@ -252,6 +253,10 @@ private struct GeneralSettings: View {
             Row(icon: "arrow.triangle.pull", tint: .orange, title: "Pull strategy",
                 detail: "Rebase keeps history linear; merge keeps a merge commit") {
                 PillPicker(selection: $pullRebase, options: [("Merge", false), ("Rebase", true)])
+            }
+            Row(icon: "menubar.rectangle", tint: .indigo, title: "Menu bar icon",
+                detail: "Open repositories and their changes, one click away") {
+                Toggle("", isOn: $menuBarExtra).labelsHidden().toggleStyle(.switch)
             }
             Row(icon: "arrow.down.app", tint: .green, title: "Check for updates",
                 detail: "Once a day, asks GitHub for a newer release. Nothing is installed automatically", divider: false) {

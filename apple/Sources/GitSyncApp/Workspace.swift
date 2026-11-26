@@ -65,6 +65,7 @@ final class Workspace {
 
     init() {
         Self.current = self
+        MenuBarModel.shared.workspace = self
         trackDockBadge()
     }
 

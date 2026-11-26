@@ -1,4 +1,5 @@
 import AppKit
+import GitSyncCore
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -67,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct GitSyncApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    @AppStorage(MenuBarSetting.key) private var showMenuBarExtra = true
 
     var body: some Scene {
         WindowGroup {
@@ -75,6 +77,13 @@ struct GitSyncApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 880)
         .commands { AppCommands() }
+
+        MenuBarExtra(isInserted: $showMenuBarExtra) {
+            MenuBarContent()
+        } label: {
+            MenuBarLabel()
+        }
+        .menuBarExtraStyle(.menu)
 
         // A regular window (not the `Settings` scene) so it gets the same hidden-title-bar chrome
         // as the main window; the Settings scene re-applies its own opaque title bar.
@@ -158,7 +167,16 @@ struct AppCommands: Commands {
             Button("Settings…") { openWindow(id: "settings") }
                 .keyboardShortcut(",")
         }
-        CommandGroup(after: .newItem) {
+        // Menus that don't apply to GitSync: extra windows, toolbar and sidebar toggles, font
+        // formatting and the empty Help book.
+        CommandGroup(replacing: .toolbar) {}
+        CommandGroup(replacing: .sidebar) {}
+        CommandGroup(replacing: .textFormatting) {}
+        CommandGroup(replacing: .help) {
+            Link("GitSync Documentation", destination: URL(string: "https://github.com/ipuppyyt/git-sync/tree/main/docs")!)
+            Link("Report an Issue", destination: URL(string: "https://github.com/ipuppyyt/git-sync/issues")!)
+        }
+        CommandGroup(replacing: .newItem) {
             Button("Open Repository…") { workspace?.openPanel() }
                 .keyboardShortcut("o")
             Button("Clone Repository…") { workspace?.sheet = .clone }
