@@ -6,7 +6,7 @@ struct CommitDetailView: View {
 
     var body: some View {
         if let commit = store.selectedCommit {
-            VSplitView {
+            VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     header(commit)
                     Divider()
@@ -23,11 +23,12 @@ struct CommitDetailView: View {
                         }
                     }
                     .listStyle(.plain)
+                    // Sized to its content (capped) so the diff gets the remaining space.
+                    .frame(height: min(max(CGFloat(store.commitFiles.count) * 30 + 8, 48), 200))
                 }
-                .frame(minHeight: 180, idealHeight: 260)
-
+                Divider()
                 DiffPane(diff: store.diff, path: store.selectedTarget?.path)
-                    .frame(minHeight: 200)
+                    .frame(maxHeight: .infinity)
             }
         } else {
             ContentUnavailableView("No Commit Selected", systemImage: "arrow.triangle.branch",

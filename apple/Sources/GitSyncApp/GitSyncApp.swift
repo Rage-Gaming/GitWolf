@@ -5,6 +5,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        #if DEBUG
+        // GITSYNC_SNAPSHOT=/path.png renders the window to a PNG after a delay, then quits.
+        if let path = ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT"] {
+            NSApp.appearance = NSAppearance(named: .aqua)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                if let view = NSApp.windows.first?.contentView,
+                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+                }
+                NSApp.terminate(nil)
+            }
+        }
+        #endif
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
@@ -35,6 +49,12 @@ struct RootView: View {
             }
         }
         .focusedSceneValue(\.windowModel, model)
+        .task {
+            // `GitSync /path/to/repo` opens that repository directly.
+            if model.store == nil, let path = CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("-") }) {
+                model.open(URL(fileURLWithPath: path, isDirectory: true))
+            }
+        }
         .alert("Couldn’t Open Repository", isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } })

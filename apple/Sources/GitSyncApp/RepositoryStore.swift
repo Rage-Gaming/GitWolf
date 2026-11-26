@@ -145,6 +145,14 @@ final class RepositoryStore {
         if !isLoaded {
             isLoaded = true
             if !s.status.isClean { mode = .changes }
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["GITSYNC_MODE"] == "history" {
+                mode = .history
+                selectCommit(s.commits.first?.id)
+            } else if let c = s.status.unstaged.first {
+                selectChange(c, source: .unstaged)
+            }
+            #endif
         }
         reconcileSelection()
     }
