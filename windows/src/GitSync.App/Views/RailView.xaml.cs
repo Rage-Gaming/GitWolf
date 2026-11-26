@@ -99,13 +99,16 @@ public sealed partial class RailView : UserControl
         };
         var count = new TextBlock
         {
-            FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+            FontSize = 11, FontWeight = Microsoft.UI.Text.FontWeights.Bold,
             Foreground = new SolidColorBrush(Microsoft.UI.Colors.White), HorizontalAlignment = HorizontalAlignment.Center,
+            // Tight bounds centre the digits themselves, not the font's line box.
+            VerticalAlignment = VerticalAlignment.Center, TextLineBounds = TextLineBounds.Tight,
         };
         var badge = new Border
         {
-            Background = Palette.Orange, CornerRadius = new CornerRadius(9), MinWidth = 18, Height = 18,
-            Padding = new Thickness(4, 1, 4, 0), Child = count, IsHitTestVisible = false,
+            // The style adds a ring in the canvas colour that separates the badge from the tile.
+            Style = (Style)Application.Current.Resources["RailBadgeStyle"],
+            Background = Palette.Orange, Child = count, IsHitTestVisible = false,
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, -5, 8, 0),
         };

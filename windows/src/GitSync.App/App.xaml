@@ -66,6 +66,15 @@
                 <Setter Property="MinWidth" Value="0" />
             </Style>
 
+            <Style x:Key="RailBadgeStyle" TargetType="Border">
+                <Setter Property="BorderBrush" Value="{ThemeResource CanvasBrush}" />
+                <Setter Property="BorderThickness" Value="2" />
+                <Setter Property="CornerRadius" Value="11" />
+                <Setter Property="MinWidth" Value="22" />
+                <Setter Property="Height" Value="22" />
+                <Setter Property="Padding" Value="4,0" />
+            </Style>
+
             <!-- Floating panel (docs/DESIGN.md): flat surface, 1px border, rounded. -->
             <Style x:Key="PanelStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource PanelBrush}" />
