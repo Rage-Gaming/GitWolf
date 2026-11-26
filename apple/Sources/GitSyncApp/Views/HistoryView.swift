@@ -208,7 +208,7 @@ private struct CommitRow: View {
             if let graph = item.graph {
                 GraphCell(row: graph, laneCount: laneCount)
             }
-            AvatarView(name: c.authorName, email: c.authorEmail, size: 24)
+            AvatarView(name: c.authorName, email: c.authorEmail, size: 24, sha: c.hash)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     ForEach(c.refs.prefix(3), id: \.self) { RefChip(label: $0) }

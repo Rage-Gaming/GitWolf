@@ -38,6 +38,7 @@ struct RepositoryView: View {
             }
         }
         .environment(\.lfsPaths, store.lfsPaths)
+        .environment(store.avatars)
         .animation(.snappy, value: store.bisect.isActive)
         .task { store.start(); NotificationsStore.shared.startPolling() }
         .overlay(alignment: .bottom) { if let label = store.busyLabel { BusyPill(label: label) } }

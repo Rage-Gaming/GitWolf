@@ -44,7 +44,7 @@ struct CommitDetailView: View {
                     .foregroundStyle(.secondary).textSelection(.enabled)
             }
             HStack(spacing: 10) {
-                AvatarView(name: c.authorName, email: c.authorEmail, size: 30)
+                AvatarView(name: c.authorName, email: c.authorEmail, size: 30, sha: c.hash)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(c.authorName).fontWeight(.semibold)
                     Text(c.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)

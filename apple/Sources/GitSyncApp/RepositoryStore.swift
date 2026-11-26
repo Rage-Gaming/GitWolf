@@ -77,6 +77,8 @@ final class RepositoryStore: Identifiable {
     var lfsPaths: Set<String> = []
     var isShallow = false
     var shallowChecked = false
+    /// Profile pictures of commit authors, from the hosting platform.
+    let avatars = AvatarProvider()
     private var commitGraphTried = false
     /// Where `origin` (or the first remote) lives, for web links.
     private(set) var remoteLocation: RemoteLocation?
@@ -161,6 +163,14 @@ final class RepositoryStore: Identifiable {
         return (ProviderClient(account: account, token: secret), path)
     }
 
+    /// Teaches the avatar provider to ask this repository's platform who a commit author is.
+    func configureAvatarLookup() {
+        avatars.lookup = { [weak self] sha, email in
+            guard let self, let (client, path) = await self.providerClient() else { return nil }
+            return try? await client.commitAuthorAvatar(repoPath: path, sha: sha, email: email)
+        }
+    }
+
     /// Whether this repository's host lets GitSync fork it (needs a recognised provider).
     var canFork: Bool {
         guard let kind = providerKind, let host = remoteLocation?.host else { return false }
@@ -188,6 +198,7 @@ final class RepositoryStore: Identifiable {
     func start() {
         guard !started else { return }
         started = true
+        configureAvatarLookup()
         pullRequests.context = { [weak self] in self?.collabContext() }
         Task {
             let config = await repo.signingConfig()

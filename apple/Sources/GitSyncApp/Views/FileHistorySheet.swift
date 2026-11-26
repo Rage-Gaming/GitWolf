@@ -63,7 +63,7 @@ struct FileHistorySheet: View {
                     LazyVStack(spacing: 2) {
                         ForEach(history) { commit in
                             HStack(spacing: 10) {
-                                AvatarView(name: commit.authorName, email: commit.authorEmail, size: 26)
+                                AvatarView(name: commit.authorName, email: commit.authorEmail, size: 26, sha: commit.hash)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(commit.subject).lineLimit(1)
                                     Text("\(commit.authorName) · \(commit.shortHash) · \(commit.date.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated)))")

@@ -326,7 +326,7 @@ private struct ConversationView: View {
             ForEach(collab.comments) { comment in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        AvatarView(name: comment.author, email: "", size: 22)
+                        AvatarView(name: comment.author, email: "", size: 22, url: comment.avatarURL)
                         Text(comment.author).fontWeight(.semibold)
                         if let date = comment.created {
                             Text(date.formatted(.relative(presentation: .named))).foregroundStyle(.secondary)

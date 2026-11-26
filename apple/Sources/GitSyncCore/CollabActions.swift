@@ -18,6 +18,8 @@ public struct CollabComment: Identifiable, Hashable, Sendable {
     public var author: String
     public var body: String
     public var created: Date?
+    /// The author's profile picture from the platform, when the API gives one.
+    public var avatarURL: URL? = nil
 }
 
 /// A pull request's review state, reduced to what a list needs.
@@ -121,8 +123,9 @@ public extension ProviderClient {
             return values.compactMap { r in
                 guard let id = r["id"] as? Int, let raw = (r["content"] as? [String: Any])?["raw"] as? String, r["deleted"] as? Bool != true else { return nil }
                 let user = r["user"] as? [String: Any]
+                let avatar = ((user?["links"] as? [String: Any])?["avatar"] as? [String: Any])?["href"] as? String
                 return CollabComment(id: String(id), author: user?["display_name"] as? String ?? user?["nickname"] as? String ?? "",
-                                     body: raw, created: Self.isoDate(r["created_on"] as? String))
+                                     body: raw, created: Self.isoDate(r["created_on"] as? String), avatarURL: AvatarURLs.safe(avatar))
             }
         case .azure:
             throw ProviderError.unsupported("Azure DevOps isn’t supported here yet.")
@@ -248,8 +251,10 @@ public extension ProviderClient {
             if let flag, r[flag] as? Bool == true { return nil }
             guard let text = r[body] as? String else { return nil }
             let identifier = (r[id] as? Int).map(String.init) ?? (r[id] as? String) ?? UUID().uuidString
-            let name = (r[author[0]] as? [String: Any])?[author[1]] as? String ?? ""
-            return CollabComment(id: identifier, author: name, body: text, created: isoDate(r[date] as? String))
+            let user = r[author[0]] as? [String: Any]
+            let name = user?[author[1]] as? String ?? ""
+            return CollabComment(id: identifier, author: name, body: text, created: isoDate(r[date] as? String),
+                                 avatarURL: AvatarURLs.safe(user?["avatar_url"] as? String))
         }
     }
 }

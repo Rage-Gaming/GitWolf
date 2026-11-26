@@ -2197,3 +2197,67 @@ struct FileIconTests {
         }
     }
 }
+
+@Suite("Avatars")
+struct AvatarTests {
+    @Test func noreplyAddresses() {
+        #expect(AvatarURLs.fromNoreply(email: "12345+octo-cat@users.noreply.github.com")?.absoluteString
+                == "https://avatars.githubusercontent.com/u/12345?s=96")
+        #expect(AvatarURLs.fromNoreply(email: "octocat@users.noreply.github.com")?.absoluteString
+                == "https://github.com/octocat.png?size=96")
+        #expect(AvatarURLs.fromNoreply(email: "42-jane@users.noreply.gitlab.com")?.absoluteString
+                == "https://gitlab.com/uploads/-/system/user/avatar/42/avatar.png?width=96")
+        #expect(AvatarURLs.fromNoreply(email: "someone@example.com") == nil)
+        // Nothing smuggled into the path.
+        #expect(AvatarURLs.fromNoreply(email: "../evil@users.noreply.github.com") == nil)
+        #expect(AvatarURLs.fromNoreply(email: "") == nil)
+    }
+
+    @Test func onlyWebAddresses() {
+        #expect(AvatarURLs.safe("https://avatars.githubusercontent.com/u/1?v=4") != nil)
+        #expect(AvatarURLs.safe("file:///etc/passwd") == nil)
+        #expect(AvatarURLs.safe("javascript:alert(1)") == nil)
+        #expect(AvatarURLs.safe(nil) == nil)
+        #expect(AvatarURLs.safe("") == nil)
+    }
+
+    @Test func providerResponses() async throws {
+        let gh = Data(#"[{"sha":"a","author":{"login":"o","avatar_url":"https://avatars.githubusercontent.com/u/9?v=4"}}]"#.utf8)
+        #expect(try ProviderClient.parseCommitListAvatar(gh)?.absoluteString == "https://avatars.githubusercontent.com/u/9?v=4")
+        #expect(try ProviderClient.parseCommitListAvatar(Data(#"[{"sha":"a","author":null}]"#.utf8)) == nil)
+        #expect(try ProviderClient.parseCommitListAvatar(Data("[]".utf8)) == nil)
+        #expect(try ProviderClient.parseGitLabAvatar(Data(#"{"avatar_url":"https://gitlab.com/a.png"}"#.utf8))?.host == "gitlab.com")
+        let bb = Data(#"{"author":{"user":{"links":{"avatar":{"href":"https://bitbucket.org/a.png"}}}}}"#.utf8)
+        #expect(try ProviderClient.parseBitbucketCommitAvatar(bb)?.host == "bitbucket.org")
+        #expect(throws: ProviderError.self) { try ProviderClient.parseGitLabAvatar(Data("[]".utf8)) }
+    }
+
+    @Test func requestsGoToThePlatformOnly() async throws {
+        final class Seen: @unchecked Sendable { var urls: [String] = []; let lock = NSLock()
+            func add(_ s: String) { lock.lock(); urls.append(s); lock.unlock() } }
+        let seen = Seen()
+        func client(_ kind: ProviderKind, host: String) -> ProviderClient {
+            ProviderClient(account: ProviderAccount(kind: kind, host: host, username: "u"), token: "t") { request in
+                seen.add(request.url!.absoluteString)
+                let body: String = switch kind {
+                case .gitlab: #"{"avatar_url":"https://gitlab.com/a.png"}"#
+                case .bitbucket: #"{"author":{"user":{"links":{"avatar":{"href":"https://x/a.png"}}}}}"#
+                default: #"[{"author":{"avatar_url":"https://x/a.png"}}]"#
+                }
+                return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+        }
+        let sha = String(repeating: "a", count: 40)
+        #expect(try await client(.github, host: "github.com").commitAuthorAvatar(repoPath: "o/r", sha: sha, email: "e@x.com") != nil)
+        #expect(try await client(.gitlab, host: "gitlab.com").commitAuthorAvatar(repoPath: "o/r", sha: sha, email: "e+tag@x.com") != nil)
+        #expect(try await client(.gitea, host: "codeberg.org").commitAuthorAvatar(repoPath: "o/r", sha: sha, email: "e@x.com") != nil)
+        #expect(try await client(.bitbucket, host: "bitbucket.org").commitAuthorAvatar(repoPath: "o/r", sha: sha, email: "e@x.com") != nil)
+        #expect(try await client(.azure, host: "dev.azure.com").commitAuthorAvatar(repoPath: "o/r", sha: sha, email: "e@x.com") == nil)
+        // A malformed "sha" is never sent anywhere.
+        #expect(try await client(.github, host: "github.com").commitAuthorAvatar(repoPath: "o/r", sha: "../x", email: "e@x.com") == nil)
+        #expect(seen.urls.count == 4)
+        #expect(seen.urls[0].hasPrefix("https://api.github.com/repos/o/r/commits?sha="))
+        #expect(seen.urls[1] == "https://gitlab.com/api/v4/avatar?email=e%2Btag%40x.com&size=96")
+        #expect(seen.urls.allSatisfy { !$0.contains("gravatar") })
+    }
+}

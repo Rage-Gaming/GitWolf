@@ -153,22 +153,6 @@ struct SearchField: View {
 
 // MARK: - Small views
 
-struct AvatarView: View {
-    let name: String
-    let email: String
-    var size: CGFloat = 26
-
-    var body: some View {
-        let initials = name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
-        Text(initials.isEmpty ? "?" : initials)
-            .font(.system(size: size * 0.4, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(avatarColor(for: email), in: Circle())
-            .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
-    }
-}
-
 struct StatusBadge: View {
     let kind: ChangeKind
     var body: some View {
