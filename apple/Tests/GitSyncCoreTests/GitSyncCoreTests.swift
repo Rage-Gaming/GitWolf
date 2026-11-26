@@ -1960,3 +1960,181 @@ struct ScaleTests {
         #expect(try await repo.log(limit: 100, remotes: []).count == 4)
     }
 }
+
+// MARK: - End-to-end scenarios (two people, a server, a backup remote)
+
+@Suite("Scenarios")
+struct ScenarioTests {
+    struct World {
+        let root: URL, alice: GitRepository, bob: GitRepository
+        let aliceRunner: GitRunner, bobRunner: GitRunner, origin: URL, backup: URL
+    }
+
+    func world() async throws -> World {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("world-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let r = GitRunner(workingDirectory: root)
+        for bare in ["origin.git", "backup.git"] { try await r.run(["init", "-q", "--bare", "-b", "main", bare]) }
+        for who in ["alice", "bob"] {
+            try await r.run(["clone", "-q", "origin.git", who])
+            let g = GitRunner(workingDirectory: root.appendingPathComponent(who))
+            try await g.run(["config", "user.name", who]); try await g.run(["config", "user.email", "\(who)@e.com"])
+            try await g.run(["config", "commit.gpgsign", "false"])
+        }
+        let a = GitRunner(workingDirectory: root.appendingPathComponent("alice"))
+        let b = GitRunner(workingDirectory: root.appendingPathComponent("bob"))
+        try await a.run(["checkout", "-q", "-b", "main"])
+        for i in 1...3 {
+            try "line \(i)\n".appending(i > 1 ? "" : "").write(to: root.appendingPathComponent("alice/app\(i).txt"), atomically: true, encoding: .utf8)
+            try await a.run(["add", "-A"]); try await a.run(["commit", "-qm", "base \(i)"])
+        }
+        try await a.run(["push", "-q", "-u", "origin", "main"])
+        try await b.run(["pull", "-q", "origin", "main"])
+        try await b.run(["checkout", "-q", "main"])
+        return World(root: root, alice: GitRepository(root: root.appendingPathComponent("alice")),
+                     bob: GitRepository(root: root.appendingPathComponent("bob")),
+                     aliceRunner: a, bobRunner: b, origin: root.appendingPathComponent("origin.git"),
+                     backup: root.appendingPathComponent("backup.git"))
+    }
+
+    func commit(_ g: GitRunner, _ file: String, _ text: String, _ msg: String) async throws {
+        try text.write(to: g.workingDirectory.appendingPathComponent(file), atomically: true, encoding: .utf8)
+        try await g.run(["add", "-A"]); try await g.run(["commit", "-qm", msg])
+    }
+
+    func status(_ repo: GitRepository) async throws -> WorkingStatus { try await repo.status() }
+
+    @Test func divergedPullStrategies() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await commit(w.bobRunner, "bob.txt", "b\n", "bob work")
+        try await w.bobRunner.run(["push", "-q", "origin", "main"])
+        try await commit(w.aliceRunner, "alice.txt", "a\n", "alice work")
+        try await w.alice.fetch()
+        var st = try await status(w.alice)
+        #expect(st.ahead == 1 && st.behind == 1)
+
+        // Fast-forward only refuses, and says why.
+        do { try await w.alice.pull(strategy: .fastForwardOnly); Issue.record("expected failure") }
+        catch let e as GitError { #expect(e.isDivergedPull) }
+
+        // Rebase with a dirty tree: local change is kept (autostash), history stays linear.
+        try "dirty\n".write(to: w.alice.root.appendingPathComponent("app1.txt"), atomically: true, encoding: .utf8)
+        try await w.alice.pull(strategy: .rebase)
+        st = try await status(w.alice)
+        #expect(st.behind == 0 && st.ahead == 1)
+        #expect(st.unstaged.count == 1)
+        let merges = try await w.aliceRunner.runString(["rev-list", "--merges", "--count", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(merges == "0")
+    }
+
+    @Test func divergedPullMerge() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await commit(w.bobRunner, "bob.txt", "b\n", "bob work")
+        try await w.bobRunner.run(["push", "-q", "origin", "main"])
+        try await commit(w.aliceRunner, "alice.txt", "a\n", "alice work")
+        try await w.alice.pull(strategy: .merge)
+        let merges = try await w.aliceRunner.runString(["rev-list", "--merges", "--count", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(merges == "1")
+        #expect(try await status(w.alice).behind == 0)
+    }
+
+    @Test func rejectedPushThenPullThenPush() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await commit(w.bobRunner, "bob.txt", "b\n", "bob work")
+        try await w.bobRunner.run(["push", "-q", "origin", "main"])
+        try await commit(w.aliceRunner, "alice.txt", "a\n", "alice work")
+        var st = try await status(w.alice)
+        let remotes = try await w.alice.remotes()
+        do { try await w.alice.push(status: st, remotes: remotes); Issue.record("expected rejection") }
+        catch let e as GitError { #expect(e.isPushRejected) }
+        // A lease push right after is rejected too (alice hasn't fetched bob's commit).
+        do { try await w.alice.push(status: st, remotes: remotes, options: PushOptions(forceWithLease: true)); Issue.record("lease should refuse") }
+        catch let e as GitError { #expect(e.isPushRejected) }
+        try await w.alice.pull(strategy: .rebase)
+        st = try await status(w.alice)
+        try await w.alice.push(status: st, remotes: remotes)
+        #expect(try await status(w.alice).ahead == 0)
+    }
+
+    @Test func forcePushAfterRewrite() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await w.aliceRunner.run(["commit", "--amend", "-qm", "rewritten base 3"])
+        let st = try await status(w.alice)
+        let remotes = try await w.alice.remotes()
+        do { try await w.alice.push(status: st, remotes: remotes); Issue.record("plain push must be rejected") }
+        catch let e as GitError { #expect(e.isPushRejected) }
+        try await w.alice.push(status: st, remotes: remotes, options: PushOptions(forceWithLease: true))
+        let remoteHead = try await GitRunner(workingDirectory: w.origin).runString(["log", "-1", "--format=%s", "main"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(remoteHead == "rewritten base 3")
+    }
+
+    @Test func tagsAndSecondRemote() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await w.alice.addRemote("backup", url: w.backup.path)
+        #expect(Set(try await w.alice.remoteInfos().map(\.name)) == ["origin", "backup"])
+        try await w.aliceRunner.run(["tag", "v1.0"])
+        let st = try await status(w.alice)
+        let remotes = try await w.alice.remotes()
+        try await w.alice.push(status: st, remotes: remotes, options: PushOptions(remote: "backup", includeTags: true))
+        let tags = try await GitRunner(workingDirectory: w.backup).runString(["tag"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(tags == "v1.0")
+        try await w.alice.setRemoteURL("backup", url: w.origin.path)
+        #expect(try await w.alice.remoteInfos().first { $0.name == "backup" }?.fetchURL == w.origin.path)
+        try await w.alice.renameRemote("backup", to: "mirror")
+        try await w.alice.removeRemote("mirror")
+        #expect(try await w.alice.remoteInfos().map(\.name) == ["origin"])
+        await #expect(throws: GitError.self) { try await w.alice.addRemote("x", url: "https://u:secret@host/x.git") }
+    }
+
+    @Test func bisectWithSkipAndExplicitHash() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        var h: [String] = []
+        for i in 1...10 { h.append(try await t.commit("c\(i)", file: "n.txt", text: (i >= 7 ? "bad" : "ok") + "\n\(i)\n")) }
+        var s = try await t.repo.bisectStart(bad: h[9], good: h[0])
+        s = try await t.repo.bisectMark(.skip)           // can't test this one
+        #expect(s.marks.last?.mark == .skip)
+        s = try await t.repo.bisectMark(.good, hash: h[5])  // mark an explicit commit
+        #expect(s.marks.contains { $0.hash == h[5] && $0.mark == .good })
+        var guardCount = 0
+        while s.firstBad == nil, guardCount < 10 {
+            s = try await t.repo.bisectMark(try t.read("n.txt").hasPrefix("bad") ? .bad : .good); guardCount += 1
+        }
+        #expect(s.firstBad == h[6])
+        try await t.repo.bisectReset()
+    }
+
+    @Test func patchSeriesBetweenPeople() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await commit(w.bobRunner, "one.txt", "1\n", "feature part 1")
+        try await commit(w.bobRunner, "two.txt", "2\n", "feature part 2")
+        let hashes = try await w.bobRunner.runString(["rev-list", "--reverse", "-2", "HEAD"]).split(separator: "\n").map(String.init)
+        let out = w.root.appendingPathComponent("patches")
+        let files = try await w.bob.formatPatches(commits: hashes, into: out)
+        #expect(files.count == 2)
+        #expect(files[0].lastPathComponent.hasPrefix("0001-") && files[1].lastPathComponent.hasPrefix("0002-"))
+        try await w.alice.applyMailbox(files)
+        let log = try await w.aliceRunner.runString(["log", "-2", "--format=%an: %s"]).split(separator: "\n").map(String.init)
+        #expect(log == ["bob: feature part 2", "bob: feature part 1"])
+    }
+
+    @Test func worktreeWithDirtyChangesRefusesRemoval() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        let path = w.root.appendingPathComponent("alice-wt")
+        try await w.alice.addWorktree(at: path, branch: "topic", newBranch: true)
+        try "dirty\n".write(to: path.appendingPathComponent("app1.txt"), atomically: true, encoding: .utf8)
+        await #expect(throws: GitError.self) { try await w.alice.removeWorktree(path.path, force: false) }
+        #expect(try await w.alice.worktrees().count == 2)
+        try FileManager.default.removeItem(at: path)         // folder deleted behind git's back
+        #expect(try await w.alice.worktrees().last?.isPrunable == true)
+        try await w.alice.pruneWorktrees()
+        #expect(try await w.alice.worktrees().count == 1)
+    }
+}
