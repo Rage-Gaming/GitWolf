@@ -55,12 +55,12 @@ struct WindowBackdrop: View {
     var body: some View {
         ZStack {
             Rectangle().fill(.ultraThinMaterial)
-            if scheme == .light {
-                LinearGradient(
-                    colors: [Color(red: 0.957, green: 0.961, blue: 0.980), Color(red: 0.925, green: 0.932, blue: 0.962)],
-                    startPoint: .top, endPoint: .bottom)
-                    .opacity(0.94)
-            }
+            LinearGradient(
+                colors: scheme == .light
+                    ? [Color(red: 0.957, green: 0.961, blue: 0.980), Color(red: 0.925, green: 0.932, blue: 0.962)]
+                    : [Color(red: 0.090, green: 0.094, blue: 0.118), Color(red: 0.063, green: 0.067, blue: 0.086)],
+                startPoint: .top, endPoint: .bottom)
+                .opacity(scheme == .light ? 0.94 : 0.96)
         }
     }
 }
@@ -71,11 +71,11 @@ private struct PanelStyle: ViewModifier {
     func body(content: Content) -> some View {
         let light = scheme == .light
         content
-            .background(Color(nsColor: .textBackgroundColor).opacity(light ? 1 : 0.92))
+            .background((light ? Color(nsColor: .textBackgroundColor) : Color(red: 0.118, green: 0.122, blue: 0.149)))
             .clipShape(RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous)
-                .strokeBorder(Color.primary.opacity(light ? 0.11 : 0.08), lineWidth: 1))
-            .shadow(color: .black.opacity(light ? 0.09 : 0.07), radius: light ? 14 : 12, y: light ? 5 : 4)
+                .strokeBorder(Color.primary.opacity(light ? 0.11 : 0.12), lineWidth: 1))
+            .shadow(color: .black.opacity(light ? 0.09 : 0.35), radius: light ? 14 : 16, y: light ? 5 : 6)
     }
 }
 
@@ -86,8 +86,8 @@ private struct PillStyle: ViewModifier {
         let light = scheme == .light
         content
             .padding(.horizontal, 11).padding(.vertical, 6)
-            .background(light ? Color.white.opacity(0.8) : Color.primary.opacity(0.06), in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(light ? 0.12 : 0.06)))
+            .background(light ? Color.white.opacity(0.8) : Color.primary.opacity(0.09), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(light ? 0.12 : 0.12)))
             .shadow(color: .black.opacity(light ? 0.05 : 0), radius: 2, y: 1)
     }
 }
