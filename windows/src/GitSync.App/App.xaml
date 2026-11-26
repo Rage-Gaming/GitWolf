@@ -1,0 +1,87 @@
+<Application
+    x:Class="GitSync.App.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary>
+                    <ResourceDictionary.ThemeDictionaries>
+                        <ResourceDictionary x:Key="Light">
+                            <SolidColorBrush x:Key="PillFillBrush" Color="#0D000000" />
+                            <SolidColorBrush x:Key="PillBorderBrush" Color="#17000000" />
+                            <SolidColorBrush x:Key="TabSelectedBrush" Color="#FFFFFF" />
+                            <SolidColorBrush x:Key="AccentLabelBrush" Color="#1F80FF" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#0E000000" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#291F80FF" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#331F80FF" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#331F80FF" />
+                            <SolidColorBrush x:Key="CanvasBrush" Color="#F1F2F8" />
+                            <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
+                            <SolidColorBrush x:Key="PanelBorderBrush" Color="#1C000000" />
+                        </ResourceDictionary>
+                        <ResourceDictionary x:Key="Default">
+                            <SolidColorBrush x:Key="PillFillBrush" Color="#12FFFFFF" />
+                            <SolidColorBrush x:Key="PillBorderBrush" Color="#1AFFFFFF" />
+                            <SolidColorBrush x:Key="TabSelectedBrush" Color="#101116" />
+                            <SolidColorBrush x:Key="AccentLabelBrush" Color="#2F8BFF" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#0EFFFFFF" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#291F80FF" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#331F80FF" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#331F80FF" />
+                            <SolidColorBrush x:Key="CanvasBrush" Color="#13141A" />
+                            <SolidColorBrush x:Key="PanelBrush" Color="#1E1F26" />
+                            <SolidColorBrush x:Key="PanelBorderBrush" Color="#1FFFFFFF" />
+                        </ResourceDictionary>
+                    </ResourceDictionary.ThemeDictionaries>
+                </ResourceDictionary>
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Default accent: blue (Settings will make this selectable). -->
+            <Color x:Key="SystemAccentColor">#1F80FF</Color>
+            <Color x:Key="SystemAccentColorLight1">#3D91FF</Color>
+            <Color x:Key="SystemAccentColorLight2">#5AA2FF</Color>
+            <Color x:Key="SystemAccentColorLight3">#8FC0FF</Color>
+            <Color x:Key="SystemAccentColorDark1">#1A6FE0</Color>
+            <Color x:Key="SystemAccentColorDark2">#145BBA</Color>
+            <Color x:Key="SystemAccentColorDark3">#0F4690</Color>
+
+            <CornerRadius x:Key="ListViewItemCornerRadius">10</CornerRadius>
+            <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+
+            <Style x:Key="PillButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource PillFillBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource PillBorderBrush}" />
+                <Setter Property="CornerRadius" Value="16" />
+                <Setter Property="Height" Value="32" />
+                <Setter Property="Padding" Value="13,0" />
+            </Style>
+            <!-- Borderless button that only shows a fill on hover. -->
+            <Style x:Key="PlainButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="MinWidth" Value="0" />
+            </Style>
+
+            <Style x:Key="RailBadgeStyle" TargetType="Border">
+                <Setter Property="BorderBrush" Value="{ThemeResource CanvasBrush}" />
+                <Setter Property="BorderThickness" Value="2" />
+                <Setter Property="CornerRadius" Value="11" />
+                <Setter Property="MinWidth" Value="22" />
+                <Setter Property="Height" Value="22" />
+                <Setter Property="Padding" Value="4,0" />
+            </Style>
+
+            <!-- Floating panel (docs/DESIGN.md): flat surface, 1px border, rounded. -->
+            <Style x:Key="PanelStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource PanelBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource PanelBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="16" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
