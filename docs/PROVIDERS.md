@@ -89,6 +89,23 @@ Parsers are pure functions over JSON (`parseGitHub`, `parseGitLab`, `parseGitea`
 `parseBitbucketServer`); port them with the fixtures in `ProviderTests`. Bitbucket puts the username
 into https clone URLs; strip it so our credential is used.
 
+## Pull requests and issues
+
+Reference: end of `ProviderClient.swift` (`CollabItem`, `ProviderClient.collab`, `parse*Collab`),
+`apple/Sources/GitSyncApp/Collab.swift` (state) and `Views/CollabViews.swift` (UI). Page size 30,
+1-based `page`. Normalised model: number, title, author, state (open/closed/merged), draft, labels,
+comment count, created/updated, web URL, body, source/target branch.
+
+| Kind | Pull requests | Issues |
+|---|---|---|
+| GitHub | `GET /repos/{o}/{r}/pulls?state=open\|closed\|all&sort=updated&direction=desc` (merged = `merged_at` set) | `GET /repos/{o}/{r}/issues?state=…`; **drop items that have a `pull_request` key** |
+| GitLab | `GET /projects/{url-encoded path}/merge_requests?state=opened\|closed\|merged\|all&order_by=updated_at` (the *Closed* filter calls `closed` and `merged`, merges the lists by date) | `…/issues?state=opened\|closed\|all` |
+| Gitea | `GET /repos/{o}/{r}/pulls?state=…&sort=recentupdate&limit=30` (`merged` bool; draft = `WIP:`/`Draft:` title prefix) | `GET /repos/{o}/{r}/issues?type=issues&state=…` |
+| Bitbucket Cloud | `GET /repositories/{w}/{r}/pullrequests?state=OPEN` (closed = `MERGED`+`DECLINED`) | not offered (issue tracker is optional) |
+| Bitbucket DC, Azure | not offered | not offered |
+
+With no account for the host, send the request without an `Authorization` header (public data).
+
 ## Remote URL parsing and web links
 
 `RemoteLocation.parse` handles `https://`, `http://`, `ssh://`, `git://`, scp-style

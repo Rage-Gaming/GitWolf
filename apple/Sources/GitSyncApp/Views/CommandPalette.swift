@@ -31,6 +31,12 @@ struct CommandPalette: View {
                 Item(id: "history", title: "Show History", subtitle: "View", icon: "clock.arrow.circlepath") { s.mode = .history },
                 Item(id: "changes", title: "Show Changes", subtitle: "View", icon: "square.and.pencil") { s.mode = .changes },
             ]
+            if s.supports(.pullRequest) {
+                all.append(Item(id: "show-prs", title: "Show \(s.pullRequestsTitle)", subtitle: "View", icon: "arrow.triangle.pull") { s.mode = .pullRequests })
+            }
+            if s.supports(.issue) {
+                all.append(Item(id: "show-issues", title: "Show Issues", subtitle: "View", icon: "smallcircle.filled.circle") { s.mode = .issues })
+            }
             if s.webLinks != nil {
                 let site = s.providerTitle ?? "Web"
                 all += [

@@ -109,6 +109,22 @@ Full details in [PROVIDERS.md](PROVIDERS.md). Summary:
 - Authenticated fetch/pull/push/clone through `GIT_ASKPASS`.
 - Browse and clone repositories from an account; "Open on web" links (repo, branch, new PR/MR, commit).
 
+## 8b. Pull requests and issues
+
+- Tabs **Pulls** (**Merges** on GitLab) and **Issues** appear next to History/Changes when the
+  origin remote is on a supported provider (GitHub, GitLab, Gitea/Forgejo; Bitbucket Cloud pull
+  requests only). Also in the ⌘K palette and the Repository menu.
+- List: Open / Closed / All filter, search (title, author, number, label; filters loaded items),
+  30 per page with "Load more", reload button, state icon (open green, draft grey, merged purple,
+  closed red), `#number · author · age`, comment count, label chips.
+- Detail: title, state badge, branches (`source → target`), labels, description (inline markdown),
+  Open on web, Copy link, and **Check Out Branch** when the PR's source branch exists as a remote
+  branch.
+- Public repositories work without an account (rate-limited); private ones use the connected account.
+  Errors say whether to add an account. Stale responses are dropped; data older than 60 s reloads
+  when the tab opens.
+- API details in [PROVIDERS.md](PROVIDERS.md#pull-requests-and-issues).
+
 ## 9. Keyboard shortcuts (macOS; map ⌘ to Ctrl on Windows/Linux)
 
 | Action | Keys |

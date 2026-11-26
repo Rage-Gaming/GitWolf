@@ -11,5 +11,5 @@
 - Submodules and worktrees
 - Git LFS indicators
 - Bundled OAuth client IDs for github.com, gitlab.com and codeberg.org; OAuth for Bitbucket and Azure DevOps
-- Pull-request, issue and CI status lists
+- Create/comment/review pull requests and issues in-app; CI status; issues for Bitbucket and Azure DevOps
 - Windows and Linux native clients (see [PORTING.md](PORTING.md))

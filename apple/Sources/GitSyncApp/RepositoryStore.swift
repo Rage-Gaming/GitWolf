@@ -25,7 +25,7 @@ private final class TaskBag: @unchecked Sendable {
 /// always converges on the real repository state.
 @MainActor @Observable
 final class RepositoryStore: Identifiable {
-    enum Mode: Hashable { case history, changes }
+    enum Mode: Hashable { case history, changes, pullRequests, issues }
 
     private let baseRepo: GitRepository
     /// The repository with the user's current settings (git path, diff context) applied.
@@ -81,9 +81,44 @@ final class RepositoryStore: Identifiable {
 
     // MARK: Lifecycle
 
+    let pullRequests = CollabStore(kind: .pullRequest)
+    let issues = CollabStore(kind: .issue)
+
+    func collab(_ kind: CollabKind) -> CollabStore { kind == .pullRequest ? pullRequests : issues }
+
+    /// Whether this repository's remote is on a provider whose pull requests / issues we can list.
+    func supports(_ kind: CollabKind) -> Bool {
+        guard let location = remoteLocation, let provider = providerKind else { return false }
+        let host = AccountStorage.account(forHost: location.host)?.host ?? location.host
+        return provider.supportsCollab(kind, host: host)
+    }
+
+    /// "Pull Requests" or "Merge Requests" depending on the provider.
+    var pullRequestsTitle: String { webLinks?.pullRequestsWord.appending("s") ?? "Pull Requests" }
+
+    private func collabContext() -> (account: ProviderAccount, path: String)? {
+        guard let location = remoteLocation, let provider = providerKind else { return nil }
+        let account = AccountStorage.account(forHost: location.host) ?? ProviderAccount(kind: provider, host: location.host, username: "")
+        return (account, location.path)
+    }
+
     func start() {
         guard !started else { return }
         started = true
+        pullRequests.context = { [weak self] in self?.collabContext() }
+        #if DEBUG
+        if let requested = ProcessInfo.processInfo.environment["GITSYNC_MODE"] {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                switch requested {
+                case "pulls": mode = .pullRequests
+                case "issues": mode = .issues
+                default: break
+                }
+            }
+        }
+        #endif
+        issues.context = { [weak self] in self?.collabContext() }
         requestRefresh()
         refreshRemoteLocation()
 
@@ -249,6 +284,8 @@ final class RepositoryStore: Identifiable {
                     // Commits are immutable; nothing to reload.
                 } else { clearSelection() }
             }
+        case .pullRequests, .issues:
+            break
         }
     }
 

@@ -173,6 +173,12 @@ struct AppCommands: Commands {
                 .keyboardShortcut("1", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
             Button("Show Changes") { workspace?.selected?.mode = .changes }
                 .keyboardShortcut("2", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            if let store = workspace?.selected, store.supports(.pullRequest) {
+                Button("Show \(store.pullRequestsTitle)") { store.mode = .pullRequests }
+            }
+            if let store = workspace?.selected, store.supports(.issue) {
+                Button("Show Issues") { store.mode = .issues }
+            }
         }
         CommandMenu("Repositories") {
             Button("Next Repository") { workspace?.cycle(1) }

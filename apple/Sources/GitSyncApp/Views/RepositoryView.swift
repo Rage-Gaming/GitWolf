@@ -57,6 +57,8 @@ struct RepositoryView: View {
         switch store.mode {
         case .history: HistoryView(store: store)
         case .changes: ChangesView(store: store)
+        case .pullRequests: CollabListView(store: store, collab: store.pullRequests)
+        case .issues: CollabListView(store: store, collab: store.issues)
         }
     }
 
@@ -75,6 +77,8 @@ struct RepositoryView: View {
         switch store.mode {
         case .history: CommitDetailView(store: store)
         case .changes: DiffPane(diff: store.diff, path: store.selectedTarget?.path, staging: staging)
+        case .pullRequests: CollabDetailView(store: store, collab: store.pullRequests)
+        case .issues: CollabDetailView(store: store, collab: store.issues)
         }
     }
 }
@@ -137,6 +141,10 @@ struct TopBar: View {
         HStack(spacing: 2) {
             tab("History", "clock.arrow.circlepath", .history, badge: nil)
             tab("Changes", "square.and.pencil", .changes, badge: store.status.changeCount)
+            if store.supports(.pullRequest) {
+                tab(store.webLinks?.pullRequestsWord == "Merge Request" ? "Merges" : "Pulls", "arrow.triangle.pull", .pullRequests, badge: nil)
+            }
+            if store.supports(.issue) { tab("Issues", "smallcircle.filled.circle", .issues, badge: nil) }
         }
         .padding(3)
         .background(Color.primary.opacity(0.07), in: Capsule())

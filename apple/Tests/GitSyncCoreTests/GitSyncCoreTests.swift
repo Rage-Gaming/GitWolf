@@ -560,3 +560,73 @@ import Testing
         #expect(script.requests[0].value(forHTTPHeaderField: "PRIVATE-TOKEN") == nil)
     }
 }
+
+@Suite struct CollabTests {
+    private final class Log: @unchecked Sendable {
+        private let lock = NSLock()
+        private var urls: [URLRequest] = []
+        var requests: [URLRequest] { lock.withLock { urls } }
+        func add(_ r: URLRequest) { lock.withLock { urls.append(r) } }
+    }
+
+    private func client(_ kind: ProviderKind, host: String? = nil, token: String = "t", body: @escaping @Sendable (URLRequest) -> String, log: Log = Log()) -> ProviderClient {
+        let account = ProviderAccount(kind: kind, host: host ?? kind.defaultHost, username: "me")
+        return ProviderClient(account: account, token: token) { r in
+            log.add(r)
+            return (Data(body(r).utf8), HTTPURLResponse(url: r.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+    }
+
+    @Test func githubPullRequestsAndIssues() async throws {
+        let log = Log()
+        let prs = client(.github, body: { _ in
+            #"[{"number":7,"title":"Add thing","user":{"login":"ann"},"state":"closed","merged_at":"2026-01-02T03:04:05Z","draft":false,"labels":[{"name":"bug"}],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T03:04:05Z","html_url":"https://github.com/o/r/pull/7","body":"hi","head":{"ref":"feat"},"base":{"ref":"main"}},{"number":8,"title":"WIP","user":{"login":"bob"},"state":"open","draft":true,"labels":[]}]"#
+        }, log: log)
+        let items = try await prs.collab(.pullRequest, repoPath: "o/r", filter: .closed, page: 2)
+        #expect(items.map(\.number) == [7, 8] && items[0].state == .merged && items[1].isDraft && items[1].state == .open)
+        #expect(items[0].sourceBranch == "feat" && items[0].targetBranch == "main" && items[0].labels == ["bug"])
+        let url = log.requests[0].url?.absoluteString ?? ""
+        #expect(url.hasPrefix("https://api.github.com/repos/o/r/pulls?state=closed") && url.contains("page=2"))
+
+        let issues = client(.github, body: { _ in
+            #"[{"number":1,"title":"Bug","user":{"login":"a"},"state":"open","comments":3},{"number":2,"title":"A PR","state":"open","pull_request":{}}]"#
+        })
+        let list = try await issues.collab(.issue, repoPath: "o/r", filter: .open, page: 1)
+        #expect(list.map(\.number) == [1] && list[0].comments == 3)  // the pull request is filtered out
+    }
+
+    @Test func gitlabMergeRequestsEncodeProjectAndMergeStates() async throws {
+        let log = Log()
+        let c = client(.gitlab, host: "git.acme.io", body: { r in
+            r.url!.absoluteString.contains("state=merged")
+                ? #"[{"iid":4,"title":"Merged one","state":"merged","author":{"username":"zed"},"updated_at":"2026-02-02T00:00:00Z","source_branch":"a","target_branch":"main","labels":["x"],"user_notes_count":2}]"#
+                : #"[{"iid":5,"title":"Closed one","state":"closed","updated_at":"2026-03-02T00:00:00Z"}]"#
+        }, log: log)
+        let items = try await c.collab(.pullRequest, repoPath: "grp/sub/proj", filter: .closed, page: 1)
+        #expect(items.map(\.number) == [5, 4] && items[1].state == .merged && items[1].comments == 2)  // newest first
+        #expect(log.requests.count == 2)
+        #expect(log.requests[0].url?.absoluteString.contains("/projects/grp%2Fsub%2Fproj/merge_requests") == true)
+        #expect(log.requests[0].value(forHTTPHeaderField: "PRIVATE-TOKEN") == "t")
+    }
+
+    @Test func giteaAndBitbucket() async throws {
+        let gitea = client(.gitea, body: { _ in #"[{"number":3,"title":"WIP: x","state":"open","merged":false,"user":{"login":"u"},"head":{"ref":"h"},"base":{"ref":"main"}}]"# })
+        let g = try await gitea.collab(.pullRequest, repoPath: "u/r", filter: .open, page: 1)
+        #expect(g.first?.isDraft == true && g.first?.sourceBranch == "h")
+
+        let log = Log()
+        let bb = client(.bitbucket, body: { _ in #"{"values":[{"id":9,"title":"BB","state":"DECLINED","author":{"display_name":"Dee"},"source":{"branch":{"name":"s"}},"destination":{"branch":{"name":"main"}},"links":{"html":{"href":"https://bitbucket.org/w/r/pull-requests/9"}}}]}"# }, log: log)
+        let b = try await bb.collab(.pullRequest, repoPath: "w/r", filter: .closed, page: 1)
+        #expect(b.first?.state == .closed && b.first?.author == "Dee" && b.first?.url?.lastPathComponent == "9")
+        #expect(log.requests[0].url?.absoluteString.contains("state=MERGED&state=DECLINED") == true)
+        await #expect(throws: ProviderError.self) { try await bb.collab(.issue, repoPath: "w/r", filter: .open, page: 1) }
+    }
+
+    @Test func publicAccessSendsNoCredentials() async throws {
+        let log = Log()
+        let c = client(.github, token: "", body: { _ in "[]" }, log: log)
+        _ = try await c.collab(.pullRequest, repoPath: "o/r", filter: .open, page: 1)
+        #expect(log.requests[0].value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(ProviderKind.azure.supportsCollab(.issue, host: "dev.azure.com") == false)
+    }
+}
