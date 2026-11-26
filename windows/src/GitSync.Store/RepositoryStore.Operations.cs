@@ -85,20 +85,38 @@ public sealed partial class RepositoryStore
         return PerformAsync(label, r => r.ApplyAsync(patch, action));
     }
 
+    public Task<bool> ContinueOperationAsync() => OnOperationAsync("Continuing…", (r, o) => r.ContinueOperationAsync(o));
+    public Task<bool> SkipOperationAsync() => OnOperationAsync("Skipping…", (r, o) => r.SkipOperationAsync(o));
+    /// <summary>Destructive: the UI must confirm first.</summary>
+    public Task<bool> AbortOperationAsync() => OnOperationAsync("Aborting…", (r, o) => r.AbortOperationAsync(o));
+
+    private Task<bool> OnOperationAsync(string label, Func<GitRepository, InProgressOperation, Task> run) =>
+        Operation is { } operation ? PerformAsync(label, r => run(r, operation)) : Task.FromResult(false);
+
+    public Task<bool> ResolveConflictAsync(string path, string content, string expected) =>
+        PerformAsync("Resolving…", r => r.ResolveConflictAsync(path, content, expected));
+
+    public Task<bool> ResolveConflictAsync(string path, ConflictSide side) =>
+        PerformAsync("Resolving…", r => r.ResolveConflictAsync(path, side));
+
     public Task<bool> FetchAsync() => PerformAsync("Fetching…", r => r.FetchAsync());
 
     /// <summary>A pull that local work is in the way of sets <see cref="PullBlock"/> rather than an error.</summary>
-    public Task<bool> PullAsync() => PerformAsync("Pulling…", r => r.PullAsync(), e =>
+    public Task<bool> PullAsync()
     {
-        if (e is not GitException git || Core.PullBlock.Parse(git.Stderr) is not { } block) return false;
-        PullBlock = block;
-        return true;
-    });
+        var rebase = _settings.PullRebase;
+        return PerformAsync(rebase ? "Pulling (rebase)…" : "Pulling…", r => r.PullAsync(rebase), e =>
+        {
+            if (e is not GitException git || Core.PullBlock.Parse(git.Stderr) is not { } block) return false;
+            PullBlock = block;
+            return true;
+        });
+    }
 
     public async Task<bool> StashAndPullAsync()
     {
-        var restored = false;
-        if (!await PerformAsync("Stashing and pulling…", async r => restored = await r.PullWithStashAsync()))
+        var (restored, rebase) = (false, _settings.PullRebase);
+        if (!await PerformAsync("Stashing and pulling…", async r => restored = await r.PullWithStashAsync(rebase)))
             return false;
         if (!restored)
             ErrorMessage = "The pull finished, but your changes conflict with the new commits. "
@@ -113,6 +131,20 @@ public sealed partial class RepositoryStore
         return PerformAsync("Pushing…", r => r.PushAsync(status, remotes));
     }
 
+    public Task<bool> PushTagAsync(string name, string remote) =>
+        PerformAsync("Pushing tag…", r => r.PushTagAsync(name, remote));
+
+    public Task<bool> PushAllTagsAsync(string remote) =>
+        PerformAsync("Pushing tags…", r => r.PushAllTagsAsync(remote));
+
+    /// <summary>Destructive: the UI must confirm first.</summary>
+    public Task<bool> DeleteRemoteTagAsync(string name, string remote) =>
+        PerformAsync($"Deleting on {remote}…", r => r.DeleteRemoteTagAsync(name, remote));
+
+    /// <summary>Destructive: the UI must confirm first.</summary>
+    public Task<bool> DeleteRemoteBranchAsync(string remote, string branch) =>
+        PerformAsync($"Deleting on {remote}…", r => r.DeleteRemoteBranchAsync(remote, branch));
+
     public Task<bool> StageAsync(IReadOnlyList<string> paths) => PerformAsync("Staging…", r => r.StageAsync(paths));
     public Task<bool> UnstageAsync(IReadOnlyList<string> paths) => PerformAsync("Unstaging…", r => r.UnstageAsync(paths));
     public Task<bool> StageAllAsync() => PerformAsync("Staging…", r => r.StageAllAsync());
@@ -126,14 +158,28 @@ public sealed partial class RepositoryStore
     }
 
     /// <summary>The draft is cleared only when the commit succeeds.</summary>
-    public async Task<bool> CommitAsync()
+    public async Task<bool> CommitAsync(bool? sign = null, bool skipHooks = false)
     {
         var (message, amend) = (DraftMessage, Amend);
-        if (!await PerformAsync("Committing…", r => r.CommitAsync(message, amend))) return false;
+        if (!await PerformAsync("Committing…", r => r.CommitAsync(message, amend, sign, skipHooks), e =>
+            {
+                if (e is not HookFailedException hook) return false;
+                HookFailure = new HookFailure(hook.Hook, hook.Output, sign);
+                return true;
+            }))
+            return false;
         DraftMessage = "";
         Amend = false;
         return true;
     }
+
+    /// <param name="untrack">A tracked path to remove from the index so the rule takes effect.</param>
+    public Task<bool> IgnoreAsync(string pattern, bool local, string? untrack) =>
+        PerformAsync("Ignoring…", async r =>
+        {
+            await r.AddIgnoreRuleAsync(pattern, local);
+            if (untrack is not null) await r.StopTrackingAsync(untrack);
+        });
 
     public Task<bool> CheckoutAsync(Branch branch) => PerformAsync("Switching…", r => r.CheckoutAsync(branch));
     public Task<bool> CheckoutCommitAsync(string hash) => PerformAsync("Checking out…", r => r.CheckoutCommitAsync(hash));

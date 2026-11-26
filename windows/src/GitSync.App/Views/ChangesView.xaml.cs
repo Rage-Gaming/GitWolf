@@ -30,6 +30,7 @@ public sealed partial class ChangesView : UserControl
         _syncing = false;
         ShowFiles();
         ShowDraft();
+        _ = LoadSigningAsync(store);
     }
 
     internal void ShowFiles()
@@ -78,6 +79,7 @@ public sealed partial class ChangesView : UserControl
     internal void ShowCommitState()
     {
         if (_store is not { } store) return;
+        ShowSubjectWarning(store.DraftMessage);
         var hasMessage = !string.IsNullOrWhiteSpace(store.DraftMessage);
         CommitButton.IsEnabled = !store.IsBusy && store.Status.Conflicted.Count == 0
             && (store.Amend || (hasMessage && store.Status.Staged.Count > 0));
@@ -140,11 +142,20 @@ public sealed partial class ChangesView : UserControl
         var staged = row.Source == DiffSource.Staged;
         // A staged rename must unstage both of its paths.
         string[] paths = file.OriginalPath is { } from && staged ? [from, file.Path] : [file.Path];
-        if (staged) Add("Unstage", () => _ = store.UnstageAsync(paths));
+        if (row.Source == DiffSource.Conflicted)
+        {
+            Add("Resolve using ours", () => _ = store.ResolveConflictAsync(file.Path, ConflictSide.Ours));
+            Add("Resolve using theirs", () => _ = store.ResolveConflictAsync(file.Path, ConflictSide.Theirs));
+        }
+        else if (staged) Add("Unstage", () => _ = store.UnstageAsync(paths));
         else Add("Stage", () => _ = store.StageAsync(paths));
         var untracked = row.Source == DiffSource.Untracked;
         if (untracked || row.Source == DiffSource.Unstaged)
             Add("Discard changes\u2026", () => _ = DiscardAsync(store, file, untracked));
+        if (row.Source != DiffSource.Conflicted)
+            menu.Items.Add(IgnoreMenu(store, file, tracked: !untracked));
+        if (!untracked)
+            Add("History & blame\u2026", () => _ = FileHistoryDialog.ShowAsync(XamlRoot, store, file.Path));
         Add("Copy path", () => Dialogs.Copy(file.Path));
 
         e.Handled = true;
@@ -164,16 +175,10 @@ public sealed partial class ChangesView : UserControl
             await store.DiscardAsync([file], untracked);
     }
 
-    private void OnMessageChanged(object sender, TextChangedEventArgs e)
-    {
-        if (_store is not { } store) return;
-        store.DraftMessage = Normalize(Message.Text);
-    }
 
     private void OnAmend(object sender, RoutedEventArgs e)
     {
         if (_store is { } store) store.Amend = Amend.IsChecked == true;
     }
 
-    private void OnCommit(object sender, RoutedEventArgs e) => _ = _store?.CommitAsync();
 }

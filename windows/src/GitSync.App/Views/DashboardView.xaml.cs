@@ -9,7 +9,7 @@ namespace GitSync.App.Views;
 
 /// <summary>
 /// Shown when no repository is selected: open something or jump back into recents. Ported from
-/// DashboardView.swift (clone and create not yet).
+/// DashboardView.swift.
 /// </summary>
 public sealed partial class DashboardView : UserControl
 {
@@ -44,6 +44,8 @@ public sealed partial class DashboardView : UserControl
 
     internal event Action? OpenRequested;
     internal event Action? JumpRequested;
+    internal event Action? CloneRequested;
+    internal event Action? NewRequested;
     internal event Action<IReadOnlyList<string>>? PathsRequested;
 
     internal void Show(IReadOnlyList<string> recents)
@@ -129,6 +131,10 @@ public sealed partial class DashboardView : UserControl
     }
 
     private void OnOpen(object sender, RoutedEventArgs e) => OpenRequested?.Invoke();
+
+    private void OnClone(object sender, RoutedEventArgs e) => CloneRequested?.Invoke();
+
+    private void OnNew(object sender, RoutedEventArgs e) => NewRequested?.Invoke();
 
     private void OnJump(object sender, RoutedEventArgs e) => JumpRequested?.Invoke();
 

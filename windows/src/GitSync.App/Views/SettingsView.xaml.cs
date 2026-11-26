@@ -90,7 +90,9 @@ public sealed partial class SettingsView : UserControl
         Group("Sync",
             Row("Background fetch", "Keeps ahead/behind counts up to date", Picker(s.AutoFetchMinutes,
                 [("Never", 0), ("Every minute", 1), ("Every 5 minutes", 5), ("Every 15 minutes", 15), ("Every 30 minutes", 30)],
-                v => Set(x => x with { AutoFetchMinutes = v }))));
+                v => Set(x => x with { AutoFetchMinutes = v }))),
+            Row("Pull strategy", "Rebase keeps history linear; merge keeps a merge commit", Picker(s.PullRebase,
+                [("Merge", false), ("Rebase", true)], v => Set(x => x with { PullRebase = v }))));
 
         var syntax = new ToggleSwitch { IsOn = s.SyntaxHighlighting, MinWidth = 0, OnContent = null, OffContent = null };
         syntax.Toggled += (_, _) => Set(x => x with { SyntaxHighlighting = syntax.IsOn });

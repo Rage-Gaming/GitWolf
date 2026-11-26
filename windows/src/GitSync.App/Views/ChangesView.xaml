@@ -28,10 +28,25 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <StackPanel Grid.Row="1" Margin="12" Spacing="8">
                 <TextBox x:Name="Message" PlaceholderText="Commit message" AcceptsReturn="True" TextWrapping="Wrap"
-                         Height="90" TextChanged="OnMessageChanged" />
-                <Grid>
-                    <CheckBox x:Name="Amend" Content="Amend last commit" Click="OnAmend" />
-                    <Button x:Name="CommitButton" Content="Commit" HorizontalAlignment="Right"
+                         Height="90" TextChanged="OnMessageChanged" PreviewKeyDown="OnMessageKey" />
+                <TextBlock x:Name="SubjectWarning" FontSize="12" TextWrapping="Wrap" Visibility="Collapsed"
+                           Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                <Grid ColumnSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <CheckBox x:Name="Sign" Content="Sign commit" Grid.Row="1" MinWidth="0" Click="OnSign"
+                              Visibility="Collapsed" />
+                    <Button Content="Message" Grid.Column="1" Grid.Row="1" HorizontalAlignment="Right"
+                            Click="OnMessageMenu" />
+                    <CheckBox x:Name="Amend" Content="Amend last commit" MinWidth="0" Click="OnAmend" />
+                    <Button x:Name="CommitButton" Content="Commit" Grid.Column="1" HorizontalAlignment="Stretch"
+                            ToolTipService.ToolTip="Commit (Ctrl+Enter)"
                             Style="{StaticResource AccentButtonStyle}" Click="OnCommit" />
                 </Grid>
             </StackPanel>

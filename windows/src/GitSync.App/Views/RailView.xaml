@@ -24,7 +24,7 @@
         <StackPanel Grid.Row="2" Spacing="10" Margin="0,8,0,14">
         <Button Width="44" Height="44" CornerRadius="16" Padding="0"
                 HorizontalAlignment="Center" Style="{StaticResource PillButtonStyle}" Click="OnAdd"
-                ToolTipService.ToolTip="Open a repository" AutomationProperties.Name="Add repository">
+                ToolTipService.ToolTip="Open, clone or create a repository" AutomationProperties.Name="Add repository">
             <PathIcon Data="F1 M8.68,2.42 L8.68,13.57 L7.33,13.57 L7.33,2.42ZM8.68,2.42 L8.48,2.9 L8,3.1 L7.52,2.9 L7.33,2.42 L7.52,1.95 L8,1.75 L8.48,1.95ZM8.68,13.57 L8.48,14.05 L8,14.25 L7.52,14.05 L7.33,13.57 L7.52,13.1 L8,12.9 L8.48,13.1ZM2.42,7.33 L13.57,7.33 L13.57,8.68 L2.42,8.68ZM3.1,8 L2.9,8.48 L2.42,8.68 L1.95,8.48 L1.75,8 L1.95,7.52 L2.42,7.33 L2.9,7.52ZM14.25,8 L14.05,8.48 L13.57,8.68 L13.1,8.48 L12.9,8 L13.1,7.52 L13.57,7.33 L14.05,7.52Z" Width="16" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{ThemeResource AccentLabelBrush}" />
         </Button>
         <Button Width="44" Height="44" CornerRadius="16" Padding="0" HorizontalAlignment="Center"

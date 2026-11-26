@@ -119,6 +119,17 @@ internal static class Dialogs
         }
     }
 
+    /// <summary>Aborting throws away conflict resolutions, so it asks first.</summary>
+    public static async Task AbortAsync(XamlRoot root, RepositoryStore store, InProgressOperation operation)
+    {
+        var what = operation.Kind == OperationKind.Merge ? "merge" : "operation";
+        if (await ConfirmAsync(root, $"Abort the {operation.Verb.ToLowerInvariant()}?",
+                $"Everything done by this {what} so far, including conflict resolutions, is thrown away and the "
+                    + "repository returns to how it was before.", "Abort and go back")
+            && store.Operation == operation)
+            await store.AbortOperationAsync();
+    }
+
     public static void Copy(string text)
     {
         var package = new DataPackage();

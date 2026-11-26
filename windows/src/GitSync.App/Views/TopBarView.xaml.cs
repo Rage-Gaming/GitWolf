@@ -26,9 +26,10 @@ public sealed partial class TopBarView : UserControl
         ShowBranchIcon(status.Branch);
         var history = store.Mode == StoreMode.History;
         HistorySelected.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
-        ChangesSelected.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
+        var changes = store.Mode == StoreMode.Changes;
+        ChangesSelected.Visibility = changes ? Visibility.Visible : Visibility.Collapsed;
         HistoryTab.Opacity = history ? 1 : 0.6;
-        ChangesTab.Opacity = history ? 0.6 : 1;
+        ChangesTab.Opacity = changes ? 1 : 0.6;
         Badge.Visibility = status.ChangeCount > 0 ? Visibility.Visible : Visibility.Collapsed;
         BadgeText.Text = status.ChangeCount.ToString();
         PullCount.Text = status.Behind > 0 ? status.Behind.ToString() : "";

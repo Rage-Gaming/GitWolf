@@ -132,11 +132,10 @@ public sealed partial class GitRepository
         Action<string>? onProgress = null,
         CancellationToken cancellationToken = default)
     {
-        var destination = Path.Combine(parent, name);
-        if (Directory.Exists(destination) && Directory.EnumerateFileSystemEntries(destination).Any())
-        {
-            throw new GitException("clone", 128, $"“{name}” already exists in that location and isn’t empty.");
-        }
+        var destination = NewFolder(parent, name);
+        // "ext::" and similar URLs name a command to run.
+        if (url.Contains("::", StringComparison.Ordinal) && !url.Contains("://", StringComparison.Ordinal))
+            throw new GitException("clone", 128, "That kind of URL isn’t supported because it can run commands.");
         var env = credential is not null && askpassPath is not null
             ? credential.Environment(askpassPath, url)
             : new Dictionary<string, string>();
@@ -144,6 +143,23 @@ public sealed partial class GitRepository
         await runner.RunAsync(["clone", "--progress", "--", url, name], onProgress: onProgress, cancellationToken: cancellationToken);
         return destination;
     }
+
+    /// <summary>The folder <paramref name="name"/> inside <paramref name="parent"/>, which must be new or empty.</summary>
+    private static string NewFolder(string parent, string name)
+    {
+        // A single folder name only, so nothing is written outside the chosen location.
+        if (name is "" or "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            throw new GitException("argument", 129, "Enter a folder name without slashes or other special characters.");
+        var destination = Path.Combine(parent, name);
+        if (File.Exists(destination)
+            || (Directory.Exists(destination) && Directory.EnumerateFileSystemEntries(destination).Any()))
+            throw new GitException("argument", 128, $"“{name}” already exists in that location and isn’t empty.");
+        return destination;
+    }
+
+    /// <summary>Initialises a repository in a new folder inside <paramref name="parent"/>.</summary>
+    public static async Task<string> CreateAsync(string parent, string name, string initialBranch, string? gitPath = null) =>
+        await InitializeAsync(NewFolder(parent, name), initialBranch, gitPath);
 
     /// <summary>Creates (if needed) <paramref name="directory"/> and initialises a repository in it.</summary>
     public static async Task<string> InitializeAsync(string directory, string initialBranch, string? gitPath = null)
@@ -180,6 +196,7 @@ public sealed partial class GitRepository
             Tags = await tagsTask,
             Stashes = await stashesTask,
             Remotes = remotes,
+            Operation = InProgressOperation(),
         };
     }
 
@@ -276,6 +293,10 @@ public sealed partial class GitRepository
                 var baseHash = await ParentOrEmptyTreeAsync(hash);
                 data = await Git.RunAsync([.. common, baseHash, hash, "--", .. paths], readOnly: true);
                 break;
+            case DiffSourceKind.Compare:
+                data = await Git.RunAsync(
+                    [.. common, target.Source.BaseHash!, target.Source.CommitHash!, "--", .. paths], readOnly: true);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(target));
         }
@@ -322,15 +343,6 @@ public sealed partial class GitRepository
     {
         if (tracked.Count > 0) await Git.RunAsync(["--literal-pathspecs", "restore", "--", .. tracked]);
         if (untracked.Count > 0) await Git.RunAsync(["--literal-pathspecs", "clean", "-f", "--", .. untracked]);
-    }
-
-    public async Task CommitAsync(string message, bool amend)
-    {
-        var args = new List<string> { "commit" };
-        if (amend) args.Add("--amend");
-        if (message.Trim().Length == 0) args.Add("--no-edit");
-        else args.AddRange(["-m", message]);
-        await Git.RunAsync(args);
     }
 
     // MARK: Branches
@@ -380,77 +392,6 @@ public sealed partial class GitRepository
         // and push keep hooks: Git LFS and users' own checks depend on them.
         var net = await NetworkGitAsync(disableHooks: true);
         await net.RunAsync(["fetch", "--all", "--prune"]);
-    }
-
-    public async Task PullAsync()
-    {
-        var net = await NetworkGitAsync();
-        try
-        {
-            await net.RunAsync(["pull", "--no-edit"]);
-        }
-        catch (GitException error) when (error.Stderr.Contains("divergent branches"))
-        {
-            await net.RunAsync(["pull", "--no-edit", "--no-rebase"]);
-        }
-    }
-
-    /// <summary>
-    /// Stashes local work (untracked files too), pulls, then puts the work back. The work is put
-    /// back when the pull fails as well. False means it couldn't be restored cleanly, in which case
-    /// git keeps the stash.
-    /// </summary>
-    public async Task<bool> PullWithStashAsync()
-    {
-        var before = await StashHashesAsync();
-        await StashPushAsync("Changes set aside to pull");
-        // Git succeeds without creating a stash when there is nothing it can save.
-        var mine = (await StashHashesAsync()).Except(before).FirstOrDefault();
-        try
-        {
-            await PullAsync();
-        }
-        catch (Exception pullError)
-        {
-            if (mine is not null && !await RestoreStashAsync(mine))
-                throw new InvalidOperationException(
-                    $"{pullError.Message}\n\nYour changes are saved in the stash list.", pullError);
-            throw;
-        }
-        return mine is null || await RestoreStashAsync(mine);
-    }
-
-    private async Task<List<string>> StashHashesAsync() =>
-        (await Git.RunStringAsync(["stash", "list", "--format=%H"], readOnly: true))
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-
-    private async Task<bool> RestoreStashAsync(string hash)
-    {
-        // Looked up again: other stashes may have been added since, shifting the numbers.
-        var index = (await StashHashesAsync()).IndexOf(hash);
-        if (index < 0) return false;
-        var reference = $"stash@{{{index}}}";
-        try
-        {
-            // --index also restores what was staged.
-            await Git.RunAsync(["stash", "pop", "--index", reference]);
-            return true;
-        }
-        catch (GitException)
-        {
-            // The staged state may no longer apply to the new files; the contents still might.
-        }
-        var unmerged = await Git.RunAsync(["diff", "--name-only", "--diff-filter=U"], readOnly: true);
-        if (unmerged.Length > 0) return false;
-        try
-        {
-            await Git.RunAsync(["stash", "pop", reference]);
-            return true;
-        }
-        catch (GitException)
-        {
-            return false;
-        }
     }
 
     public async Task PushAsync(WorkingStatus status, IReadOnlyList<string> remotes)

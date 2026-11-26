@@ -31,7 +31,9 @@ public sealed partial class MainWindow : Window
         _workspace = new Workspace(_settings, uri => _ = Launcher.LaunchUriAsync(uri));
         _workspace.Changed += Bind;
         Rail.Attach(_workspace);
-        Rail.AddRequested += () => _ = PickAsync();
+        Rail.AddRequested += ShowAddMenu;
+        Dashboard.CloneRequested += () => _ = CreateAsync(clone: true);
+        Dashboard.NewRequested += () => _ = CreateAsync(clone: false);
         TopBar.JumpRequested += OpenPalette;
         Dashboard.OpenRequested += () => _ = PickAsync();
         Dashboard.JumpRequested += OpenPalette;
@@ -102,6 +104,31 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ShowAddMenu(FrameworkElement anchor)
+    {
+        var menu = new MenuFlyout();
+        void Add(string text, Action action)
+        {
+            var item = new MenuFlyoutItem { Text = text };
+            item.Click += (_, _) => action();
+            menu.Items.Add(item);
+        }
+        Add("Open repository\u2026", () => _ = PickAsync());
+        Add("Clone repository\u2026", () => _ = CreateAsync(clone: true));
+        Add("New repository\u2026", () => _ = CreateAsync(clone: false));
+        menu.ShowAt(anchor);
+    }
+
+    private async Task CreateAsync(bool clone)
+    {
+        var window = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var git = _settings.CustomGitPath;
+        var folder = clone
+            ? await CreateDialogs.CloneAsync(Root.XamlRoot, window, git)
+            : await CreateDialogs.NewAsync(Root.XamlRoot, window, git);
+        if (folder is not null) await OpenAllAsync([folder]);
+    }
+
     /// <summary>One at a time, so each repository is added before the next is checked.</summary>
     private async Task OpenAllAsync(IReadOnlyList<string> paths)
     {
@@ -135,11 +162,19 @@ public sealed partial class MainWindow : Window
             ShowError(selected?.ErrorMessage);
             Title = selected is null ? "GitSync" : $"{selected.Name} — GitSync";
             if (selected?.PullBlock is not null) DispatcherQueue.TryEnqueue(ShowPullBlock);
+            if (selected?.HookFailure is not null) DispatcherQueue.TryEnqueue(ShowHookFailure);
         }
         ShowAll();
     }
 
     /// <summary>Asked once, for the repository on screen; one in the background asks when selected.</summary>
+    private void ShowHookFailure()
+    {
+        if (_store is not { HookFailure: { } failure } store) return;
+        store.HookFailure = null;
+        _ = CommitDialogs.HookFailedAsync(Root.XamlRoot, store, failure);
+    }
+
     private void ShowPullBlock()
     {
         if (_store is not { PullBlock: { } block } store) return;
@@ -158,10 +193,13 @@ public sealed partial class MainWindow : Window
         SetTitleBar(loaded ? (UIElement)TopBar.DragRegion : HomeDragArea);
         ShowBusy();
         if (store is null || !loaded) return;
+        Banner.Show(store);
 
         var history = store.Mode == StoreMode.History;
         History.Visibility = When(history);
-        Changes.Visibility = When(!history);
+        Changes.Visibility = When(store.Mode == StoreMode.Changes);
+        Compare.Visibility = When(store.Mode == StoreMode.Compare);
+        if (store.Mode == StoreMode.Compare) Compare.Show(store);
         TopBar.Show(store);
         History.ShowCommits();
         Changes.ShowFiles();
@@ -174,12 +212,21 @@ public sealed partial class MainWindow : Window
     {
         if (_store is not { } store) return;
         var history = store.Mode == StoreMode.History;
-        var noCommit = history && store.SelectedCommit is null;
+        var comparing = store.Mode == StoreMode.Compare;
+        // Nothing to show on the right until a commit, or a compared file, is picked.
+        var noCommit = (history && store.SelectedCommit is null) || (comparing && store.SelectedTarget is null);
+        NoCommit.Text = comparing ? "Select a file to see its changes" : "Select a commit to see its changes";
         Detail.Visibility = When(history && !noCommit);
-        Diff.Visibility = When(!noCommit);
+        // A conflicted file gets the resolver instead of its diff.
+        var conflict = !history && !comparing && store.SelectedTarget is { } target && target.Source == DiffSource.Conflicted
+            && store.Status.Conflicted.Any(f => f.Path == target.Path)
+                ? target.Path : null;
+        Diff.Visibility = When(!noCommit && conflict is null);
+        Conflict.Visibility = When(conflict is not null);
         NoCommit.Visibility = When(noCommit);
         if (history) Detail.Show(store);
-        Diff.Show(store);
+        Conflict.Show(store, conflict);
+        if (conflict is null) Diff.Show(store);
     }
 
     private static Visibility When(bool condition) => condition ? Visibility.Visible : Visibility.Collapsed;
@@ -217,9 +264,14 @@ public sealed partial class MainWindow : Window
             case nameof(RepositoryStore.Diff):
             case nameof(RepositoryStore.CanPatch):
             case nameof(RepositoryStore.LineSelection):
-                Diff.Show(store);
+                ShowDetail();
+                break;
+            case nameof(RepositoryStore.Operation):
+                Banner.Show(store);
                 break;
             case nameof(RepositoryStore.Status):
+                Banner.Show(store);
+                ShowDetail();
                 Changes.ShowFiles();
                 Sidebar.Show();
                 TopBar.Show(store);
@@ -242,9 +294,20 @@ public sealed partial class MainWindow : Window
                 ShowBusy();
                 TopBar.Show(store);
                 Changes.ShowCommitState();
+                Banner.Show(store);
+                Conflict.ShowState();
                 break;
             case nameof(RepositoryStore.ErrorMessage):
                 ShowError(store.ErrorMessage);
+                break;
+            case nameof(RepositoryStore.Comparison):
+                Compare.Show(store);
+                break;
+            case nameof(RepositoryStore.SearchResults):
+                History.ShowCommits();
+                break;
+            case nameof(RepositoryStore.HookFailure):
+                DispatcherQueue.TryEnqueue(ShowHookFailure);
                 break;
             case nameof(RepositoryStore.PullBlock):
                 // The dialog can start another pull, so wait until this one has finished.
@@ -278,6 +341,8 @@ public sealed partial class MainWindow : Window
         Add(VirtualKey.F, shifted, () => _ = Idle?.FetchAsync());
         Add(VirtualKey.L, shifted, () => _ = Idle?.PullAsync());
         Add(VirtualKey.P, shifted, () => _ = Idle?.PushAsync());
+        Add(VirtualKey.C, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu,
+            () => _ = Idle?.OpenCompareAsync());
     }
 
     /// <summary>The selected repository when it can take a new operation.</summary>
@@ -292,11 +357,24 @@ public sealed partial class MainWindow : Window
         {
             void Add(Icons.Shape glyph, string title, string subtitle, Action run) =>
                 items.Add(new PaletteItem(glyph, title, subtitle, run));
+            if (s.Operation is { } operation)
+            {
+                var verb = operation.Verb.ToLowerInvariant();
+                if (s.Status.Conflicted.Count == 0)
+                    Add(Icons.Changes, $"Continue {verb}", "Repository action", () => _ = s.ContinueOperationAsync());
+                Add(Icons.Changes, $"Abort {verb}\u2026", "Repository action",
+                    () => _ = Dialogs.AbortAsync(Root.XamlRoot, s, operation));
+            }
             Add(Icons.Fetch, "Fetch", "Repository action", () => _ = s.FetchAsync());
             Add(Icons.Pull, "Pull", "Repository action", () => _ = s.PullAsync());
             Add(Icons.Push, "Push", "Repository action", () => _ = s.PushAsync());
             Add(Icons.Plus, "New branch…", "Repository action",
                 () => _ = Dialogs.NewBranchAsync(Root.XamlRoot, s, null));
+            Add(Icons.Branch, "Compare refs\u2026", "Repository action", () => _ = s.OpenCompareAsync());
+            Add(Icons.History, "Reflog\u2026", "Repository action",
+                () => _ = HistoryDialogs.ReflogAsync(Root.XamlRoot, s));
+            Add(Icons.History, "Undo last change\u2026", "Repository action",
+                () => _ = HistoryDialogs.UndoAsync(Root.XamlRoot, s));
             Add(Icons.History, "Show history", "View", () => s.Mode = StoreMode.History);
             Add(Icons.Changes, "Show changes", "View", () => s.Mode = StoreMode.Changes);
             if (s.WebLinks is not null)
@@ -311,6 +389,8 @@ public sealed partial class MainWindow : Window
                 Add(Icons.Branch, branch.Name, "Check out branch", () => _ = s.CheckoutAsync(branch));
         }
         items.Add(new PaletteItem(Icons.Plus, "Open repository…", "Workspace", () => _ = PickAsync()));
+        items.Add(new PaletteItem(Icons.Plus, "Clone repository\u2026", "Workspace", () => _ = CreateAsync(clone: true)));
+        items.Add(new PaletteItem(Icons.Plus, "New repository\u2026", "Workspace", () => _ = CreateAsync(clone: false)));
         items.Add(new PaletteItem(Icons.Plus, "Settings\u2026", "App", Settings.Open));
         CommandPalette.Open(items);
     }

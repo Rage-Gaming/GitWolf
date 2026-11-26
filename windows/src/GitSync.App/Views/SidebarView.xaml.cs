@@ -151,6 +151,12 @@ public sealed partial class SidebarView : UserControl
             case { Kind: SidebarKind.LocalBranch, Branch: { } branch }:
                 Add("Checkout", () => _ = store.CheckoutAsync(branch), !branch.IsCurrent);
                 Add("Merge into current branch", () => _ = store.MergeAsync(branch.Name), !branch.IsCurrent);
+                Add("Compare with current branch",
+                    () => _ = store.OpenCompareAsync(store.Status.Branch ?? "HEAD", branch.Name), !branch.IsCurrent);
+                Add("Rebase current branch onto this\u2026", () => _ = ConfirmAsync(
+                    $"Rebase onto \u201c{branch.Name}\u201d?",
+                    "The current branch\u2019s commits are rewritten on top of it. Uncommitted work is kept.",
+                    "Rebase", () => store.RebaseOntoAsync(branch.Name)), !branch.IsCurrent && store.Operation is null);
                 Add("Delete branch…", () => _ = ConfirmAsync(
                     $"Delete branch “{branch.Name}”?", "Git refuses if it has unmerged commits.", "Delete",
                     () => store.DeleteBranchAsync(branch.Name)), !branch.IsCurrent);
@@ -158,9 +164,31 @@ public sealed partial class SidebarView : UserControl
             case { Kind: SidebarKind.RemoteBranch, Branch: { } remote }:
                 Add("Check out as local branch", () => _ = store.CheckoutAsync(remote));
                 Add("Merge into current branch", () => _ = store.MergeAsync(remote.Name));
+                Add("Compare with current branch",
+                    () => _ = store.OpenCompareAsync(store.Status.Branch ?? "HEAD", remote.Name));
+                Add("Rebase current branch onto this\u2026", () => _ = ConfirmAsync(
+                    $"Rebase onto \u201c{remote.Name}\u201d?",
+                    "The current branch\u2019s commits are rewritten on top of it. Uncommitted work is kept.",
+                    "Rebase", () => store.RebaseOntoAsync(remote.Name)), store.Operation is null);
+                if (GitSync.Core.GitRepository.SplitRemoteBranch(remote.Name, store.Remotes) is var (host, name))
+                    Add($"Delete on {host}…", () => _ = ConfirmAsync(
+                        $"Delete branch “{name}” on {host}?",
+                        "The branch is removed from the remote for everyone. Local branches are kept.",
+                        "Delete on remote", () => store.DeleteRemoteBranchAsync(host, name)));
                 break;
             case { Kind: SidebarKind.Tag }:
-                Add("Delete tag…", () => _ = ConfirmAsync(
+                foreach (var server in store.Remotes)
+                {
+                    Add($"Push to {server}", () => _ = store.PushTagAsync(row.Title, server));
+                    Add($"Delete on {server}…", () => _ = ConfirmAsync(
+                        $"Delete tag “{row.Title}” on {server}?",
+                        "The tag is removed from the remote for everyone. The local tag is kept.",
+                        "Delete on remote", () => store.DeleteRemoteTagAsync(row.Title, server)));
+                }
+                if (store.Tags.Count > 1)
+                    foreach (var server in store.Remotes)
+                        Add($"Push all tags to {server}", () => _ = store.PushAllTagsAsync(server));
+                Add("Delete local tag…", () => _ = ConfirmAsync(
                     $"Delete tag “{row.Title}”?", "The local tag is removed.", "Delete",
                     () => store.DeleteTagAsync(row.Title)));
                 break;

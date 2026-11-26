@@ -36,6 +36,8 @@
                             <TextBlock Text="Open Repository" FontWeight="SemiBold" />
                         </StackPanel>
                     </Button>
+                    <Button Content="Clone…" Height="36" Padding="14,0" CornerRadius="10" Click="OnClone" />
+                    <Button Content="New…" Height="36" Padding="14,0" CornerRadius="10" Click="OnNew" />
                     <Button Height="36" Padding="14,0" CornerRadius="10" Click="OnJump"
                             AutomationProperties.Name="Jump to">
                         <StackPanel Orientation="Horizontal" Spacing="8">

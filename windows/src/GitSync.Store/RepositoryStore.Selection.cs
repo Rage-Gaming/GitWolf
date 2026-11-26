@@ -26,7 +26,8 @@ public sealed partial class RepositoryStore
     public FileDiff? Diff { get; private set; }
     public IReadOnlySet<int> LineSelection { get; private set; } = new HashSet<int>();
 
-    public Commit? SelectedCommit => Commits.FirstOrDefault(c => c.Id == SelectedCommitId);
+    public Commit? SelectedCommit => Commits.FirstOrDefault(c => c.Id == SelectedCommitId)
+        ?? SearchResults?.FirstOrDefault(c => c.Id == SelectedCommitId);
 
     /// <summary>The latest diff / commit-detail load, so callers can await it.</summary>
     public Task PendingLoad { get; private set; } = Task.CompletedTask;
@@ -54,6 +55,8 @@ public sealed partial class RepositoryStore
             if (SelectedCommitId is not null && SelectedCommit is null) ClearSelection();
             return;
         }
+        // A comparison is between fixed commits, so its selection stays valid.
+        if (Mode == StoreMode.Compare) return;
 
         if (SelectedTarget is not { } target) return;
         (DiffSource Source, IReadOnlyList<FileChange> Files)[] areas =

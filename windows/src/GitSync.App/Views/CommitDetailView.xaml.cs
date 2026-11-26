@@ -1,10 +1,12 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
 using GitSync.App.Services;
 using GitSync.Core;
 using GitSync.Store;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
 namespace GitSync.App.Views;
@@ -47,6 +49,7 @@ public sealed partial class CommitDetailView : UserControl
             Avatar.Background = Palette.Avatar(commit.AuthorEmail);
             Hash.Text = commit.ShortHash;
             ShowParents(commit);
+            _ = ShowSignatureAsync(store, commit.Hash);
         }
 
         var source = DiffSource.ForCommit(commit.Hash);
@@ -76,6 +79,51 @@ public sealed partial class CommitDetailView : UserControl
             link.Click += (_, _) => _store?.Reveal(parent);
             Parents.Children.Add(link);
         }
+    }
+
+    private async Task ShowSignatureAsync(RepositoryStore store, string hash)
+    {
+        Signature.Visibility = Visibility.Collapsed;
+        try
+        {
+            var repo = store.Repo;
+            var signature = await Task.Run(() => repo.SignatureAsync(hash));
+            if (signature is null || _shownHash != hash || !ReferenceEquals(store, _store)) return;
+            var signer = signature.Signer.Length > 0 ? $" · {signature.Signer}" : "";
+            var key = signature.Key.Length > 0 ? $" · {signature.Key}" : "";
+            Signature.Text = signature.Title + signer + key;
+            Signature.Foreground = signature.State switch
+            {
+                SignatureState.Good => Palette.Green,
+                SignatureState.Bad or SignatureState.Revoked => Palette.Red,
+                _ => Palette.Orange,
+            };
+            Signature.Visibility = Visibility.Visible;
+        }
+        catch (Exception e)
+        {
+            Trace.TraceWarning($"Checking a signature failed: {e.GetType().Name}");
+        }
+    }
+
+    private void OnContext(UIElement sender, ContextRequestedEventArgs e)
+    {
+        var element = e.OriginalSource as DependencyObject;
+        while (element is not null and not ListViewItem) element = VisualTreeHelper.GetParent(element);
+        if (_store is not { } store || element is not ListViewItem item
+            || Files.ItemFromContainer(item) is not FileRow { File: { } file }) return;
+        var menu = new MenuFlyout();
+        void Add(string text, Action action)
+        {
+            var entry = new MenuFlyoutItem { Text = text };
+            entry.Click += (_, _) => action();
+            menu.Items.Add(entry);
+        }
+        Add("History & blame\u2026", () => _ = FileHistoryDialog.ShowAsync(XamlRoot, store, file.Path));
+        Add("Copy path", () => Dialogs.Copy(file.Path));
+        e.Handled = true;
+        if (e.TryGetPosition(item, out var point)) menu.ShowAt(item, point);
+        else menu.ShowAt(item);
     }
 
     private void OnCopy(object sender, RoutedEventArgs e)
