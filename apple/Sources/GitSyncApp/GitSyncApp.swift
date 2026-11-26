@@ -11,8 +11,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let path = ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT"] {
             let dark = ProcessInfo.processInfo.environment["GITSYNC_APPEARANCE"] == "dark"
             NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            let wantSettings = ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT_WINDOW"] == "settings"
+            if wantSettings {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    if let menu = NSApp.mainMenu?.items.first?.submenu,
+                       let i = menu.items.firstIndex(where: { $0.title.hasPrefix("Settings") }) {
+                        menu.performActionForItem(at: i)
+                    }
+                }
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
-                let window = NSApp.windows.first { $0.canBecomeMain && $0.isVisible }
+                let window = wantSettings
+                    ? NSApp.windows.first { $0.title == "Settings" && $0.isVisible }
+                    : NSApp.windows.first { $0.canBecomeMain && $0.isVisible }
                 if let view = window?.contentView,
                    let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                     view.cacheDisplay(in: view.bounds, to: rep)
@@ -39,7 +50,12 @@ struct GitSyncApp: App {
         .defaultSize(width: 1440, height: 880)
         .commands { AppCommands() }
 
-        Settings { SettingsView() }
+        // A regular window (not the `Settings` scene) so it gets the same hidden-title-bar chrome
+        // as the main window; the Settings scene re-applies its own opaque title bar.
+        Window("Settings", id: "settings") { SettingsView() }
+            .windowStyle(.hiddenTitleBar)
+            .windowResizability(.contentSize)
+            .defaultPosition(.center)
     }
 }
 
@@ -53,7 +69,11 @@ struct AppearanceModifier: ViewModifier {
             .tint(Theme.brand)
             // Theme colours are read from settings, so rebuild the tree when the accent changes.
             .id(accent)
-            .preferredColorScheme(AppearanceChoice(rawValue: appearance)?.colorScheme)
+            // Set the app-wide NSAppearance instead of `preferredColorScheme`: going back to
+            // "System" with the latter leaves windows (materials, backdrops) half-updated.
+            .onChange(of: appearance, initial: true) { _, value in
+                AppearanceChoice(rawValue: value)?.apply()
+            }
     }
 }
 
@@ -90,8 +110,13 @@ struct RootView: View {
 
 struct AppCommands: Commands {
     @FocusedValue(\.workspace) private var workspace
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { openWindow(id: "settings") }
+                .keyboardShortcut(",")
+        }
         CommandGroup(after: .newItem) {
             Button("Open Repository…") { workspace?.openPanel() }
                 .keyboardShortcut("o")

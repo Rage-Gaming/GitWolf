@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GitSyncCore
 import SwiftUI
@@ -6,11 +7,12 @@ enum AppearanceChoice: String, CaseIterable, Identifiable {
     case system, light, dark
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
-    var colorScheme: ColorScheme? {
+    /// Applies to every window at once; `nil` follows the system appearance.
+    @MainActor func apply() {
         switch self {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
         }
     }
 }

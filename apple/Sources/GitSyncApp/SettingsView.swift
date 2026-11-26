@@ -14,7 +14,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .general: "Look, sync and diffs"
-        case .git: "Executable and tooling"
+        case .git: "Git executable"
         case .shortcuts: "Keys for everything"
         }
     }
@@ -29,7 +29,7 @@ struct SettingsView: View {
             sidebar
             VStack(alignment: .leading, spacing: 0) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 16) {
                         Text(pane.rawValue)
                             .font(.system(size: 22, weight: .bold, design: .rounded))
                         switch pane {
@@ -38,15 +38,15 @@ struct SettingsView: View {
                         case .shortcuts: ShortcutsSettings()
                         }
                     }
-                    .padding(22)
+                    .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .scrollIndicators(.hidden)
             }
             .panel()
-            .padding([.top, .trailing, .bottom], 10)
+            .padding(.trailing, 10).padding(.vertical, 10)
         }
-        .frame(width: 700, height: 470)
+        .frame(width: 720, height: 520)
         .containerBackground(for: .window) { WindowBackdrop() }
         .background(SettingsWindowConfigurator())
         .tint(Theme.brand)
@@ -145,7 +145,7 @@ private struct Row<Trailing: View>: View {
                 Spacer(minLength: 12)
                 trailing
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
+            .padding(.horizontal, 12).padding(.vertical, 9)
             if divider { Divider().padding(.leading, 50).opacity(0.6) }
         }
     }
@@ -171,10 +171,12 @@ private struct PillPicker<Value: Hashable>: View {
                 Text(options.first { $0.value == selection }?.label ?? "—").font(.callout)
                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
             }
-            .pill()
+            .foregroundStyle(.primary)
         }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+        .menuStyle(.borderlessButton).menuIndicator(.hidden)
+        .tint(.primary)
         .fixedSize()
+        .pill()
     }
 }
 
@@ -189,39 +191,45 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Group(title: "Appearance") {
-            HStack(spacing: 10) {
-                ForEach(AppearanceChoice.allCases) { choice in
-                    AppearanceCard(choice: choice, selected: appearance == choice.rawValue) {
-                        withAnimation(.snappy(duration: 0.2)) { appearance = choice.rawValue }
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    ForEach(AppearanceChoice.allCases) { choice in
+                        AppearanceCard(choice: choice, selected: appearance == choice.rawValue) {
+                            withAnimation(.snappy(duration: 0.2)) { appearance = choice.rawValue }
+                        }
                     }
                 }
-            }
-            .padding(12)
-        }
-
-        Group(title: "Accent Color") {
-            HStack(spacing: 10) {
-                ForEach(AccentChoice.allCases) { choice in
-                    let selected = accent == choice.rawValue
-                    Button {
-                        withAnimation(.snappy(duration: 0.2)) { accent = choice.rawValue }
-                    } label: {
-                        Circle()
-                            .fill(LinearGradient(colors: [choice.primary, choice.secondary],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 26, height: 26)
-                            .overlay {
-                                if selected { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white) }
+                .padding(10)
+                Divider().opacity(0.6)
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Accent color").fontWeight(.medium)
+                        Text(AccentChoice(rawValue: accent)?.title ?? "").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 12)
+                    HStack(spacing: 6) {
+                        ForEach(AccentChoice.allCases) { choice in
+                            let selected = accent == choice.rawValue
+                            Button {
+                                withAnimation(.snappy(duration: 0.2)) { accent = choice.rawValue }
+                            } label: {
+                                Circle()
+                                    .fill(LinearGradient(colors: [choice.primary, choice.secondary],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                                    .frame(width: 20, height: 20)
+                                    .overlay {
+                                        if selected { Image(systemName: "checkmark").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white) }
+                                    }
+                                    .padding(3)
+                                    .overlay(Circle().strokeBorder(selected ? choice.primary : .clear, lineWidth: 2))
                             }
-                            .padding(3)
-                            .overlay(Circle().strokeBorder(selected ? choice.primary : .clear, lineWidth: 2))
+                            .buttonStyle(.plain)
+                            .help(choice.title)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .help(choice.title)
                 }
-                Spacer(minLength: 0)
+                .padding(.horizontal, 12).padding(.vertical, 8)
             }
-            .padding(12)
         }
 
         Group(title: "Sync") {
@@ -263,7 +271,7 @@ private struct AppearanceCard: View {
         Button(action: action) {
             VStack(spacing: 8) {
                 preview
-                    .frame(height: 54)
+                    .frame(height: 42)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
                 HStack(spacing: 5) {
@@ -272,7 +280,7 @@ private struct AppearanceCard: View {
                 }
                 .foregroundStyle(selected ? Theme.brand : .secondary)
             }
-            .padding(8)
+            .padding(7)
             .frame(maxWidth: .infinity)
             .background(selected ? Theme.brand.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -417,7 +425,7 @@ private struct ShortcutsSettings: View {
 
 // MARK: - Window chrome
 
-/// Gives the settings window the same hidden-title-bar look as the main window.
+/// Keeps only the close button, like a preferences window should.
 private struct SettingsWindowConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -425,15 +433,12 @@ private struct SettingsWindowConfigurator: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {
-        DispatchQueue.main.async { Self.configure(view.window) }
-    }
+    func updateNSView(_ view: NSView, context: Context) {}
 
     private static func configure(_ window: NSWindow?) {
         guard let window else { return }
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.styleMask.insert(.fullSizeContentView)
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
         window.isMovableByWindowBackground = true
     }
 }
