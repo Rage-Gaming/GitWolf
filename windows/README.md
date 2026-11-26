@@ -21,6 +21,7 @@ Engine ported so far (see the file map in PORTING.md for the full list and order
 - [x] `GraphLayout.swift` -> `GraphLayout.cs`
 - [x] `PatchBuilder.swift` -> `PatchBuilder.cs`
 - [x] `SideBySide.swift` -> `SideBySide.cs`
+- [x] `FileIcons.swift` -> `FileIcons.cs` (drawn by `Views/FileIconView.cs` and `Views/SymbolShapes.cs`)
 - [x] `SyntaxHighlighter.swift` -> `SyntaxHighlighter.cs`
 - [x] `FileWatcher.swift` -> `FileWatcher.cs` (`System.IO.FileSystemWatcher`, backed by
       `ReadDirectoryChangesW` on Windows)
@@ -43,7 +44,7 @@ Store layer:
 - [ ] `Accounts.swift` -> Credential Manager, writing the askpass script with LF endings and no BOM
 - [x] `Workspace.swift` (open and recent repositories) -> `src/GitSync.App/Services/Workspace.cs`
 
-73 tests pass against real git and stubbed HTTP.
+120 tests pass against real git and stubbed HTTP.
 
 UI (`src/GitSync.App/`):
 
@@ -59,6 +60,7 @@ UI (`src/GitSync.App/`):
 - [x] Multiple repositories, restored between launches
       (`%LOCALAPPDATA%\GitSync\workspace.json`, paths and view preferences only)
 - [x] Jump palette (Ctrl+K), Ctrl+O, Ctrl+Shift+F/L/P
+- [x] File type, folder and branch icons
 - [ ] Hunk/line staging, discard
 - [x] Home dashboard: open, jump, recent repositories, drop a folder to open
 - [ ] Clone/new repository, resizable panels

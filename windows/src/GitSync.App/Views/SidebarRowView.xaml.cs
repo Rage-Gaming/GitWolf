@@ -92,11 +92,16 @@ public sealed partial class SidebarRowView : UserControl
         ToolTipService.SetToolTip(this, row.Branch is { } branch && !current
             ? $"{branch.Name}\nDouble-click to check out" : header || note ? null : row.Title);
 
+        CurrentMark.Visibility = row.Kind == SidebarKind.LocalBranch && current ? Visibility.Visible : Visibility.Collapsed;
+        if (row.Kind is SidebarKind.LocalBranch or SidebarKind.RemoteBranch)
+        {
+            // A remote branch's title already has the remote's name taken off.
+            var look = FileIcons.BranchNamed(row.Title);
+            DrawnIcon.Content = FileIconView.Symbol(look.Value!, FileIconView.Brush(look.Color), 14);
+            return;
+        }
         var (shape, brush) = row.Kind switch
         {
-            SidebarKind.LocalBranch when current => (Icons.Check, Palette.Green),
-            SidebarKind.LocalBranch => (Icons.Branch, Palette.Ref(RefKind.Head)),
-            SidebarKind.RemoteBranch => (Icons.Branch, Palette.Ref(RefKind.Remote)),
             SidebarKind.RemoteGroup => (Icons.Cloud, Palette.Ref(RefKind.Remote)),
             SidebarKind.Tag => (Icons.Tag, Palette.Ref(RefKind.Tag)),
             SidebarKind.Stash => (Icons.Stash, Palette.Ref(RefKind.Head)),

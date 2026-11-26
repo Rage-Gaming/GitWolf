@@ -24,6 +24,8 @@ public sealed partial class FileRowView : UserControl
         {
             Badge.Background = Palette.Clear;
             Kind.Text = NameText.Text = PathText.Text = "";
+            TypeIcon.Show(null);
+            FolderIcon.Show(null);
             ToolTipService.SetToolTip(this, null);
             return;
         }
@@ -33,6 +35,8 @@ public sealed partial class FileRowView : UserControl
         Kind.Foreground = brush;
         NameText.Text = file.FileName;
         PathText.Text = file.Directory;
+        TypeIcon.Show(FileIcons.ForPath(file.Path));
+        FolderIcon.Show(FileIcons.FolderContaining(file.Path));
         ToolTipService.SetToolTip(this, file.OriginalPath is { } from ? $"{from} → {file.Path}" : file.Path);
     }
 

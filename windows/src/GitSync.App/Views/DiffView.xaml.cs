@@ -68,6 +68,7 @@ public sealed partial class DiffView : UserControl
         Folder.Text = path[..(slash + 1)];
         FileName.Text = path[(slash + 1)..] + (diff?.IsTruncated == true ? "  (truncated)" : "");
         Header.Visibility = path.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        TypeIcon.Show(path.Length == 0 ? null : FileIcons.ForPath(path));
         var message = store.SelectedTarget is null ? "Select a file to see its changes"
             : diff is null ? ""
             : diff.IsBinary ? "Binary file"
