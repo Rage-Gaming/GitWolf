@@ -1168,3 +1168,49 @@ import Testing
         #expect(first.additions == 3)
     }
 }
+
+@Suite struct CompareRefsTests {
+    /// main: base, m1.  feature: base, f1, f2.
+    private func diverged() async throws -> TestRepo {
+        let t = try await TestRepo.make()
+        try await t.commit("base", file: "a.txt", text: "a\n")
+        try await t.git.run(["switch", "-c", "feature"])
+        try await t.commit("f1", file: "f1.txt", text: "1\n")
+        try await t.commit("f2", file: "f2.txt", text: "2\n")
+        try await t.git.run(["switch", "main"])
+        try await t.commit("m1", file: "m1.txt", text: "m\n")
+        return t
+    }
+
+    @Test func listsFilesAndCommitsBetweenTips() async throws {
+        let t = try await diverged(); defer { t.cleanup() }
+        let c = try await t.repo.compare(from: "main", to: "feature", sinceAncestor: false)
+        #expect(Set(c.files.map(\.path)) == ["f1.txt", "f2.txt", "m1.txt"])
+        #expect(c.commits.map(\.subject) == ["f2", "f1"] && c.ahead == 2 && c.behind == 1)
+    }
+
+    @Test func sinceAncestorShowsOnlyChangesMadeOnTheBranch() async throws {
+        let t = try await diverged(); defer { t.cleanup() }
+        let c = try await t.repo.compare(from: "main", to: "feature", sinceAncestor: true)
+        #expect(Set(c.files.map(\.path)) == ["f1.txt", "f2.txt"])
+        let mergeBase = try await t.git.runString(["merge-base", "main", "feature"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(c.base == mergeBase)
+    }
+
+    @Test func diffsAFileBetweenTheResolvedCommits() async throws {
+        let t = try await diverged(); defer { t.cleanup() }
+        let c = try await t.repo.compare(from: "main", to: "feature", sinceAncestor: true)
+        let d = try await t.repo.diff(for: DiffTarget(source: .compare(base: c.base, head: c.head), path: "f2.txt"))
+        #expect(d.additions == 1 && d.lines.contains { $0.raw == "2" })
+    }
+
+    @Test func comparesTagsAndHashesAndRejectsUnknownRefs() async throws {
+        let t = try await diverged(); defer { t.cleanup() }
+        let hash = try await t.git.runString(["rev-parse", "feature~1"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        try await t.git.run(["tag", "v1", "feature"])
+        let c = try await t.repo.compare(from: hash, to: "v1", sinceAncestor: false)
+        #expect(c.commits.map(\.subject) == ["f2"])
+        await #expect(throws: (any Error).self) { try await t.repo.compare(from: "main", to: "nope", sinceAncestor: false) }
+        await #expect(throws: (any Error).self) { try await t.repo.compare(from: "--all", to: "main", sinceAncestor: false) }
+    }
+}

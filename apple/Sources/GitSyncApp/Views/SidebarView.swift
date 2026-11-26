@@ -23,6 +23,8 @@ struct SidebarView: View {
                                 Button("Checkout") { store.checkout(branch) }.disabled(branch.isCurrent)
                                 Button("Merge into Current Branch") { store.merge(branch.name) }.disabled(branch.isCurrent)
                                 Button("Rebase Current Branch onto This") { store.rebase(onto: branch.name) }.disabled(branch.isCurrent)
+                                Button("Compare with Current Branch") { store.openCompare(from: store.status.branch ?? "HEAD", to: branch.name) }
+                                    .disabled(branch.isCurrent)
                                 Button("New Branch from Here…") { store.sheet = .newBranch(from: branch.name) }
                                 Divider()
                                 Button("Delete Branch", role: .destructive) { store.deleteBranch(branch.name) }.disabled(branch.isCurrent)
@@ -132,6 +134,7 @@ private struct RemoteGroup: View {
                             Button("Checkout as Local Branch") { store.checkout(branch) }
                             Button("Merge into Current Branch") { store.merge(branch.name) }
                             Button("Rebase Current Branch onto This") { store.rebase(onto: branch.name) }
+                            Button("Compare with Current Branch") { store.openCompare(from: store.status.branch ?? "HEAD", to: branch.name) }
                         }
                 }
             }

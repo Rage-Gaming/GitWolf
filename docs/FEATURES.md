@@ -127,6 +127,18 @@ and should follow each platform's native idioms.
   the first line of each run; uncommitted lines show "Not committed". Clicking the author jumps to
   the commit in History. Untracked and binary files report git's error instead.
 
+## 3g. Compare refs
+
+- **Compare Refs…** (Repository menu ⌥⌘C, palette), **Compare with Current Branch** (branch and
+  commit context menus). A Compare panel replaces the main column: two ref fields (type anything,
+  or pick from branches, remotes and tags), swap, and **Only changes since the common ancestor**
+  (`git diff from...to`; off compares the two tips directly).
+- Shows "N ahead / M behind", the commits only in the compared ref (click one to open it in
+  History), and the changed files; selecting a file shows its diff in the detail pane.
+- Refs are resolved with `rev-parse --verify <ref>^{commit}` first; unknown refs and option-like
+  names (`-x`) give a plain message. Diffs use `DiffTarget.Source.compare(base:head:)` with the
+  resolved hashes.
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is

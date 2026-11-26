@@ -195,6 +195,8 @@ public struct GitRepository: Sendable {
         case .commit(let hash):
             let base = try await parentOrEmptyTree(of: hash)
             data = try await git.run(common + [base, hash, "--"] + paths, readOnly: true)
+        case .compare(let base, let head):
+            data = try await git.run(common + [base, head, "--"] + paths, readOnly: true)
         }
         return DiffParser.parse(data, maxLines: maxLines)
     }

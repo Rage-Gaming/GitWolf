@@ -172,6 +172,8 @@ public struct DiffTarget: Hashable, Sendable {
     public enum Source: Hashable, Sendable {
         case staged, unstaged, untracked, conflicted
         case commit(String)
+        /// Everything between two commits (resolved hashes), as in `git diff base head`.
+        case compare(base: String, head: String)
     }
     public var source: Source
     public var path: String

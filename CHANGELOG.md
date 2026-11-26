@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Compare any two refs (branches, tags, commits): ahead/behind, the commits, the changed files and a diff for each, optionally only the changes since the common ancestor.
 - Blame and file history: per-line authorship (click a line's author to jump to the commit) and a "history of this file" list with the diff of each commit, following renames.
 - Pull request and issue descriptions render as Markdown (headings, lists, task lists, quotes, code blocks, rules, inline styling).
 - Commit signing: GPG, SSH and X.509 signature badges in commit details (verified, untrusted, unverifiable, bad, expired, revoked), and a Sign checkbox in the commit box that follows `commit.gpgsign` and `user.signingkey`.

@@ -73,6 +73,7 @@ struct RepositoryView: View {
         switch store.mode {
         case .history: HistoryView(store: store)
         case .stash: StashView(store: store)
+        case .compare: CompareView(store: store)
         case .changes: ChangesView(store: store)
         case .pullRequests: CollabListView(store: store, collab: store.pullRequests)
         case .issues: CollabListView(store: store, collab: store.issues)
@@ -101,7 +102,7 @@ struct RepositoryView: View {
     @ViewBuilder private var detailColumn: some View {
         switch store.mode {
         case .history: CommitDetailView(store: store)
-        case .stash: DiffPane(diff: store.diff, path: store.selectedTarget?.path)
+        case .stash, .compare: DiffPane(diff: store.diff, path: store.selectedTarget?.path)
         case .changes:
             if let t = store.selectedTarget, t.source == .conflicted, store.status.conflicted.contains(where: { $0.path == t.path }) {
                 ConflictResolverView(store: store, path: t.path).id(t.path)

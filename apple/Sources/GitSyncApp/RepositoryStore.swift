@@ -33,7 +33,7 @@ private final class TaskBag: @unchecked Sendable {
 /// always converges on the real repository state.
 @MainActor @Observable
 final class RepositoryStore: Identifiable {
-    enum Mode: Hashable { case history, changes, pullRequests, issues, stash }
+    enum Mode: Hashable { case history, changes, pullRequests, issues, stash, compare }
 
     private let baseRepo: GitRepository
     /// The repository with the user's current settings (git path, diff context) applied.
@@ -64,6 +64,13 @@ final class RepositoryStore: Identifiable {
     private(set) var selectedStash: Stash?
     private(set) var stashFiles: [FileChange] = []
     private(set) var stashCommit: String?
+    var compareFrom = ""
+    var compareTo = ""
+    var compareSinceAncestor = true
+    private(set) var comparison: RefComparison?
+    private(set) var compareError: String?
+    private(set) var isComparing = false
+    private var compareToken = 0
     private(set) var commitMessage = ""
     /// Signature of the selected commit; nil when unsigned or not loaded yet.
     private(set) var selectedSignature: CommitSignature?
@@ -258,6 +265,7 @@ final class RepositoryStore: Identifiable {
             if !s.status.isClean { mode = .changes }
             #if DEBUG
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "compare" { openCompare(from: "main", to: "feature") }
             if let v = ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"], v.hasPrefix("history:") { sheet = .fileHistory(String(v.dropFirst(8))) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "stash", let first = s.stashes.first { selectStash(first) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "rebase", s.commits.count > 4 { beginInteractiveRebase(from: s.commits[3].hash) }
@@ -319,7 +327,7 @@ final class RepositoryStore: Identifiable {
                     // Commits are immutable; nothing to reload.
                 } else { clearSelection() }
             }
-        case .pullRequests, .issues, .stash:
+        case .pullRequests, .issues, .stash, .compare:
             break
         }
     }
@@ -354,6 +362,41 @@ final class RepositoryStore: Identifiable {
     func reveal(hash: String) {
         mode = .history
         selectCommit(hash)
+    }
+
+    /// Opens the compare view. Empty `from` / `to` default to the current branch.
+    func openCompare(from: String? = nil, to: String? = nil) {
+        if let from { compareFrom = from } else if compareFrom.isEmpty { compareFrom = status.branch ?? "HEAD" }
+        if let to { compareTo = to }
+        mode = .compare
+        if !compareFrom.isEmpty, !compareTo.isEmpty { runCompare() } else { comparison = nil; compareError = nil }
+    }
+
+    func runCompare() {
+        compareToken += 1
+        let token = compareToken
+        let (from, to, since, remotes) = (compareFrom, compareTo, compareSinceAncestor, Set(self.remotes))
+        isComparing = true
+        compareError = nil
+        Task {
+            do {
+                let result = try await repo.compare(from: from, to: to, sinceAncestor: since, remotes: remotes)
+                guard token == compareToken else { return }
+                comparison = result
+                selectedTarget = nil; diff = nil; diffToken += 1
+                if let first = result.files.first { selectChange(first, source: .compare(base: result.base, head: result.head)) }
+            } catch {
+                guard token == compareToken else { return }
+                comparison = nil
+                compareError = error.localizedDescription
+            }
+            if token == compareToken { isComparing = false }
+        }
+    }
+
+    func swapCompare() {
+        (compareFrom, compareTo) = (compareTo, compareFrom)
+        if !compareFrom.isEmpty, !compareTo.isEmpty { runCompare() }
     }
 
     /// Shows what a stash contains (files and diffs) without applying it.
