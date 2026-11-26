@@ -109,6 +109,17 @@ comment count, created/updated, web URL, body, source/target branch.
 
 With no account for the host, send the request without an `Authorization` header (public data).
 
+### Fork
+
+| Provider | Call |
+|---|---|
+| GitHub | `POST /repos/{o}/{r}/forks` (202; asynchronous) |
+| GitLab | `POST /projects/:id/fork` |
+| Gitea | `POST /repos/{o}/{r}/forks` |
+| Bitbucket Cloud | `POST /repositories/{w}/{r}/forks` |
+
+The response is the new repository; read its clone URLs with the same parsers as the repository list.
+
 ### Notifications
 
 | Provider | List | Mark read | Mark all |

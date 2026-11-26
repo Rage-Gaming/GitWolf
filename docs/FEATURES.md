@@ -263,6 +263,10 @@ Full details in [PROVIDERS.md](PROVIDERS.md). Summary:
   when the tab opens.
 - API details in [PROVIDERS.md](PROVIDERS.md#pull-requests-and-issues).
 
+### Fork
+
+Repository menu and palette: **Fork Repository…** (needs a connected account on GitHub, GitLab, Gitea or Bitbucket Cloud). Calls the provider's fork API (returns the existing fork if you already have one), then wires the checkout: **Use the fork as origin** (`git remote rename origin upstream`, `git remote add origin <fork>`; refused if `upstream` already exists) or **Add as another remote** (default name `fork`). The fork URL is SSH when the current origin uses SSH, HTTPS otherwise. It then fetches the new remote; GitHub copies in the background so the fetch is retried once after 4 s. Endpoints in [PROVIDERS.md](PROVIDERS.md#fork).
+
 ### Notifications
 
 Bell button in the repository toolbar (only when a GitHub, GitLab or Gitea account exists), Repository menu and palette. Loads from every connected account at start and every 5 minutes; the badge counts unread items. The sheet lists title, `owner/repo`, age and a reason chip (Review requested, Mentioned, Assigned, Activity). Clicking a row opens it on the web and marks it read; **Mark All as Read** clears everything. A GitHub token without the `notifications` scope shows a warning instead of an empty list. Bitbucket and Azure DevOps have no notifications API. Endpoints in [PROVIDERS.md](PROVIDERS.md#notifications).

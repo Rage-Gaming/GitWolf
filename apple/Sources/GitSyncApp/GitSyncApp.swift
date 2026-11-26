@@ -173,6 +173,7 @@ struct AppCommands: Commands {
                 .keyboardShortcut("z", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
             Button("Compare Refs…") { workspace?.selected?.openCompare() }
                 .keyboardShortcut("c", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Button("Fork Repository…") { workspace?.selected?.sheet = .fork }.disabled(workspace?.selected?.canFork != true)
             Button("Notifications…") { workspace?.selected?.sheet = .notifications }.disabled(workspace?.selected == nil)
             Button("New Pull Request…") { workspace?.selected?.sheet = .newCollab(.pullRequest) }
                 .disabled(workspace?.selected?.providerTitle == nil)

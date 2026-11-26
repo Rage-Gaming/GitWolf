@@ -358,6 +358,11 @@ public struct GitRepository: Sendable {
 
     // MARK: Remotes
 
+    /// Fetches one remote (used right after adding it).
+    public func fetch(remote: String) async throws {
+        try await networkGit().run(["fetch", remote])
+    }
+
     public func fetch() async throws {
         try await networkGit().run(["fetch", "--all", "--prune"])
     }

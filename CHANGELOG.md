@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Fork: "Fork Repository…" forks the current repository on GitHub, GitLab, Gitea or Bitbucket Cloud with your connected account, then either makes the fork `origin` and the original `upstream`, or adds it as another remote, and fetches it.
 - Notifications: review requests, mentions and assignments from your GitHub, GitLab and Gitea accounts, with a bell and unread count in the toolbar (refreshed every 5 minutes), a list that opens the item on the web and marks it read, and Mark All as Read.
 - CI status: a checks summary ("All 38 checks passed", "2 of 9 checks failed") with an expandable list and links to each run, on the selected commit and on pull requests (GitHub check runs and statuses, GitLab pipeline jobs, Gitea and Bitbucket Cloud statuses). Works for public repositories without an account.
 - Pull request and issue actions: create a pull/merge request from the current branch (title and base picker, draft, pushes the branch first), create issues, read and add comments, merge (merge commit, squash or rebase, with confirmation), close and reopen, and edit labels. GitHub, GitLab and Gitea; Bitbucket Cloud for pull requests. Needs a connected account; the server's own error text is shown when a request is rejected.

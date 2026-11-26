@@ -1658,3 +1658,53 @@ import Testing
         #expect(log.calls == ["PATCH /notifications/threads/7", "POST /api/v4/todos/7/mark_as_done", "PUT /notifications"])
     }
 }
+
+@Suite struct ForkTests {
+    @Test func forkParsesCloneURLs() async throws {
+        final class Log: @unchecked Sendable { var calls: [String] = [] }
+        let log = Log()
+        func client(_ kind: ProviderKind, _ reply: String) -> ProviderClient {
+            ProviderClient(account: ProviderAccount(kind: kind, host: kind.defaultHost, username: "me"), token: "t", transport: { r in
+                log.calls.append("\(r.httpMethod ?? "GET") \(r.url!.absoluteString)")
+                return (Data(reply.utf8), HTTPURLResponse(url: r.url!, statusCode: 202, httpVersion: nil, headerFields: nil)!)
+            })
+        }
+        let gh = try await client(.github, #"{"full_name":"me/r","clone_url":"https://github.com/me/r.git","ssh_url":"git@github.com:me/r.git"}"#).fork(repoPath: "o/r")
+        #expect(gh.fullName == "me/r" && gh.sshURL == "git@github.com:me/r.git")
+        let gl = try await client(.gitlab, #"{"path_with_namespace":"me/p","http_url_to_repo":"https://gitlab.com/me/p.git","ssh_url_to_repo":"git@gitlab.com:me/p.git"}"#).fork(repoPath: "g/p")
+        #expect(gl.httpsURL == "https://gitlab.com/me/p.git")
+        let bb = try await client(.bitbucket, #"{"full_name":"me/r","links":{"clone":[{"name":"https","href":"https://me@bitbucket.org/me/r.git"},{"name":"ssh","href":"git@bitbucket.org:me/r.git"}]}}"#).fork(repoPath: "w/r")
+        #expect(bb.httpsURL == "https://bitbucket.org/me/r.git")
+        #expect(log.calls == ["POST https://api.github.com/repos/o/r/forks", "POST https://gitlab.com/api/v4/projects/g%2Fp/fork",
+                              "POST https://api.bitbucket.org/2.0/repositories/w/r/forks"])
+        await #expect(throws: ProviderError.self) { _ = try await client(.azure, "{}").fork(repoPath: "x") }
+    }
+
+    @Test func adoptForkRewiresRemotes() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("one", file: "a.txt", text: "a")
+        func bare(_ name: String) async throws -> URL {
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("\(name)-\(UUID().uuidString).git")
+            _ = try await GitRunner(workingDirectory: dir.deletingLastPathComponent()).run(["init", "--bare", "-q", dir.path])
+            return dir
+        }
+        let original = try await bare("orig"), fork = try await bare("fork")
+        defer { try? FileManager.default.removeItem(at: original); try? FileManager.default.removeItem(at: fork) }
+        try await t.git.run(["remote", "add", "origin", original.path])
+        try await t.git.run(["push", "-q", "origin", "HEAD:refs/heads/main"])
+        try await t.git.run(["push", "-q", fork.path, "HEAD:refs/heads/main"])
+        let info = RemoteRepository(fullName: "me/r", description: "", isPrivate: false, httpsURL: fork.path, sshURL: "", updated: nil)
+
+        try await t.repo.adoptFork(info, mode: .addRemote("fork"))
+        #expect(try await t.repo.remotes().sorted() == ["fork", "origin"])
+        #expect(await t.repo.remoteURL("fork") == fork.path)
+
+        try await t.git.run(["remote", "remove", "fork"])
+        try await t.repo.adoptFork(info, mode: .useAsOrigin)
+        #expect(await t.repo.remoteURL("origin") == fork.path)
+        #expect(await t.repo.remoteURL("upstream") == original.path)
+        await #expect(throws: GitError.self) { try await t.repo.adoptFork(info, mode: .useAsOrigin) }
+        await #expect(throws: GitError.self) { try await t.repo.adoptFork(info, mode: .addRemote("--bad")) }
+    }
+}

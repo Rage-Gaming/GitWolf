@@ -67,6 +67,8 @@ struct RepositoryView: View {
                 NewCollabSheet(store: store, kind: kind)
             case .notifications:
                 NotificationsSheet()
+            case .fork:
+                ForkSheet(store: store)
             case .cleanup:
                 BranchCleanupSheet(store: store)
             case .reflog:

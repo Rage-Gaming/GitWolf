@@ -12,6 +12,7 @@ enum StoreSheet: Identifiable {
     case fileHistory(String)
     case renameBranch(String)
     case cleanup
+    case fork
     case notifications
     case newCollab(CollabKind)
     case hookFailure(HookFailedError)
@@ -26,6 +27,7 @@ enum StoreSheet: Identifiable {
         case .fileHistory: "fileHistory"
         case .renameBranch: "renameBranch"
         case .cleanup: "cleanup"
+        case .fork: "fork"
         case .notifications: "notifications"
         case .newCollab(let kind): "newCollab-\(kind.rawValue)"
         case .hookFailure: "hookFailure"
@@ -143,6 +145,12 @@ final class RepositoryStore: Identifiable {
         var secret = ""
         if AccountStorage.account(forHost: account.hostName) != nil { secret = await AccountStorage.secret(for: account) ?? "" }
         return (ProviderClient(account: account, token: secret), path)
+    }
+
+    /// Whether this repository's host lets GitSync fork it (needs a recognised provider).
+    var canFork: Bool {
+        guard let kind = providerKind, let host = remoteLocation?.host else { return false }
+        return kind.supportsForking && !(kind == .bitbucket && host != "bitbucket.org")
     }
 
     // MARK: CI checks
@@ -306,6 +314,7 @@ final class RepositoryStore: Identifiable {
             #if DEBUG
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "cleanup" { sheet = .cleanup }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "fork" { sheet = .fork }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "notes" { NotificationsStore.shared.loadSamples(); sheet = .notifications }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "newpr" { sheet = .newCollab(.pullRequest) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "hook" { sheet = .hookFailure(HookFailedError(hook: "pre-commit", output: "eslint: src/app.ts\n  12:5  error  Unexpected console statement  no-console\n\n1 problem (1 error, 0 warnings)")) }
