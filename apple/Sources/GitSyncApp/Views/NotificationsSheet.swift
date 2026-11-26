@@ -8,40 +8,79 @@ struct NotificationsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Notifications").font(.system(size: 17, weight: .semibold, design: .rounded))
-                Spacer()
-                if model.isLoading { ProgressView().controlSize(.small) }
-                Button { Task { await model.refresh() } } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Reload")
+        VStack(spacing: 0) {
+            header
+            Divider()
+            content
+            Divider()
+            footer
+        }
+        .frame(width: 520)
+        .task { await model.refresh() }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "bell.fill")
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(Theme.brand, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Notifications").font(.system(size: 16, weight: .semibold, design: .rounded))
+                Text("Review requests, mentions and assignments").font(.caption).foregroundStyle(.secondary)
             }
+            Spacer()
+            if model.isLoading { ProgressView().controlSize(.small) }
+            Button { Task { await model.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                .buttonStyle(.bordered).controlSize(.regular).help("Reload")
+                .accessibilityLabel("Reload")
+        }
+        .padding(.horizontal, 20).padding(.vertical, 16)
+    }
+
+    @ViewBuilder private var content: some View {
+        VStack(alignment: .leading, spacing: 8) {
             ForEach(model.problems) { problem in
                 Label("\(problem.account.kind.title) (\(problem.account.username)): \(problem.message)", systemImage: "exclamationmark.triangle.fill")
                     .font(.callout).foregroundStyle(.orange)
             }
             if !model.hasAccounts && model.entries.isEmpty {
-                ContentUnavailableView("No Accounts", systemImage: "person.crop.circle.badge.questionmark",
-                                       description: Text("Add a GitHub, GitLab or Gitea account in Settings → Accounts."))
-                    .frame(height: 200)
+                empty("person.crop.circle.badge.questionmark", "No accounts connected",
+                      "Add a GitHub, GitLab or Gitea account in Settings → Accounts.")
             } else if model.entries.isEmpty {
-                ContentUnavailableView(model.loadedAt == nil ? "Loading…" : "All Caught Up", systemImage: "bell.slash",
-                                       description: Text("No review requests, mentions or assignments."))
-                    .frame(height: 200)
+                if model.loadedAt == nil { empty("bell", "Loading…", "Checking your accounts.") }
+                else { empty("checkmark.circle", "All caught up", "Nothing needs your attention right now.") }
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 2) { ForEach(model.entries) { row($0) } }
+                    LazyVStack(spacing: 6) { ForEach(model.entries) { row($0) } }
+                        .padding(.vertical, 2)
                 }
-                .frame(height: min(380, CGFloat(model.entries.count) * 62 + 8))
-            }
-            HStack {
-                if !model.entries.isEmpty { Button("Mark All as Read") { model.markAllRead() } }
-                Spacer()
-                Button("Close") { dismiss() }.keyboardShortcut(.defaultAction)
+                .frame(height: min(360, CGFloat(model.entries.count) * 66))
             }
         }
-        .padding(22).frame(width: 560)
-        .task { await model.refresh() }
+        .padding(.horizontal, 20).padding(.vertical, model.entries.isEmpty ? 12 : 14)
+    }
+
+    private func empty(_ symbol: String, _ title: String, _ detail: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .medium)).foregroundStyle(.secondary)
+                .frame(width: 46, height: 46)
+                .background(Color.primary.opacity(0.06), in: Circle())
+            Text(title).font(.system(size: 14, weight: .semibold))
+            Text(detail).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 22)
+    }
+
+    private var footer: some View {
+        HStack {
+            if !model.entries.isEmpty { Button("Mark All as Read") { model.markAllRead() }.buttonStyle(.bordered) }
+            Spacer()
+            Button("Close") { dismiss() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+        }
+        .controlSize(.large)
+        .padding(.horizontal, 20).padding(.vertical, 14)
     }
 
     private func row(_ entry: NotificationsStore.Entry) -> some View {

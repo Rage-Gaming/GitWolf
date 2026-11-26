@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Changed
+- Notifications sheet redesigned: a header with icon and subtitle, a compact empty state, a labelled reload button and a footer bar with Mark All as Read and Close.
 - Menu bar: removed Services, Hide, Hide Others and Show All from the app menu, and the Edit, View, Format and Window menus (⌘C/V/X/A/Z are still handled for text fields) and merged the Repositories menu into Repository as *Switch Repository*, which lists open repositories by name with ⌘1…9.
 - Redesigned the repository rail: narrower, uniform 40 pt tiles, flat tinted tiles that turn solid when selected with an edge marker, a smaller corner badge, no hover scaling or shadows.
 - Removed the empty View and Format menus and Edit's AutoFill, Dictation and Emoji items, and grouped the Repository menu with dividers.
