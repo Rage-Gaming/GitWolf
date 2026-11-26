@@ -23,6 +23,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `Rebase` | `RebasePlan` (actions, validation, todo generation), `rebaseCandidates`, `startInteractiveRebase`, `rebase(onto:)`. Conflicts leave the rebase in progress instead of throwing. |
 | `StashTools` | `discardSummary`, `stashFiles`, `stashHash`, `stashHunk` (plumbing-built single-hunk stash). |
 | `Signing` | `signature(of:)` (format, state, signer, key), `signingConfig()`, and the `sign` option of `commit`. |
+| `Blame` | `blame` (porcelain parser), `fileHistory` (`--follow`), `fileDiff` (rename-aware per-commit diff). |
 | `FileWatcher` | FSEvents watcher that emits a coalesced "something changed" signal, filtering object-db and lock-file noise. |
 
 ## Keeping the UI in sync

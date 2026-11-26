@@ -9,6 +9,7 @@ enum StoreSheet: Identifiable {
     case reflog
     case rebase(RebasePlan)
     case stashHunk(Int)
+    case fileHistory(String)
     var id: String {
         switch self {
         case .newBranch: "branch"
@@ -17,6 +18,7 @@ enum StoreSheet: Identifiable {
         case .reflog: "reflog"
         case .rebase: "rebase"
         case .stashHunk: "stashHunk"
+        case .fileHistory: "fileHistory"
         }
     }
 }
@@ -256,6 +258,7 @@ final class RepositoryStore: Identifiable {
             if !s.status.isClean { mode = .changes }
             #if DEBUG
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
+            if let v = ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"], v.hasPrefix("history:") { sheet = .fileHistory(String(v.dropFirst(8))) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "stash", let first = s.stashes.first { selectStash(first) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "rebase", s.commits.count > 4 { beginInteractiveRebase(from: s.commits[3].hash) }
             if ProcessInfo.processInfo.environment["GITSYNC_MODE"] == "history" {

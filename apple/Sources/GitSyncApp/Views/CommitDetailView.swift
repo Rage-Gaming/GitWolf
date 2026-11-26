@@ -16,6 +16,9 @@ struct CommitDetailView: View {
                                           selected: store.selectedTarget?.path == change.path) {
                                 store.selectChange(change, source: .commit(commit.hash))
                             }
+                            .contextMenu {
+                                if change.kind != .deleted { Button("History & Blame…") { store.sheet = .fileHistory(change.path) } }
+                            }
                         }
                     }
                     .padding(6)

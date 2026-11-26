@@ -155,6 +155,9 @@ private struct ChangeRow: View {
                 Button("Stage") { store.stage([change.path]) }
                 Button("Discard Changes…", role: .destructive) { store.confirmDiscard([change], untracked: source == .untracked) }
             }
+            if source != .untracked {
+                Button("History & Blame…") { store.sheet = .fileHistory(change.path) }
+            }
             Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([store.repo.root.appendingPathComponent(change.path)])
             }

@@ -116,6 +116,17 @@ and should follow each platform's native idioms.
   that differs from config is passed as `--gpg-sign` / `--no-gpg-sign`. GPG needs a pinentry that
   works without a terminal (e.g. pinentry-mac); SSH keys need the agent or an unencrypted key.
 
+## 3f. Blame and file history
+
+- **History & Blame…** in the context menu of a changed file or a file inside a commit opens a sheet
+  with two tabs.
+- **History** [core `fileHistory`, `fileDiff`]: `git log --follow` for the file, newest first; select a
+  commit to see what it changed in that file. For commits before a rename the diff looks up the
+  file's older name (`--name-status` under `--follow`) so the diff isn't empty. Context menu: Show in History.
+- **Blame** [core `blame`]: `git blame --porcelain`. Author, date and a colour bar per commit run on
+  the first line of each run; uncommitted lines show "Not committed". Clicking the author jumps to
+  the commit in History. Untracked and binary files report git's error instead.
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is

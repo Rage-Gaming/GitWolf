@@ -1123,3 +1123,48 @@ import Testing
         #expect(try await t.repo.signature(of: h)?.state == .good)
     }
 }
+
+@Suite struct BlameAndFileHistoryTests {
+    private func setup() async throws -> (TestRepo, String, String) {
+        let t = try await TestRepo.make()
+        let a = try await t.commit("first", text: "one\ntwo\nthree\n")
+        try t.write("one\nTWO\nthree\nfour\n")
+        try await t.git.run(["add", "-A"])
+        try await t.git.run(["commit", "-m", "second edit", "--author", "Other Person <o@example.com>"])
+        let b = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (t, a, b)
+    }
+
+    @Test func blameAttributesEachLine() async throws {
+        let (t, a, b) = try await setup(); defer { t.cleanup() }
+        let lines = try await t.repo.blame(path: "f.txt")
+        #expect(lines.map(\.text) == ["one", "TWO", "three", "four"])
+        #expect(lines.map(\.hash) == [a, b, a, b])
+        #expect(lines[1].author == "Other Person" && lines[0].author == "Tester")
+        #expect(lines[1].summary == "second edit" && !lines[1].isUncommitted)
+    }
+
+    @Test func blameMarksUncommittedLinesAndHonoursRevision() async throws {
+        let (t, a, _) = try await setup(); defer { t.cleanup() }
+        try t.write("one\nTWO\nthree\nfour\nLOCAL\n")
+        let now = try await t.repo.blame(path: "f.txt")
+        #expect(now.last?.isUncommitted == true && now.last?.text == "LOCAL")
+        let old = try await t.repo.blame(path: "f.txt", revision: a)
+        #expect(old.count == 3 && Set(old.map(\.hash)) == [a])
+    }
+
+    @Test func fileHistoryFollowsRenamesAndDiffsPerCommit() async throws {
+        let (t, a, b) = try await setup(); defer { t.cleanup() }
+        try await t.git.run(["mv", "f.txt", "g.txt"])
+        try await t.git.run(["commit", "-m", "rename"])
+        let c = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        try await t.commit("other file", file: "z.txt", text: "z\n")
+
+        let history = try await t.repo.fileHistory(path: "g.txt")
+        #expect(history.map(\.hash) == [c, b, a])
+        let edit = try await t.repo.fileDiff(path: "g.txt", at: b)
+        #expect(edit.additions == 2 && edit.deletions == 1)
+        let first = try await t.repo.fileDiff(path: "g.txt", at: a)
+        #expect(first.additions == 3)
+    }
+}

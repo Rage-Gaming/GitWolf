@@ -57,6 +57,8 @@ struct RepositoryView: View {
                 PromptSheet(title: "Stash Hunk", placeholder: "Message (optional)", confirm: "Stash", allowEmpty: true) { msg, _ in
                     store.stashHunk(index, message: msg)
                 }
+            case .fileHistory(let path):
+                FileHistorySheet(store: store, path: path)
             case .reflog:
                 ReflogSheet(store: store)
             case .stash:
