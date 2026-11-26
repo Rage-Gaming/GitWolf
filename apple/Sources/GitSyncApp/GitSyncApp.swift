@@ -107,6 +107,7 @@ struct RootView: View {
             switch sheet {
             case .clone: CloneSheet(workspace: workspace)
             case .create: CreateRepositorySheet(workspace: workspace)
+            case .account: AddAccountSheet()
             }
         }
         .focusedSceneValue(\.workspace, workspace)
@@ -160,6 +161,13 @@ struct AppCommands: Commands {
                 .keyboardShortcut("l", modifiers: [.command, .shift]).disabled(workspace?.selected == nil)
             Button("Push") { workspace?.selected?.push() }
                 .keyboardShortcut("p", modifiers: [.command, .shift]).disabled(workspace?.selected == nil)
+            if let store = workspace?.selected, store.webLinks != nil {
+                Divider()
+                Button("Open on \(store.providerTitle ?? "Web")") { store.openOnWeb(.repository) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                Button("Open Branch on \(store.providerTitle ?? "Web")") { store.openOnWeb(.branch) }
+                Button("Create \(store.webLinks?.pullRequestsWord ?? "Pull Request") on \(store.providerTitle ?? "Web")") { store.openOnWeb(.pullRequest) }
+            }
             Divider()
             Button("Show History") { workspace?.selected?.mode = .history }
                 .keyboardShortcut("1", modifiers: [.command, .option]).disabled(workspace?.selected == nil)

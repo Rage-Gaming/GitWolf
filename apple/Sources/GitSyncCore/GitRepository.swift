@@ -9,7 +9,32 @@ public struct GitRepository: Sendable {
     /// Unchanged lines shown around each diff hunk.
     public var contextLines: Int
 
+    /// Resolves a saved credential for a remote host, plus where the `GIT_ASKPASS` helper lives.
+    /// Only consulted for network commands (fetch, pull, push, clone).
+    public var credentials: (@Sendable (String) -> GitCredential?)?
+    public var askpassPath: String?
+
     var git: GitRunner { GitRunner(workingDirectory: root, gitPath: gitPath) }
+
+    /// A runner for network operations, carrying the account credential for this repo's remote.
+    private func networkGit() async -> GitRunner {
+        guard let credentials, let askpassPath,
+              let names = try? await remotes(), let name = names.contains("origin") ? "origin" : names.first,
+              let url = try? await git.runString(["remote", "get-url", name], readOnly: true),
+              let location = RemoteLocation.parse(url),
+              let credential = credentials(location.host)
+        else { return git }
+        return GitRunner(workingDirectory: root, gitPath: gitPath,
+                         extraEnvironment: credential.environment(askpassPath: askpassPath))
+    }
+
+    /// Location of the `origin` (or first) remote, if it is a recognisable URL.
+    public func remoteLocation() async -> RemoteLocation? {
+        guard let names = try? await remotes(), let name = names.contains("origin") ? "origin" : names.first,
+              let url = try? await git.runString(["remote", "get-url", name], readOnly: true)
+        else { return nil }
+        return RemoteLocation.parse(url)
+    }
 
     public var name: String { root.lastPathComponent }
 
@@ -50,6 +75,8 @@ public struct GitRepository: Sendable {
     public static func clone(
         url: String, into parent: URL, name: String,
         gitPath: String = "/usr/bin/git",
+        credential: GitCredential? = nil,
+        askpassPath: String? = nil,
         onProgress: (@Sendable (String) -> Void)? = nil
     ) async throws -> URL {
         let destination = parent.appendingPathComponent(name, isDirectory: true)
@@ -57,7 +84,9 @@ public struct GitRepository: Sendable {
            let contents = try? FileManager.default.contentsOfDirectory(atPath: destination.path), !contents.isEmpty {
             throw GitError(command: "clone", exitCode: 128, stderr: "“\(name)” already exists in that location and isn’t empty.")
         }
-        let runner = GitRunner(workingDirectory: parent, gitPath: gitPath)
+        var env: [String: String] = [:]
+        if let credential, let askpassPath { env = credential.environment(askpassPath: askpassPath) }
+        let runner = GitRunner(workingDirectory: parent, gitPath: gitPath, extraEnvironment: env)
         try await runner.run(["clone", "--progress", "--", url, name], onProgress: onProgress)
         return destination
     }
@@ -273,23 +302,24 @@ public struct GitRepository: Sendable {
     // MARK: Remotes
 
     public func fetch() async throws {
-        try await git.run(["fetch", "--all", "--prune"])
+        try await networkGit().run(["fetch", "--all", "--prune"])
     }
 
     public func pull() async throws {
+        let net = await networkGit()
         do {
-            try await git.run(["pull", "--no-edit"])
+            try await net.run(["pull", "--no-edit"])
         } catch let error as GitError where error.stderr.contains("divergent branches") {
-            try await git.run(["pull", "--no-edit", "--no-rebase"])
+            try await net.run(["pull", "--no-edit", "--no-rebase"])
         }
     }
 
     public func push(status: WorkingStatus, remotes: [String]) async throws {
         if status.upstream == nil, let branch = status.branch {
             let remote = remotes.contains("origin") ? "origin" : (remotes.first ?? "origin")
-            try await git.run(["push", "--set-upstream", remote, branch])
+            try await networkGit().run(["push", "--set-upstream", remote, branch])
         } else {
-            try await git.run(["push"])
+            try await networkGit().run(["push"])
         }
     }
 }

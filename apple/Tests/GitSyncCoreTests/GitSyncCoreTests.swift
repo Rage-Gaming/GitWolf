@@ -299,3 +299,172 @@ import Testing
         }
     }
 }
+
+// MARK: - Providers
+
+@Suite struct ProviderTests {
+    @Test func parsesRemoteURLs() {
+        #expect(RemoteLocation.parse("https://github.com/ipuppyyt/git-sync.git") == RemoteLocation(host: "github.com", path: "ipuppyyt/git-sync"))
+        #expect(RemoteLocation.parse("git@gitlab.com:group/sub/proj.git") == RemoteLocation(host: "gitlab.com", path: "group/sub/proj"))
+        #expect(RemoteLocation.parse("ssh://git@bitbucket.org:22/team/repo.git") == RemoteLocation(host: "bitbucket.org", path: "team/repo"))
+        #expect(RemoteLocation.parse("https://user:secret@Example.COM/a/b/") == RemoteLocation(host: "example.com", path: "a/b"))
+        #expect(RemoteLocation.parse("git@ssh.dev.azure.com:v3/org/proj/repo") == RemoteLocation(host: "dev.azure.com", path: "org/proj/_git/repo"))
+        #expect(RemoteLocation.parse("/Users/me/local/repo") == nil)
+        #expect(RemoteLocation.parse("") == nil)
+    }
+
+    @Test func guessesProviderFromHost() {
+        #expect(ProviderKind.guess(host: "github.com") == .github)
+        #expect(ProviderKind.guess(host: "gitlab.example.org") == .gitlab)
+        #expect(ProviderKind.guess(host: "codeberg.org") == .gitea)
+        #expect(ProviderKind.guess(host: "dev.azure.com") == .azure)
+        #expect(ProviderKind.guess(host: "git.internal.corp") == nil)
+    }
+
+    @Test func buildsWebLinks() {
+        let loc = RemoteLocation(host: "github.com", path: "o/r")
+        let gh = WebLinks(kind: .github, location: loc)
+        #expect(gh.repository?.absoluteString == "https://github.com/o/r")
+        #expect(gh.branch("feature/x y")?.absoluteString == "https://github.com/o/r/tree/feature/x%20y")
+        #expect(gh.commit("abc")?.absoluteString == "https://github.com/o/r/commit/abc")
+        #expect(gh.newPullRequest(from: "feature/x")?.absoluteString == "https://github.com/o/r/compare/feature/x?expand=1")
+
+        let gl = WebLinks(kind: .gitlab, location: RemoteLocation(host: "gitlab.com", path: "g/p"))
+        #expect(gl.commit("abc")?.absoluteString == "https://gitlab.com/g/p/-/commit/abc")
+        #expect(gl.newPullRequest(from: "a&b")?.absoluteString.contains("source_branch%5D=a%26b") == true)
+        #expect(gl.pullRequestsWord == "Merge Request")
+
+        let unknown = WebLinks(kind: nil, location: RemoteLocation(host: "git.corp", path: "x/y"))
+        #expect(unknown.branch("main")?.absoluteString == "https://git.corp/x/y")
+    }
+
+    @Test func askpassEnvironmentIsolatesCredential() {
+        let env = GitCredential(host: "github.com", username: "", token: "tok").environment(askpassPath: "/tmp/ap")
+        #expect(env["GIT_ASKPASS"] == "/tmp/ap" && env["GITSYNC_ASKPASS_USER"] == "git" && env["GITSYNC_ASKPASS_TOKEN"] == "tok")
+        #expect(env["GIT_CONFIG_KEY_0"] == "credential.helper" && env["GIT_CONFIG_VALUE_0"] == "")
+    }
+
+    // Stub transport that records requests and serves canned JSON.
+    private final class Recorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var log: [URLRequest] = []
+        private var index = 0
+        var requests: [URLRequest] { lock.withLock { log } }
+        func record(_ request: URLRequest) -> Int {
+            lock.withLock { log.append(request); index += 1; return index - 1 }
+        }
+    }
+
+    private func client(_ kind: ProviderKind, host: String? = nil, username: String = "me",
+                        pages: [String], status: Int = 200, recorder: Recorder = Recorder()) -> ProviderClient {
+        let account = ProviderAccount(kind: kind, host: host ?? kind.defaultHost, username: username)
+        return ProviderClient(account: account, token: "secret") { request in
+            let index = recorder.record(request)
+            let body = pages[min(index, pages.count - 1)]
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            return (Data(body.utf8), response)
+        }
+    }
+
+    @Test func listsGitHubRepositories() async throws {
+        let rec = Recorder()
+        let c = client(.github, pages: [#"[{"full_name":"o/r","description":null,"private":true,"clone_url":"https://github.com/o/r.git","ssh_url":"git@github.com:o/r.git","pushed_at":"2026-01-02T03:04:05Z"}]"#], recorder: rec)
+        let repos = try await c.repositories()
+        #expect(repos.count == 1 && repos[0].fullName == "o/r" && repos[0].isPrivate && repos[0].updated != nil && repos[0].name == "r")
+        #expect(rec.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer secret")
+        #expect(rec.requests[0].url?.host == "api.github.com")
+    }
+
+    @Test func listsGitLabRepositoriesFromSelfHostedHost() async throws {
+        let rec = Recorder()
+        let c = client(.gitlab, host: "git.corp.io", pages: [#"[{"path_with_namespace":"g/p","description":"d","visibility":"internal","http_url_to_repo":"https://git.corp.io/g/p.git","ssh_url_to_repo":"git@git.corp.io:g/p.git","last_activity_at":"2026-01-02T03:04:05.123Z"}]"#], recorder: rec)
+        let repos = try await c.repositories()
+        #expect(repos.first?.httpsURL == "https://git.corp.io/g/p.git" && repos.first?.isPrivate == true)
+        #expect(rec.requests[0].url?.absoluteString.hasPrefix("https://git.corp.io/api/v4/projects") == true)
+        #expect(rec.requests[0].value(forHTTPHeaderField: "PRIVATE-TOKEN") == "secret")
+    }
+
+    @Test func supportsEnterpriseHosts() async throws {
+        let rec = Recorder()
+        let ghe = client(.github, host: "github.acme.com", pages: ["[]"], recorder: rec)
+        _ = try await ghe.repositories()
+        #expect(rec.requests[0].url?.absoluteString.hasPrefix("https://github.acme.com/api/v3/user/repos") == true)
+
+        let rec2 = Recorder()
+        let account = ProviderAccount(kind: .gitlab, host: "git.lan:8080", username: "me", scheme: "http")
+        let lan = ProviderClient(account: account, token: "t") { request in
+            _ = rec2.record(request)
+            return (Data("[]".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        _ = try await lan.repositories()
+        #expect(rec2.requests[0].url?.absoluteString.hasPrefix("http://git.lan:8080/api/v4/projects") == true)
+        #expect(account.hostName == "git.lan")
+
+        let rec3 = Recorder()
+        let dc = client(.bitbucket, host: "bitbucket.acme.com", pages: [#"{"isLastPage":true,"values":[{"slug":"r","project":{"key":"P"},"public":false,"links":{"clone":[{"name":"http","href":"https://me@bitbucket.acme.com/scm/p/r.git"},{"name":"ssh","href":"ssh://git@bitbucket.acme.com/p/r.git"}]}}]}"#], recorder: rec3)
+        let repos = try await dc.repositories()
+        #expect(repos.first?.fullName == "P/r" && repos.first?.httpsURL == "https://bitbucket.acme.com/scm/p/r.git")
+        #expect(rec3.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer secret")
+        #expect(rec3.requests[0].url?.path == "/rest/api/1.0/repos")
+    }
+
+    @Test func passwordAccountsUseBasicAuth() async throws {
+        let rec = Recorder()
+        let account = ProviderAccount(kind: .gitea, host: "git.corp.io", username: "me", usesPassword: true)
+        let c = ProviderClient(account: account, token: "pw") { request in
+            _ = rec.record(request)
+            return (Data("[]".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        _ = try await c.repositories()
+        #expect(rec.requests[0].value(forHTTPHeaderField: "Authorization") == "Basic " + Data("me:pw".utf8).base64EncodedString())
+    }
+
+    @Test func listsGiteaAndBitbucketRepositories() async throws {
+        let gitea = client(.gitea, pages: [#"[{"full_name":"u/r","clone_url":"https://codeberg.org/u/r.git","ssh_url":"x","private":false,"updated_at":"2026-01-02T03:04:05Z"}]"#])
+        #expect(try await gitea.repositories().first?.fullName == "u/r")
+
+        let bb = client(.bitbucket, username: "me", pages: [
+            #"{"values":[{"full_name":"t/a","is_private":true,"links":{"clone":[{"name":"https","href":"https://me@bitbucket.org/t/a.git"},{"name":"ssh","href":"git@bitbucket.org:t/a.git"}]}}],"next":"https://api.bitbucket.org/2.0/repositories?page=2"}"#,
+            #"{"values":[{"full_name":"t/b","is_private":false,"links":{"clone":[{"name":"https","href":"https://bitbucket.org/t/b.git"}]}}]}"#])
+        let repos = try await bb.repositories()
+        #expect(repos.map(\.fullName) == ["t/a", "t/b"])
+        #expect(repos[0].httpsURL == "https://bitbucket.org/t/a.git")   // username stripped
+    }
+
+    @Test func verifiesTokenAndReportsRejection() async throws {
+        let ok = client(.github, pages: [#"{"login":"octo"}"#])
+        #expect(try await ok.currentUser() == "octo")
+        let bad = client(.gitlab, pages: ["{}"], status: 401)
+        await #expect(throws: ProviderError.self) { _ = try await bad.currentUser() }
+    }
+
+    @Test func paginatesUntilShortPage() async throws {
+        let rec = Recorder()
+        let full = "[" + (0..<100).map { #"{"full_name":"o/r\#($0)","clone_url":"u"}"# }.joined(separator: ",") + "]"
+        let c = client(.github, pages: [full, #"[{"full_name":"o/last","clone_url":"u"}]"#], recorder: rec)
+        let repos = try await c.repositories()
+        #expect(repos.count == 101 && rec.requests.count == 2)
+    }
+
+    @Test func askpassScriptAnswersPrompts() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ap-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let script = dir.appendingPathComponent("askpass.sh")
+        try GitCredential.askpassScript.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+
+        func ask(_ prompt: String) throws -> String {
+            let p = Process()
+            p.executableURL = script
+            p.arguments = [prompt]
+            p.environment = ["GITSYNC_ASKPASS_USER": "octo", "GITSYNC_ASKPASS_TOKEN": "s3cret"]
+            let out = Pipe()
+            p.standardOutput = out
+            try p.run(); p.waitUntilExit()
+            return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .newlines)
+        }
+        #expect(try ask("Username for 'https://github.com': ") == "octo")
+        #expect(try ask("Password for 'https://octo@github.com': ") == "s3cret")
+    }
+}

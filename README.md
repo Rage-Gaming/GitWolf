@@ -24,6 +24,7 @@ A fast, clean, native Git client. Think Sourcetree, without the rough edges.
 - Branches, remotes, tags and stashes in the sidebar, with checkout / merge / delete
 - Fetch, pull, push with ahead/behind badges; automatic background fetch
 - Cherry-pick, revert, create tag or branch from any commit
+- **Provider accounts**: GitHub, GitLab, Bitbucket, Gitea/Forgejo and Azure DevOps (cloud or self-hosted) via access tokens kept in the Keychain; browse and clone your repositories, private ones included, and jump to the repo, branch, pull request or commit on the web
 - Live file-system watching with coalesced refreshes
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for what is next (syntax highlighting,

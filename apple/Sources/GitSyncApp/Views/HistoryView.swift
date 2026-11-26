@@ -118,6 +118,9 @@ private struct CommitRow: View {
             Button("Cherry-Pick") { store.cherryPick(c.hash) }
             Button("Revert") { store.revert(c.hash) }
             Divider()
+            if store.webLinks != nil {
+                Button("Open on \(store.providerTitle ?? "Web")") { store.openOnWeb(.commit(c.hash)) }
+            }
             Button("Copy Hash") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(c.hash, forType: .string)

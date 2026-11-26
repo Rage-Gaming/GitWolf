@@ -74,6 +74,18 @@ struct SidebarView: View {
                 if store.status.behind > 0 { Text("↓\(store.status.behind)") }
             }
             .font(.callout).foregroundStyle(.secondary)
+            if let location = store.remoteLocation {
+                Button { store.openOnWeb(.repository) } label: {
+                    HStack(spacing: 4) {
+                        Text(store.providerTitle.map { "\($0) · " } ?? "").foregroundStyle(.secondary)
+                        Text(location.path).lineLimit(1).truncationMode(.middle)
+                        Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .bold))
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Open on the web")
+            }
         }
         .padding(.horizontal, 8).padding(.top, 4)
     }

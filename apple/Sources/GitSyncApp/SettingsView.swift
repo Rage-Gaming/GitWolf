@@ -2,11 +2,12 @@ import AppKit
 import SwiftUI
 
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general = "General", git = "Git", shortcuts = "Shortcuts"
+    case general = "General", accounts = "Accounts", git = "Git", shortcuts = "Shortcuts"
     var id: String { rawValue }
     var icon: String {
         switch self {
         case .general: "slider.horizontal.3"
+        case .accounts: "person.crop.circle"
         case .git: "arrow.triangle.branch"
         case .shortcuts: "command"
         }
@@ -14,6 +15,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .general: "Look, sync and diffs"
+        case .accounts: "GitHub, GitLab and more"
         case .git: "Git executable"
         case .shortcuts: "Keys for everything"
         }
@@ -34,6 +36,7 @@ struct SettingsView: View {
                             .font(.system(size: 22, weight: .bold, design: .rounded))
                         switch pane {
                         case .general: GeneralSettings()
+                        case .accounts: AccountsSettings()
                         case .git: GitSettings()
                         case .shortcuts: ShortcutsSettings()
                         }
@@ -403,6 +406,7 @@ private struct ShortcutsSettings: View {
         Section(title: "Views", items: [
             Item(title: "Show history", keys: ["⌥", "⌘", "1"]),
             Item(title: "Show changes", keys: ["⌥", "⌘", "2"]),
+            Item(title: "Open on hosting provider", keys: ["⇧", "⌘", "G"]),
         ]),
         Section(title: "Sync", items: [
             Item(title: "Refresh", keys: ["⌘", "R"]),

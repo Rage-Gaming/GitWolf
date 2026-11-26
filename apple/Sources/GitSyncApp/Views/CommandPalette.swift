@@ -31,6 +31,14 @@ struct CommandPalette: View {
                 Item(id: "history", title: "Show History", subtitle: "View", icon: "clock.arrow.circlepath") { s.mode = .history },
                 Item(id: "changes", title: "Show Changes", subtitle: "View", icon: "square.and.pencil") { s.mode = .changes },
             ]
+            if s.webLinks != nil {
+                let site = s.providerTitle ?? "Web"
+                all += [
+                    Item(id: "web-repo", title: "Open on \(site)", subtitle: "Repository action", icon: "arrow.up.right.square") { s.openOnWeb(.repository) },
+                    Item(id: "web-branch", title: "Open Branch on \(site)", subtitle: "Repository action", icon: "arrow.triangle.branch") { s.openOnWeb(.branch) },
+                    Item(id: "web-pr", title: "Create \(s.webLinks?.pullRequestsWord ?? "Pull Request") on \(site)", subtitle: "Repository action", icon: "arrow.triangle.pull") { s.openOnWeb(.pullRequest) },
+                ]
+            }
             all += s.localBranches.filter { !$0.isCurrent }.map { b in
                 Item(id: "branch-\(b.id)", title: b.name, subtitle: "Checkout branch", icon: "arrow.triangle.branch") { s.checkout(b) }
             }

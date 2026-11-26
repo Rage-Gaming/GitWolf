@@ -42,6 +42,8 @@ final class RepositoryStore: Identifiable {
     private(set) var tags: [GitTag] = []
     private(set) var stashes: [Stash] = []
     private(set) var remotes: [String] = []
+    /// Where `origin` (or the first remote) lives, for web links.
+    private(set) var remoteLocation: RemoteLocation?
     private(set) var isLoaded = false
 
     // Selection / UI state
@@ -83,6 +85,7 @@ final class RepositoryStore: Identifiable {
         guard !started else { return }
         started = true
         requestRefresh()
+        refreshRemoteLocation()
 
         let watcher = FileWatcher(root: repo.root)
         self.watcher = watcher
@@ -113,6 +116,40 @@ final class RepositoryStore: Identifiable {
                 self.requestRefresh()
             }
         })
+    }
+
+    // MARK: Provider web links
+
+    private func refreshRemoteLocation() {
+        Task { [weak self] in
+            guard let self else { return }
+            let location = await self.repo.remoteLocation()
+            if location != self.remoteLocation { self.remoteLocation = location }
+        }
+    }
+
+    private var providerKind: ProviderKind? {
+        guard let host = remoteLocation?.host else { return nil }
+        return AccountStorage.account(forHost: host)?.kind ?? ProviderKind.guess(host: host)
+    }
+
+    var webLinks: WebLinks? { remoteLocation.map { WebLinks(kind: providerKind, location: $0) } }
+    /// "GitHub", "GitLab"... or nil when the remote isn't a recognised provider.
+    var providerTitle: String? { providerKind?.title }
+
+    enum WebTarget { case repository, branch, pullRequest, commit(String) }
+
+    func openOnWeb(_ target: WebTarget) {
+        guard let links = webLinks else { return }
+        let branch = status.branch
+        let url: URL?
+        switch target {
+        case .repository: url = links.repository
+        case .branch: url = branch.map { links.branch($0) } ?? links.repository
+        case .pullRequest: url = branch.map { links.newPullRequest(from: $0) } ?? links.repository
+        case .commit(let hash): url = links.commit(hash)
+        }
+        if let url { NSWorkspace.shared.open(url) }
     }
 
     func stop() {
@@ -152,7 +189,7 @@ final class RepositoryStore: Identifiable {
         if remoteBranches != s.remoteBranches { remoteBranches = s.remoteBranches }
         if tags != s.tags { tags = s.tags }
         if stashes != s.stashes { stashes = s.stashes }
-        if remotes != s.remotes { remotes = s.remotes }
+        if remotes != s.remotes { remotes = s.remotes; refreshRemoteLocation() }
         if !isLoaded {
             isLoaded = true
             if !s.status.isClean { mode = .changes }

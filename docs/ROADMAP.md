@@ -10,5 +10,6 @@
 ## Later
 - Submodules and worktrees
 - Git LFS indicators
-- Pull-request integrations
+- OAuth / device-flow sign-in for providers
+- Pull-request, issue and CI status lists
 - Windows and Linux native clients (see [PORTING.md](PORTING.md))

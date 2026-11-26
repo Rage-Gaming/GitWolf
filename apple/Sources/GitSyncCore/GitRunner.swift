@@ -40,10 +40,13 @@ private final class ProcessBox: @unchecked Sendable {
 public struct GitRunner: Sendable {
     public let workingDirectory: URL
     public let gitPath: String
+    /// Extra environment for every process (e.g. credentials for network commands).
+    public let extraEnvironment: [String: String]
 
-    public init(workingDirectory: URL, gitPath: String = "/usr/bin/git") {
+    public init(workingDirectory: URL, gitPath: String = "/usr/bin/git", extraEnvironment: [String: String] = [:]) {
         self.workingDirectory = workingDirectory
         self.gitPath = gitPath
+        self.extraEnvironment = extraEnvironment
     }
 
     /// - Parameters:
@@ -60,6 +63,7 @@ public struct GitRunner: Sendable {
     ) async throws -> Data {
         let directory = workingDirectory
         let path = gitPath
+        let extra = extraEnvironment
         let box = ProcessBox()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -68,7 +72,7 @@ public struct GitRunner: Sendable {
                         let data = try Self.execute(
                             path: path, directory: directory, arguments: arguments,
                             readOnly: readOnly, allowed: allowedExitCodes, input: input,
-                            box: box, onProgress: onProgress)
+                            box: box, onProgress: onProgress, extraEnvironment: extra)
                         continuation.resume(returning: data)
                     } catch {
                         continuation.resume(throwing: error)
@@ -105,13 +109,14 @@ public struct GitRunner: Sendable {
     private static func execute(
         path: String, directory: URL, arguments: [String],
         readOnly: Bool, allowed: Set<Int32>, input: Data?,
-        box: ProcessBox, onProgress: (@Sendable (String) -> Void)?
+        box: ProcessBox, onProgress: (@Sendable (String) -> Void)?,
+        extraEnvironment: [String: String]
     ) throws -> Data {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
         process.currentDirectoryURL = directory
-        process.environment = environment(readOnly: readOnly)
+        process.environment = environment(readOnly: readOnly).merging(extraEnvironment) { _, new in new }
 
         let stdout = Pipe()
         let stderr = Pipe()
