@@ -17,6 +17,10 @@ and should follow each platform's native idioms.
   uncommitted changes across open repositories (`BadgeLabel.text`: none for 0, `99+` above 99). The
   Dock (taskbar jump list on Windows/Linux) menu lists up to 8 recent repositories, and File > Open
   Recent lists the recents with *Clear Menu*.
+- **Home screen pins and groups** [ui; core `HomeLayout`]. With no repository selected the home screen
+  shows *Pinned*, one section per user-named *Group*, then *Recent*. Context menu on a card: Pin/Unpin,
+  Add to Group (toggle, New Group…), Reveal, Remove from Home. `HomeLayout` is a Codable value type
+  (pinned paths, groups of paths) persisted as JSON; missing folders are pruned on load.
 - Open set and selection are persisted and restored on launch.
 - Open a repository (folder picker; any folder inside a repo resolves to its root via
   `rev-parse --show-toplevel`), `--open=/path` launch flag.

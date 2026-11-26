@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Home screen pinning and groups: right-click a repository on the home screen to pin it or add it to a named group. Pinned repositories and groups get their own sections above Recent; groups can be created, renamed and deleted, and repositories removed from home. Layout is saved and paths that no longer exist are dropped.
 - Dock integration: the Dock icon shows a badge with the number of files with uncommitted changes across all open repositories (capped at 99+), right-clicking it lists recent repositories, and File > Open Recent lists them in the menu bar with Clear Menu.
 - Profile pictures: commit authors in history, commit details and file history, and comment authors on pull requests and issues, show their picture from the hosting platform (GitHub, GitLab, Gitea, Bitbucket Cloud), over their initials until it loads. Only the repository's own platform is asked; no Gravatar or other third party. Pictures are cached for a week.
 - Tag icons: sidebar tags get an icon from their name: a star for major releases (`v2.0.0`), a tag for other versions (outlined when the tag is lightweight), a flag for release candidates, a test tube for alpha/beta/preview, a moon for nightly, a seal for `latest`/`stable`, a shield for LTS, a paper plane for deploy markers and a box for backups. The tag chips in the history list use the same icons.

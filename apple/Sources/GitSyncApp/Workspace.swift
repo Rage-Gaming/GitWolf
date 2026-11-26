@@ -12,12 +12,30 @@ enum RecentRepositories {
             .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
+    static func remove(_ path: String) {
+        let paths = (UserDefaults.standard.stringArray(forKey: key) ?? []).filter { $0 != path }
+        UserDefaults.standard.set(paths, forKey: key)
+    }
+
     static func clear() { UserDefaults.standard.removeObject(forKey: key) }
 
     static func add(_ url: URL) {
         var paths = (UserDefaults.standard.stringArray(forKey: key) ?? []).filter { $0 != url.path }
         paths.insert(url.path, at: 0)
         UserDefaults.standard.set(Array(paths.prefix(12)), forKey: key)
+    }
+}
+
+enum HomeLayoutStore {
+    private static let key = "homeLayout"
+
+    static func load() -> HomeLayout {
+        let saved = UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(HomeLayout.self, from: $0) }
+        return (saved ?? HomeLayout()).pruned { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    static func save(_ layout: HomeLayout) {
+        if let data = try? JSONEncoder().encode(layout) { UserDefaults.standard.set(data, forKey: key) }
     }
 }
 
@@ -31,6 +49,7 @@ final class Workspace {
     var showPalette = false
     var sheet: WorkspaceSheet?
     private(set) var recents: [URL] = RecentRepositories.load()
+    private(set) var home = HomeLayoutStore.load()
 
     /// The window's workspace, for AppKit hooks (Dock menu) that live outside SwiftUI.
     static weak var current: Workspace?
@@ -57,6 +76,19 @@ final class Workspace {
             Task { @MainActor in self?.trackDockBadge() }
         }
         NSApp?.dockTile.badgeLabel = BadgeLabel.text(forChanges: count)
+    }
+
+    /// Edits the home layout and saves it.
+    func editHome(_ change: (inout HomeLayout) -> Void) {
+        change(&home)
+        HomeLayoutStore.save(home)
+    }
+
+    /// Removes a repository from recents, pins and groups (the folder itself is untouched).
+    func forget(_ path: String) {
+        RecentRepositories.remove(path)
+        recents = RecentRepositories.load()
+        editHome { $0.remove(path) }
     }
 
     func clearRecents() {

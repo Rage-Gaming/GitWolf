@@ -2288,3 +2288,41 @@ struct AvatarTests {
         #expect(BadgeLabel.text(forChanges: 100) == "99+")
     }
 }
+
+@Suite struct HomeLayoutTests {
+    @Test func pinAndGroups() throws {
+        var layout = HomeLayout()
+        layout.togglePin("/a"); layout.togglePin("/b")
+        #expect(layout.pinned == ["/a", "/b"])
+        layout.togglePin("/a")
+        #expect(layout.pinned == ["/b"])
+
+        #expect(layout.addGroup(named: "   ") == nil)
+        let created = layout.addGroup(named: " Work ")
+        let work = try #require(created)
+        #expect(layout.groups.first?.name == "Work")
+        layout.toggle("/b", inGroup: work); layout.toggle("/c", inGroup: work)
+        #expect(layout.groupIDs(containing: "/b") == [work])
+        layout.toggle("/c", inGroup: work)
+        #expect(layout.groups[0].paths == ["/b"])
+        layout.renameGroup(work, to: "Day job")
+        #expect(layout.groups[0].name == "Day job")
+
+        layout.remove("/b")
+        #expect(layout.pinned.isEmpty && layout.groups[0].paths.isEmpty)
+        layout.deleteGroup(work)
+        #expect(layout.groups.isEmpty)
+    }
+
+    @Test func codableAndPrune() throws {
+        var layout = HomeLayout()
+        layout.togglePin("/keep"); layout.togglePin("/gone")
+        let created = layout.addGroup(named: "G", paths: ["/keep", "/gone"])
+        let id = try #require(created)
+        let decoded = try JSONDecoder().decode(HomeLayout.self, from: JSONEncoder().encode(layout))
+        #expect(decoded == layout)
+        let pruned = decoded.pruned { $0 == "/keep" }
+        #expect(pruned.pinned == ["/keep"])
+        #expect(pruned.groups.first { $0.id == id }?.paths == ["/keep"])
+    }
+}
