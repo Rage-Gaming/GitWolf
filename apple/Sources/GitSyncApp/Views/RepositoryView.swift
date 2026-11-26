@@ -10,6 +10,11 @@ struct RepositoryView: View {
     var body: some View {
         VStack(spacing: 0) {
             TopBar(store: store, workspace: workspace)
+            if let operation = store.operation {
+                OperationBanner(store: store, operation: operation)
+                    .padding(.horizontal, 10).padding(.bottom, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             GeometryReader { geo in
                 let sidebar = CGFloat(sidebarWidth)
                 let content = min(CGFloat(contentWidth), max(320, geo.size.width - sidebar - 380 - 24))
@@ -26,6 +31,7 @@ struct RepositoryView: View {
         .task { store.start() }
         .overlay(alignment: .bottom) { if let label = store.busyLabel { BusyPill(label: label) } }
         .animation(.snappy, value: store.busyLabel)
+        .animation(.snappy, value: store.operation)
         .alert("Git Error", isPresented: Binding(
             get: { store.errorMessage != nil },
             set: { if !$0 { store.errorMessage = nil } })
@@ -42,9 +48,25 @@ struct RepositoryView: View {
                     store.createBranch(name, from: from, checkout: checkout)
                 }
             case .newTag(let hash):
-                PromptSheet(title: "New Tag", placeholder: "v1.0.0", confirm: "Create") { name, _ in
-                    store.createTag(name, at: hash)
+                NewTagSheet(store: store, hash: hash)
+            case .rebase(let plan):
+                RebaseSheet(store: store, plan: plan)
+            case .stashHunk(let index):
+                PromptSheet(title: "Stash Hunk", placeholder: "Message (optional)", confirm: "Stash", allowEmpty: true) { msg, _ in
+                    store.stashHunk(index, message: msg)
                 }
+            case .fileHistory(let path):
+                FileHistorySheet(store: store, path: path)
+            case .renameBranch(let name):
+                PromptSheet(title: "Rename Branch", placeholder: "new-name", confirm: "Rename", initial: name) { new, _ in
+                    store.renameBranch(name, to: new)
+                }
+            case .hookFailure(let failure):
+                HookOutputSheet(failure: failure) { store.commit(skipHooks: true) }
+            case .cleanup:
+                BranchCleanupSheet(store: store)
+            case .reflog:
+                ReflogSheet(store: store)
             case .stash:
                 PromptSheet(title: "Stash Changes", placeholder: "Message (optional)", confirm: "Stash", allowEmpty: true) { msg, _ in
                     store.stashPush(msg)
@@ -56,10 +78,17 @@ struct RepositoryView: View {
     @ViewBuilder private var mainColumn: some View {
         switch store.mode {
         case .history: HistoryView(store: store)
+        case .stash: StashView(store: store)
+        case .compare: CompareView(store: store)
         case .changes: ChangesView(store: store)
         case .pullRequests: CollabListView(store: store, collab: store.pullRequests)
         case .issues: CollabListView(store: store, collab: store.issues)
         }
+    }
+
+    private var stashHunk: (@MainActor (Int) -> Void)? {
+        guard store.canStashHunk else { return nil }
+        return { store.sheet = .stashHunk($0) }
     }
 
     private var staging: DiffStaging? {
@@ -70,13 +99,22 @@ struct RepositoryView: View {
             toggle: { store.toggleLine($0, extend: $1) },
             clear: { store.clearLineSelection() },
             hunk: { store.applyHunk($0, action: $1) },
-            lines: { store.applySelectedLines(action: $0) })
+            lines: { store.applySelectedLines(action: $0) },
+            hunkSummary: { store.hunkSummary($0) },
+            lineSummary: { store.changeSummary(store.lineSelection) },
+            stashHunk: stashHunk)
     }
 
     @ViewBuilder private var detailColumn: some View {
         switch store.mode {
         case .history: CommitDetailView(store: store)
-        case .changes: DiffPane(diff: store.diff, path: store.selectedTarget?.path, staging: staging)
+        case .stash, .compare: DiffPane(diff: store.diff, path: store.selectedTarget?.path)
+        case .changes:
+            if let t = store.selectedTarget, t.source == .conflicted, store.status.conflicted.contains(where: { $0.path == t.path }) {
+                ConflictResolverView(store: store, path: t.path).id(t.path)
+            } else {
+                DiffPane(diff: store.diff, path: store.selectedTarget?.path, staging: staging)
+            }
         case .pullRequests: CollabDetailView(store: store, collab: store.pullRequests)
         case .issues: CollabDetailView(store: store, collab: store.issues)
         }
