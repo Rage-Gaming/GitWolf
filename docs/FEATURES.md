@@ -251,6 +251,11 @@ hammer, `staging` flag, `production` shield), then the first word split on `/`, 
 In the sidebar draw the symbol in its colour; mark the current branch with a small green check badge on the icon
 (and a semibold name) rather than replacing the icon.
 
+Tags [`FileIcons.tagIcon(named:isAnnotated:)`], first match wins: `nightly`/`daily` moon; `-rc`/`.rc` checkered flag;
+`alpha`/`beta`/`preview`/`snapshot`/`canary`/`-dev` test tube; `latest`/`stable`/`current` seal; `lts` shield;
+`deploy`/`prod`/`staging`/`live` paper plane; `backup`/`archive`/`old`/`legacy` archive box; `N.0` or `N.0.0`
+(N ≥ 1) star; any other dotted version a tag (filled if annotated, outlined if lightweight); else a plain tag.
+
 ## 6b. Scale and power
 
 - **Bisect** [core `Bisect.swift`]: state comes from `BISECT_LOG` (marks, and the

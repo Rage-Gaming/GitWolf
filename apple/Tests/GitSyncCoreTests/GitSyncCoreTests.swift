@@ -2177,6 +2177,24 @@ struct FileIconTests {
         #expect(FileIcons.branchIcon(named: "").name == "Branch")
     }
 
+    @Test func tagsByName() {
+        #expect(FileIcons.tagIcon(named: "v2.0.0").name == "Major release")
+        #expect(FileIcons.tagIcon(named: "1.0").name == "Major release")
+        #expect(FileIcons.tagIcon(named: "v1.4.2").name == "Release")
+        #expect(FileIcons.tagIcon(named: "v0.3.0").name == "Release")
+        #expect(FileIcons.tagIcon(named: "v1.5.0-rc.1").name == "Release candidate")
+        #expect(FileIcons.tagIcon(named: "v1.5.0-beta.2").name == "Pre-release")
+        #expect(FileIcons.tagIcon(named: "v3.0.0-alpha").name == "Pre-release")
+        #expect(FileIcons.tagIcon(named: "nightly-2026-11-27").name == "Nightly")
+        #expect(FileIcons.tagIcon(named: "latest").name == "Latest")
+        #expect(FileIcons.tagIcon(named: "release-lts").name == "Long-term support")
+        #expect(FileIcons.tagIcon(named: "deploy-prod-42").name == "Deploy")
+        #expect(FileIcons.tagIcon(named: "old-backup").name == "Archive")
+        #expect(FileIcons.tagIcon(named: "milestone").name == "Tag")
+        #expect(FileIcons.tagIcon(named: "milestone", isAnnotated: false).glyph == .symbol("tag"))
+        #expect(FileIcons.tagIcon(named: "").name == "Tag")
+    }
+
     @Test func foldersByName() {
         #expect(FileIcons.folderIcon(named: "src").name == "Source")
         #expect(FileIcons.folderIcon(named: "Docs").name == "Docs")
