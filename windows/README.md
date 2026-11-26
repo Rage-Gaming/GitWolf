@@ -41,7 +41,7 @@ Store layer:
       UI thread only, and call `RequestRefresh()` when a window is activated.
 - [x] `AppSettings.swift` -> `src/GitSync.App/Services/AppSettings.cs`
 - [ ] `Accounts.swift` -> Credential Manager, writing the askpass script with LF endings and no BOM
-- [ ] `Workspace.swift` (open and recent repositories)
+- [x] `Workspace.swift` (open and recent repositories) -> `src/GitSync.App/Services/Workspace.cs`
 
 73 tests pass against real git and stubbed HTTP.
 
@@ -60,7 +60,8 @@ UI (`src/GitSync.App/`):
       (`%LOCALAPPDATA%\GitSync\workspace.json`, paths and view preferences only)
 - [x] Jump palette (Ctrl+K), Ctrl+O, Ctrl+Shift+F/L/P
 - [ ] Hunk/line staging, discard
-- [ ] Clone/new repository, home dashboard, resizable panels
+- [x] Home dashboard: open, jump, recent repositories, drop a folder to open
+- [ ] Clone/new repository, resizable panels
 - [x] Settings (Ctrl+,): theme, accent colour, background fetch, history and diff options, git path
       (`%LOCALAPPDATA%\GitSync\settings.json`)
 - [ ] Provider accounts

@@ -33,6 +33,9 @@ public sealed partial class MainWindow : Window
         Rail.Attach(_workspace);
         Rail.AddRequested += () => _ = PickAsync();
         TopBar.JumpRequested += OpenPalette;
+        Dashboard.OpenRequested += () => _ = PickAsync();
+        Dashboard.JumpRequested += OpenPalette;
+        Dashboard.PathsRequested += paths => _ = OpenAllAsync(paths);
         Diff.LayoutChanged += split => _workspace.SplitDiff = split;
         Rail.SettingsRequested += Settings.Open;
         Settings.Attach(this, _settings, _workspace);
@@ -99,7 +102,19 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnOpen(object sender, RoutedEventArgs e) => _ = PickAsync();
+    /// <summary>One at a time, so each repository is added before the next is checked.</summary>
+    private async Task OpenAllAsync(IReadOnlyList<string> paths)
+    {
+        try
+        {
+            foreach (var path in paths) await OpenAsync(path);
+        }
+        catch (Exception e)
+        {
+            Trace.TraceError($"Opening a repository failed: {e.GetType().Name}");
+            ShowError("The folder couldn’t be opened.");
+        }
+    }
 
     /// <summary>Points the panels at the selected repository.</summary>
     private void Bind()
@@ -128,6 +143,7 @@ public sealed partial class MainWindow : Window
         var store = _store;
         var loaded = store?.IsLoaded == true;
         Home.Visibility = When(store is null);
+        if (store is null) Dashboard.Show(_workspace.Recents);
         Repository.Visibility = When(loaded);
         Loading.IsActive = store is not null && !loaded;
         SetTitleBar(loaded ? (UIElement)TopBar.DragRegion : HomeDragArea);

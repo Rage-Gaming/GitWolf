@@ -52,13 +52,7 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Border x:Name="HomeDragArea" Background="Transparent" Margin="0,0,140,0" />
-            <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
-                <TextBlock Text="GitSync" FontSize="32" FontWeight="Bold" HorizontalAlignment="Center" />
-                <TextBlock Text="Open a Git repository to get started" HorizontalAlignment="Center"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <Button Content="Open repository" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}"
-                        Click="OnOpen" />
-            </StackPanel>
+            <views:DashboardView x:Name="Dashboard" Grid.Row="1" />
         </Grid>
 
         <ProgressRing x:Name="Loading" Grid.Column="1" Width="40" Height="40" IsActive="False" />

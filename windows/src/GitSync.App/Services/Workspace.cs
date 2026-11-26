@@ -6,7 +6,8 @@ using GitSync.Store;
 namespace GitSync.App.Services;
 
 /// <summary>What is remembered between launches. Paths and view preferences only, never credentials.</summary>
-internal sealed record WorkspaceState(List<string>? Open = null, string? Selected = null, bool SplitDiff = false);
+internal sealed record WorkspaceState(
+    List<string>? Open = null, string? Selected = null, bool SplitDiff = false, List<string>? Recents = null);
 
 /// <summary>
 /// All repositories open in the window. Each keeps its own store (and file watcher) alive so rail
@@ -15,11 +16,13 @@ internal sealed record WorkspaceState(List<string>? Open = null, string? Selecte
 internal sealed class Workspace : IDisposable
 {
     private const int MaxRestored = 20;
+    private const int MaxRecents = 12;
 
     private static readonly string StatePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GitSync", "workspace.json");
 
     private readonly List<RepositoryStore> _repos = [];
+    private List<string> _recents = [];
     private readonly AppSettings _settings;
     private readonly Action<Uri> _openUri;
     private bool _restoring;
@@ -33,6 +36,15 @@ internal sealed class Workspace : IDisposable
 
     public IReadOnlyList<RepositoryStore> Repos => _repos;
     public RepositoryStore? Selected { get; private set; }
+
+    /// <summary>
+    /// Folders opened before, newest first. Missing ones are left out. Network paths aren't checked,
+    /// because an unreachable share would stall the window.
+    /// </summary>
+    public IReadOnlyList<string> Recents => _recents
+        .Where(p => p.StartsWith(@"\\", StringComparison.Ordinal) || p.StartsWith("//", StringComparison.Ordinal)
+            || Directory.Exists(p))
+        .ToList();
 
     /// <summary>Raised when the list or the selection changes.</summary>
     public event Action? Changed;
@@ -61,7 +73,16 @@ internal sealed class Workspace : IDisposable
         var store = new RepositoryStore(repo, _settings, _openUri);
         _repos.Add(store);
         store.Start();
+        // Restoring last session's repositories must not reorder the list.
+        if (!_restoring) Remember(store.Id);
         Select(store);
+    }
+
+    private void Remember(string path)
+    {
+        _recents.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+        _recents.Insert(0, path);
+        if (_recents.Count > MaxRecents) _recents.RemoveRange(MaxRecents, _recents.Count - MaxRecents);
     }
 
     public void Select(RepositoryStore? store)
@@ -85,6 +106,8 @@ internal sealed class Workspace : IDisposable
     {
         var state = Load();
         _splitDiff = state.SplitDiff;
+        // State saved before recents existed starts from the open repositories.
+        _recents = (state.Recents ?? state.Open ?? []).Where(p => !string.IsNullOrWhiteSpace(p)).Take(MaxRecents).ToList();
         _restoring = true;
         try
         {
@@ -128,7 +151,7 @@ internal sealed class Workspace : IDisposable
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(StatePath)!);
-            var state = new WorkspaceState(_repos.Select(r => r.Id).ToList(), Selected?.Id, _splitDiff);
+            var state = new WorkspaceState(_repos.Select(r => r.Id).ToList(), Selected?.Id, _splitDiff, _recents);
             // Write then rename, so a crash can't leave a half-written file.
             var temporary = StatePath + ".tmp";
             File.WriteAllText(temporary, JsonSerializer.Serialize(state));
