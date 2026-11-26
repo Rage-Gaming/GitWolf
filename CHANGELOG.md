@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Commit signing: GPG, SSH and X.509 signature badges in commit details (verified, untrusted, unverifiable, bad, expired, revoked), and a Sign checkbox in the commit box that follows `commit.gpgsign` and `user.signingkey`.
 - Discard and stash safety: discard confirmations state exactly what is lost (files, lines added/removed, untracked files and size); stash a single hunk; preview a stash (files and diffs) before applying; applying a stash into a file with other local changes falls back to a patch when it can.
 - Rebase: interactive rebase editor (reorder by dragging; pick, reword, squash, fixup, drop) from the history menu, "Rebase Current Branch onto This" from branches, and a Pull strategy setting (merge or rebase). Conflicts stop the rebase in the operation banner.
 - Reset and undo: Reset Branch to Here (soft, mixed, hard) from the history menu, a Reflog browser (reset, checkout or branch from any earlier HEAD), and Undo Last Change.

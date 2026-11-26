@@ -103,6 +103,19 @@ and should follow each platform's native idioms.
 - Apply/Pop fall back to applying the stash as a patch when git refuses because a touched file has
   other local changes (only for stashes without untracked files).
 
+## 3e. Commit signing
+
+- **Signature badge** in the commit detail pane [core `signature(of:)`]: green "Verified SSH/GPG
+  signature" with signer and key, orange when valid but untrusted, expired, or git can't check it
+  (no public key; for SSH, no `gpg.ssh.allowedSignersFile`), red for a bad or revoked signature.
+  The format comes from the commit's `gpgsig` header and the state from `git log --format=%G?`;
+  unsigned commits are never sent to gpg/ssh-keygen, so history stays fast, and the check runs
+  only for the selected commit.
+- **Sign checkbox** in the commit box, shown when signing is configured (`commit.gpgsign` or
+  `user.signingkey`; format from `gpg.format`). It starts from `commit.gpgsign`; an explicit choice
+  that differs from config is passed as `--gpg-sign` / `--no-gpg-sign`. GPG needs a pinentry that
+  works without a terminal (e.g. pinentry-mac); SSH keys need the agent or an unencrypted key.
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is
@@ -197,5 +210,4 @@ Full details in [PROVIDERS.md](PROVIDERS.md). Summary:
 
 ## 10. Not built yet
 
-See [ROADMAP.md](ROADMAP.md): interactive rebase, reset, conflict-resolution UI, signing status,
-submodules/worktrees, LFS, OAuth sign-in, pull-request/issue/CI lists, notarised releases.
+See [ROADMAP.md](ROADMAP.md): submodules/worktrees, LFS, notarised releases, blame, compare refs, branch tools.

@@ -1058,3 +1058,68 @@ import Testing
         #expect(DiscardSummary().sentence == "Nothing will change.")
     }
 }
+
+@Suite struct SigningTests {
+    /// A repo configured to sign with a freshly generated SSH key.
+    private func sshRepo() async throws -> TestRepo {
+        let t = try await TestRepo.make()
+        let key = t.dir.deletingLastPathComponent().appendingPathComponent("key-\(UUID().uuidString)")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
+        p.arguments = ["-q", "-t", "ed25519", "-N", "", "-C", "t@example.com", "-f", key.path]
+        try p.run(); p.waitUntilExit()
+        let pub = try String(contentsOf: URL(fileURLWithPath: key.path + ".pub"), encoding: .utf8)
+        let allowed = key.path + ".allowed"
+        try ("t@example.com " + pub).write(toFile: allowed, atomically: true, encoding: .utf8)
+        try await t.git.run(["config", "gpg.format", "ssh"])
+        try await t.git.run(["config", "user.signingkey", key.path + ".pub"])
+        try await t.git.run(["config", "gpg.ssh.allowedSignersFile", allowed])
+        return t
+    }
+
+    @Test func unsignedCommitHasNoSignature() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        let h = try await t.commit("plain", text: "x\n")
+        #expect(try await t.repo.signature(of: h) == nil)
+        let cfg = await t.repo.signingConfig()
+        #expect(!cfg.signsByDefault && cfg.format == .gpg && !cfg.isConfigured)
+    }
+
+    @Test func verifiesSshSignedCommitAndOptsInPerCommit() async throws {
+        let t = try await sshRepo(); defer { t.cleanup() }
+        let cfg = await t.repo.signingConfig()
+        #expect(cfg.format == .ssh && cfg.key != nil && cfg.isConfigured && !cfg.signsByDefault)
+
+        try t.write("a\n"); try await t.git.run(["add", "-A"])
+        try await t.repo.commit(message: "signed", amend: false, sign: true)
+        let h = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let sig = try #require(try await t.repo.signature(of: h))
+        #expect(sig.format == .ssh && sig.state == .good && sig.signer == "t@example.com")
+        #expect(sig.title == "Verified SSH signature")
+
+        try t.write("b\n"); try await t.git.run(["add", "-A"])
+        try await t.repo.commit(message: "unsigned", amend: false, sign: false)
+        let h2 = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(try await t.repo.signature(of: h2) == nil)
+    }
+
+    @Test func unknownSignerIsReportedAsUnverifiable() async throws {
+        let t = try await sshRepo(); defer { t.cleanup() }
+        try await t.git.run(["config", "--unset", "gpg.ssh.allowedSignersFile"])
+        try t.write("a\n"); try await t.git.run(["add", "-A"])
+        try await t.repo.commit(message: "signed", amend: false, sign: true)
+        let h = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let sig = try #require(try await t.repo.signature(of: h))
+        #expect(sig.format == .ssh && sig.state == .unverifiable && !sig.state.isVerified)
+    }
+
+    @Test func defaultSigningFollowsConfig() async throws {
+        let t = try await sshRepo(); defer { t.cleanup() }
+        try await t.git.run(["config", "commit.gpgsign", "true"])
+        #expect(await t.repo.signingConfig().signsByDefault)
+        try t.write("a\n"); try await t.git.run(["add", "-A"])
+        try await t.repo.commit(message: "auto", amend: false)
+        let h = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(try await t.repo.signature(of: h)?.state == .good)
+    }
+}

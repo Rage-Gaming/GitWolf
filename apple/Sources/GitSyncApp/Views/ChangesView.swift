@@ -72,6 +72,13 @@ struct ChangesView: View {
 
             HStack {
                 Toggle("Amend last commit", isOn: $store.amend).toggleStyle(.checkbox).controlSize(.small)
+                if let signing = store.signing, signing.isConfigured {
+                    Toggle(isOn: $store.signCommit) {
+                        Label("Sign", systemImage: "signature")
+                    }
+                    .toggleStyle(.checkbox).controlSize(.small)
+                    .help("Sign this commit with your \(signing.format.rawValue) key")
+                }
                 let subject = store.draftMessage.split(separator: "\n").first.map(String.init) ?? ""
                 if subject.count > 72 {
                     Text("\(subject.count)").font(.caption.monospacedDigit()).foregroundStyle(.orange)

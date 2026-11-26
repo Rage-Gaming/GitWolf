@@ -59,6 +59,7 @@ struct CommitDetailView: View {
                 }
                 .buttonStyle(.plain).help("Copy full hash")
             }
+            if let sig = store.selectedSignature { SignatureBadge(signature: sig) }
             if !c.parents.isEmpty {
                 HStack(spacing: 6) {
                     Text(c.parents.count > 1 ? "Parents" : "Parent").font(.caption).foregroundStyle(.secondary)
@@ -88,5 +89,42 @@ struct CommitFileRow: View {
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .onTapGesture(perform: action)
+    }
+}
+
+/// Shows whether a commit is signed and whether git could verify it.
+struct SignatureBadge: View {
+    let signature: CommitSignature
+
+    private var tint: Color {
+        switch signature.state {
+        case .good: .green
+        case .goodUnknownTrust, .unverifiable, .expiredSignature, .expiredKey: .orange
+        case .bad, .revoked: .red
+        }
+    }
+    private var icon: String {
+        switch signature.state {
+        case .good: "checkmark.seal.fill"
+        case .goodUnknownTrust, .unverifiable, .expiredSignature, .expiredKey: "exclamationmark.seal.fill"
+        case .bad, .revoked: "xmark.seal.fill"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(signature.title).font(.callout.weight(.semibold))
+                let detail = [signature.signer, signature.key.isEmpty ? "" : String(signature.key.suffix(16))]
+                    .filter { !$0.isEmpty }.joined(separator: " · ")
+                if !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .help(signature.state == .unverifiable
+              ? "Git has no key to check this signature against. For SSH, set gpg.ssh.allowedSignersFile."
+              : signature.title)
     }
 }

@@ -63,6 +63,11 @@ final class RepositoryStore: Identifiable {
     private(set) var stashFiles: [FileChange] = []
     private(set) var stashCommit: String?
     private(set) var commitMessage = ""
+    /// Signature of the selected commit; nil when unsigned or not loaded yet.
+    private(set) var selectedSignature: CommitSignature?
+    private(set) var signing: SigningConfig?
+    /// Sign the next commit. Starts from `commit.gpgsign`; the commit box can override it.
+    var signCommit = false
     private(set) var diff: FileDiff?
     private(set) var lineSelection: Set<Int> = []
     private var selectionAnchor: Int?
@@ -117,6 +122,11 @@ final class RepositoryStore: Identifiable {
         guard !started else { return }
         started = true
         pullRequests.context = { [weak self] in self?.collabContext() }
+        Task {
+            let config = await repo.signingConfig()
+            signing = config
+            signCommit = config.signsByDefault
+        }
         #if DEBUG
         if let requested = ProcessInfo.processInfo.environment["GITSYNC_MODE"] {
             Task { @MainActor in
@@ -276,6 +286,7 @@ final class RepositoryStore: Identifiable {
         clearLineSelection()
         commitFiles = []
         commitMessage = ""
+        selectedSignature = nil
         diffToken += 1
         commitToken += 1
     }
@@ -317,10 +328,15 @@ final class RepositoryStore: Identifiable {
         diff = nil
         commitFiles = []
         commitMessage = ""
+        selectedSignature = nil
         diffToken += 1
         commitToken += 1
         guard let id, let commit = commits.first(where: { $0.id == id }) else { return }
         let token = commitToken
+        Task {
+            let signature = try? await repo.signature(of: commit.hash)
+            if token == commitToken { selectedSignature = signature }
+        }
         Task {
             async let files = try? repo.files(in: commit)
             async let message = try? repo.message(of: commit.hash)
@@ -590,7 +606,9 @@ final class RepositoryStore: Identifiable {
     func commit() {
         let message = draftMessage
         let amend = amend
-        perform("Committing…") { try await $0.commit(message: message, amend: amend) }
+        // Only pass an explicit choice when it differs from git's own default.
+        let sign: Bool? = signing.map { $0.signsByDefault == signCommit ? nil : signCommit } ?? nil
+        perform(signCommit ? "Signing & committing…" : "Committing…") { try await $0.commit(message: message, amend: amend, sign: sign) }
         // Cleared optimistically; restored if the commit fails.
         Task {
             while isBusy { try? await Task.sleep(for: .milliseconds(50)) }

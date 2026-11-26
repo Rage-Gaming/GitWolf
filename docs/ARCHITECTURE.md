@@ -22,6 +22,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `Reset` | `reset(to:mode:)`, `reflog()` and `resetImpact(to:)` (commits dropped, files modified) so the UI can warn before a hard reset. |
 | `Rebase` | `RebasePlan` (actions, validation, todo generation), `rebaseCandidates`, `startInteractiveRebase`, `rebase(onto:)`. Conflicts leave the rebase in progress instead of throwing. |
 | `StashTools` | `discardSummary`, `stashFiles`, `stashHash`, `stashHunk` (plumbing-built single-hunk stash). |
+| `Signing` | `signature(of:)` (format, state, signer, key), `signingConfig()`, and the `sign` option of `commit`. |
 | `FileWatcher` | FSEvents watcher that emits a coalesced "something changed" signal, filtering object-db and lock-file noise. |
 
 ## Keeping the UI in sync

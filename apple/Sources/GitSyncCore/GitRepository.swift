@@ -236,9 +236,11 @@ public struct GitRepository: Sendable {
         if !untracked.isEmpty { try await git.run(["clean", "-f", "--"] + untracked) }
     }
 
-    public func commit(message: String, amend: Bool) async throws {
+    /// - Parameter sign: `true` forces `-S`, `false` forces `--no-gpg-sign`, nil follows git config.
+    public func commit(message: String, amend: Bool, sign: Bool? = nil) async throws {
         var args = ["commit"]
         if amend { args.append("--amend") }
+        if let sign { args.append(sign ? "--gpg-sign" : "--no-gpg-sign") }
         if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             args.append("--no-edit")
         } else {
