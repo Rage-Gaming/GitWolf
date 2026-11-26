@@ -4,15 +4,21 @@ import Foundation
 /// its own git process. Callers are responsible for serialising mutating operations.
 public struct GitRepository: Sendable {
     public let root: URL
-    let git: GitRunner
+    /// Path of the `git` executable to run.
+    public var gitPath: String
+    /// Unchanged lines shown around each diff hunk.
+    public var contextLines: Int
+
+    var git: GitRunner { GitRunner(workingDirectory: root, gitPath: gitPath) }
 
     public var name: String { root.lastPathComponent }
 
     private static let emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
-    public init(root: URL) {
+    public init(root: URL, gitPath: String = "/usr/bin/git", contextLines: Int = 4) {
         self.root = root
-        self.git = GitRunner(workingDirectory: root)
+        self.gitPath = gitPath
+        self.contextLines = min(max(contextLines, 0), 50)
     }
 
     /// Opens the repository containing `url`, resolving to its top-level directory.
@@ -106,7 +112,7 @@ public struct GitRepository: Sendable {
         // Explicit prefixes and no external tools so output is stable regardless of user config
         // (diff.noprefix, diff.mnemonicPrefix, ...), which `git apply` depends on.
         let common = ["diff", "--no-color", "--no-ext-diff", "--no-textconv",
-                      "--src-prefix=a/", "--dst-prefix=b/", "-U4", "-M"]
+                      "--src-prefix=a/", "--dst-prefix=b/", "-U\(contextLines)", "-M"]
         let data: Data
         switch target.source {
         case .unstaged, .conflicted:
@@ -115,7 +121,7 @@ public struct GitRepository: Sendable {
             data = try await git.run(common + ["--cached", "--"] + paths, readOnly: true)
         case .untracked:
             data = try await git.run(
-                ["diff", "--no-color", "--no-index", "-U4", "--", "/dev/null", target.path],
+                ["diff", "--no-color", "--no-index", "-U\(contextLines)", "--", "/dev/null", target.path],
                 readOnly: true, allowedExitCodes: [0, 1])
         case .commit(let hash):
             let base = try await parentOrEmptyTree(of: hash)

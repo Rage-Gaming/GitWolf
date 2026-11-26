@@ -27,8 +27,10 @@ private final class TaskBag: @unchecked Sendable {
 final class RepositoryStore: Identifiable {
     enum Mode: Hashable { case history, changes }
 
-    let repo: GitRepository
-    nonisolated var id: String { repo.root.path }
+    private let baseRepo: GitRepository
+    /// The repository with the user's current settings (git path, diff context) applied.
+    var repo: GitRepository { AppSettings.shared.configure(baseRepo) }
+    nonisolated var id: String { baseRepo.root.path }
     var name: String { repo.name }
 
     // Repository state
@@ -60,7 +62,7 @@ final class RepositoryStore: Identifiable {
     private(set) var busyLabel: String?
     var errorMessage: String?
 
-    private var commitLimit = 1000
+    private var commitLimit = AppSettings.shared.commitPageSize
     private var refreshing = false
     private var needsRefresh = false
     private var diffToken = 0
@@ -69,7 +71,7 @@ final class RepositoryStore: Identifiable {
     private let bag = TaskBag()
     private var started = false
 
-    init(repo: GitRepository) { self.repo = repo }
+    init(repo: GitRepository) { self.baseRepo = repo }
 
     var graphLaneCount: Int { min(10, max(1, graph.map(\.laneCount).max() ?? 1)) }
     var selectedCommit: Commit? { commits.first { $0.id == selectedCommitID } }
@@ -98,8 +100,14 @@ final class RepositoryStore: Identifiable {
         })
         // Background fetch keeps ahead/behind counts honest without user action.
         bag.tasks.append(Task { [weak self] in
+            var elapsed = 0
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(300))
+                // Tick every 30s so changes to the interval in Settings apply promptly.
+                try? await Task.sleep(for: .seconds(30))
+                elapsed += 30
+                let minutes = AppSettings.shared.autoFetchMinutes
+                guard minutes > 0, elapsed >= minutes * 60 else { continue }
+                elapsed = 0
                 guard let self, !self.isBusy else { continue }
                 try? await self.repo.fetch()
                 self.requestRefresh()
@@ -162,7 +170,7 @@ final class RepositoryStore: Identifiable {
 
     func loadMoreCommits() {
         guard canLoadMore else { return }
-        commitLimit += 1000
+        commitLimit += AppSettings.shared.commitPageSize
         requestRefresh()
     }
 

@@ -38,6 +38,16 @@ struct GitSyncApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 880)
         .commands { AppCommands() }
+
+        Settings { SettingsView().modifier(AppearanceModifier()) }
+    }
+}
+
+struct AppearanceModifier: ViewModifier {
+    @AppStorage(SettingsKey.appearance) private var appearance = AppearanceChoice.system.rawValue
+
+    func body(content: Content) -> some View {
+        content.preferredColorScheme(AppearanceChoice(rawValue: appearance)?.colorScheme)
     }
 }
 
@@ -60,6 +70,7 @@ struct RootView: View {
         .overlay { if workspace.showPalette { CommandPalette(workspace: workspace) } }
         .focusedSceneValue(\.workspace, workspace)
         .tint(Theme.brand)
+        .modifier(AppearanceModifier())
         .task { await workspace.bootstrap() }
         .alert("Couldn’t Open Repository", isPresented: Binding(
             get: { workspace.errorMessage != nil },
