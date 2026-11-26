@@ -17,7 +17,7 @@ internal sealed record SettingsState(
     int CommitPageSize = 1000,
     int DiffContext = 4,
     bool SyntaxHighlighting = true,
-    string GitPath = "", bool PullRebase = false);
+    string GitPath = "", bool PullRebase = false, bool ProfilePictures = true);
 
 /// <summary>
 /// User settings, kept in %LOCALAPPDATA%\GitSync\settings.json and read on every use so changes

@@ -29,6 +29,12 @@ public sealed partial class MainWindow : Window
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
 
         _workspace = new Workspace(_settings, uri => _ = Launcher.LaunchUriAsync(uri));
+        Avatars.Enabled = _settings.State.ProfilePictures;
+        Avatars.Changed += () =>
+        {
+            History.ShowPictures();
+            Detail.ShowPicture();
+        };
         _workspace.Changed += Bind;
         Rail.Attach(_workspace);
         Rail.AddRequested += ShowAddMenu;
@@ -193,6 +199,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(loaded ? (UIElement)TopBar.DragRegion : HomeDragArea);
         ShowBusy();
         if (store is null || !loaded) return;
+        _ = Avatars.LoadAsync(store.RemoteLocation);
         Banner.Show(store);
 
         var history = store.Mode == StoreMode.History;
@@ -276,12 +283,15 @@ public sealed partial class MainWindow : Window
                 Sidebar.Show();
                 TopBar.Show(store);
                 break;
+            case nameof(RepositoryStore.RemoteLocation):
+                _ = Avatars.LoadAsync(store.RemoteLocation);
+                Sidebar.Show();
+                break;
             case nameof(RepositoryStore.LocalBranches):
             case nameof(RepositoryStore.RemoteBranches):
             case nameof(RepositoryStore.Remotes):
             case nameof(RepositoryStore.Tags):
             case nameof(RepositoryStore.Stashes):
-            case nameof(RepositoryStore.RemoteLocation):
             case nameof(RepositoryStore.ProviderTitle):
                 Sidebar.Show();
                 break;
@@ -403,6 +413,12 @@ public sealed partial class MainWindow : Window
             Rail.Show();
         }
         Diff.SyntaxEnabled = now.SyntaxHighlighting;
+        if (old.ProfilePictures != now.ProfilePictures)
+        {
+            Avatars.Enabled = now.ProfilePictures;
+            Avatars.Refresh();
+            _ = Avatars.LoadAsync(_store?.RemoteLocation);
+        }
         if (old.CommitPageSize == now.CommitPageSize && old.DiffContext == now.DiffContext && old.GitPath == now.GitPath)
             return;
         foreach (var repo in _workspace.Repos) repo.ApplySettings();

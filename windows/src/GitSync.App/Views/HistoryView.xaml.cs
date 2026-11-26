@@ -63,6 +63,14 @@ public sealed partial class HistoryView : UserControl
         ShowSelection();
     }
 
+    /// <summary>Redraws the pictures of the rows on screen; others draw theirs when they appear.</summary>
+    internal void ShowPictures()
+    {
+        for (var i = 0; i < _commits.Count; i++)
+            if (Commits.ContainerFromIndex(i) is ListViewItem { ContentTemplateRoot: CommitRowView view })
+                view.ShowPicture();
+    }
+
     internal void ShowSelection()
     {
         if (_store is not { } store) return;

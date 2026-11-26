@@ -1,3 +1,4 @@
+using GitSync.App.Services;
 using GitSync.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -24,6 +25,10 @@ public sealed partial class CommitRowView : UserControl
 
     public CommitRowView() => InitializeComponent();
 
+    private string _email = "";
+
+    internal void ShowPicture() => Avatars.Show(Picture, _email);
+
     internal void Show(CommitRow row)
     {
         var commit = row.Commit;
@@ -34,6 +39,8 @@ public sealed partial class CommitRowView : UserControl
 
         Initials.Text = InitialsOf(commit.AuthorName);
         Avatar.Background = Palette.Avatar(commit.AuthorEmail);
+        _email = commit.AuthorEmail;
+        ShowPicture();
 
         Refs.Children.Clear();
         foreach (var label in commit.Refs.Take(MaxRefs)) Refs.Children.Add(Chip(label));

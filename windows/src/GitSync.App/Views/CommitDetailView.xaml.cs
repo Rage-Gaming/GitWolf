@@ -47,6 +47,7 @@ public sealed partial class CommitDetailView : UserControl
             Date.Text = string.Create(CultureInfo.CurrentCulture, $"{date:d MMM yyyy} at {date:t}");
             Initials.Text = CommitRowView.InitialsOf(commit.AuthorName);
             Avatar.Background = Palette.Avatar(commit.AuthorEmail);
+            Avatars.Show(Picture, commit.AuthorEmail);
             Hash.Text = commit.ShortHash;
             ShowParents(commit);
             _ = ShowSignatureAsync(store, commit.Hash);
@@ -57,6 +58,11 @@ public sealed partial class CommitDetailView : UserControl
         ListSync.Apply(_files, store.CommitFiles.Select(f => new FileRow(f, source)).ToList(), r => r.File!.Path);
         Files.SelectedItem = _files.FirstOrDefault(r => r.File?.Path == store.SelectedTarget?.Path);
         _syncing = false;
+    }
+
+    internal void ShowPicture()
+    {
+        if (_store?.SelectedCommit is { } commit) Avatars.Show(Picture, commit.AuthorEmail);
     }
 
     private void ShowParents(Commit commit)
@@ -89,15 +95,21 @@ public sealed partial class CommitDetailView : UserControl
             var repo = store.Repo;
             var signature = await Task.Run(() => repo.SignatureAsync(hash));
             if (signature is null || _shownHash != hash || !ReferenceEquals(store, _store)) return;
-            var signer = signature.Signer.Length > 0 ? $" · {signature.Signer}" : "";
-            var key = signature.Key.Length > 0 ? $" · {signature.Key}" : "";
-            Signature.Text = signature.Title + signer + key;
-            Signature.Foreground = signature.State switch
+            // The end of a long key is the part people compare.
+            var key = signature.Key.Length > 16 ? signature.Key[^16..] : signature.Key;
+            var detail = string.Join(" · ", new[] { signature.Signer, key }.Where(part => part.Length > 0));
+            var (tint, glyph) = signature.State switch
             {
-                SignatureState.Good => Palette.Green,
-                SignatureState.Bad or SignatureState.Revoked => Palette.Red,
-                _ => Palette.Orange,
+                SignatureState.Good => (Palette.Green, "\uE73E"),
+                SignatureState.Bad or SignatureState.Revoked => (Palette.Red, "\uE711"),
+                _ => (Palette.Orange, "\uE7BA"),
             };
+            SignatureTitle.Text = signature.Title;
+            SignatureDetail.Text = detail;
+            SignatureDetail.Visibility = detail.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            SignatureIcon.Glyph = glyph;
+            SignatureIcon.Foreground = tint;
+            Signature.Background = Palette.Tint(tint, 0x1F);
             Signature.Visibility = Visibility.Visible;
         }
         catch (Exception e)

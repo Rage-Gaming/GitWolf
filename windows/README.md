@@ -44,7 +44,7 @@ Store layer:
 - [ ] `Accounts.swift` -> Credential Manager, writing the askpass script with LF endings and no BOM
 - [x] `Workspace.swift` (open and recent repositories) -> `src/GitSync.App/Services/Workspace.cs`
 
-181 tests pass against real git and stubbed HTTP.
+184 tests pass against real git and stubbed HTTP.
 
 UI (`src/GitSync.App/`):
 

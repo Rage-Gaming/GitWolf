@@ -88,9 +88,9 @@ internal static class Palette
     /// <summary>Stable colour per person: a deterministic hash of the email, never a randomised one.</summary>
     public static SolidColorBrush Avatar(string seed)
     {
-        var hash = 5381u;
+        var hash = 5381L;
         foreach (var b in System.Text.Encoding.UTF8.GetBytes(seed.ToLowerInvariant())) hash = unchecked(hash * 33 + b);
-        var hue = (int)(hash % 360);
+        var hue = (int)Math.Abs(hash % 360);
         if (Avatars.TryGetValue(hue, out var brush)) return brush;
 
         // HSB with saturation 0.5 and brightness 0.78.
