@@ -72,6 +72,21 @@ and should follow each platform's native idioms.
 - **Undo Last Change…** (⌥⌘Z): confirms with the last reflog message, then
   `git reset --keep HEAD@{1}`, which keeps uncommitted work and refuses rather than overwrite it.
 
+## 3c. Rebase
+
+- **Interactive Rebase from Here…** (commit menu): lists that commit and everything after it on the
+  branch, oldest first. Drag to reorder; per commit Pick, Reword (inline message editor), Squash,
+  Fixup, Drop. Refused with an explanation for ranges containing merge commits (git would flatten
+  them) and while another operation is in progress. The plan is validated before it runs: the first
+  kept commit can't be squash/fixup, at least one commit is kept, rewords have a message.
+- Implementation [core `RebasePlan`]: writes the todo file and runs `git rebase -i --autostash
+  <parent>` (or `--root`) with `GIT_SEQUENCE_EDITOR="cp <todo>"`, so no editor opens. A reword is
+  `pick` plus `exec git commit --amend -F <file>` after any squash/fixup folded into it; messages
+  live in `<gitdir>/gitsync-rebase/`, removed when the rebase ends, and are never put on a command line.
+- **Rebase Current Branch onto This** (branch context menu): `git rebase --autostash <branch>`.
+- **Pull strategy** setting: Merge (default) or Rebase (`git pull --rebase --autostash`).
+- A conflict is not an error: the rebase stays in progress and the operation banner takes over.
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is

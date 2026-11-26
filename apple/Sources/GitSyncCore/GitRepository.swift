@@ -306,8 +306,14 @@ public struct GitRepository: Sendable {
         try await networkGit().run(["fetch", "--all", "--prune"])
     }
 
-    public func pull() async throws {
+    /// Fetches and integrates the upstream branch, by merging or (with `rebase`) rebasing.
+    public func pull(rebase: Bool = false) async throws {
         let net = await networkGit()
+        if rebase {
+            do { try await net.run(["pull", "--rebase", "--autostash", "--no-edit"]) }
+            catch let error as GitError { if inProgressOperation() == nil { throw error } }
+            return
+        }
         do {
             try await net.run(["pull", "--no-edit"])
         } catch let error as GitError where error.stderr.contains("divergent branches") {

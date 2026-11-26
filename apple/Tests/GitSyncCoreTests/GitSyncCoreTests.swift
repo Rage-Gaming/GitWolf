@@ -883,3 +883,115 @@ import Testing
         #expect(impact == ResetImpact(droppedCommits: 2, modifiedFiles: 1))
     }
 }
+
+@Suite struct RebaseTests {
+    private func commits(_ t: TestRepo, _ n: Int) async throws -> [String] {
+        var out: [String] = []
+        try await t.commit("base", file: "base.txt", text: "b\n")
+        for i in 1...n { out.append(try await t.commit("c\(i)", file: "f\(i).txt", text: "\(i)\n")) }
+        return out
+    }
+    private func subjects(_ t: TestRepo) async throws -> [String] {
+        try await t.git.runString(["log", "--reverse", "--format=%s"]).split(separator: "\n").map(String.init)
+    }
+
+    @Test func candidatesListCommitsOldestFirst() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        let h = try await commits(t, 3)
+        let (plan, merges) = try await t.repo.rebaseCandidates(from: h[0])
+        #expect(plan.items.map(\.subject) == ["c1", "c2", "c3"] && !merges)
+        #expect(plan.base != nil && plan.isNoOp && plan.problem == nil)
+    }
+
+    @Test func reordersSquashesFixesUpDropsAndRewords() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        let h = try await commits(t, 5)
+        var (plan, _) = try await t.repo.rebaseCandidates(from: h[0])
+        // c1 c2 c3 c4 c5  ->  c3 (reworded) + c2 squashed, c1 dropped, c4 fixup into c5's slot
+        plan.items = [plan.items[2], plan.items[1], plan.items[0], plan.items[4], plan.items[3]]
+        plan.items[0].action = .reword; plan.items[0].message = "third, renamed\n\nwith a body"
+        plan.items[1].action = .squash
+        plan.items[2].action = .drop
+        plan.items[4].action = .fixup
+        #expect(plan.problem == nil)
+        try await t.repo.startInteractiveRebase(plan)
+        #expect(t.repo.inProgressOperation() == nil)
+        let log = try await subjects(t)
+        #expect(log == ["base", "third, renamed", "c5"])
+        let body = try await t.git.runString(["log", "-2", "--format=%B", "--skip=1"])
+        #expect(body.contains("with a body"))
+        #expect(!FileManager.default.fileExists(atPath: t.dir.appendingPathComponent(".git/gitsync-rebase").path))
+        // Content of all kept commits survives; the dropped one is gone.
+        #expect(FileManager.default.fileExists(atPath: t.dir.appendingPathComponent("f2.txt").path))
+        #expect(!FileManager.default.fileExists(atPath: t.dir.appendingPathComponent("f1.txt").path))
+    }
+
+    @Test func rewordsMessagesWithQuotesSafely() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        let h = try await commits(t, 1)
+        var (plan, _) = try await t.repo.rebaseCandidates(from: h[0])
+        plan.items[0].action = .reword; plan.items[0].message = "it's \"quoted\" $(echo no) `x`"
+        try await t.repo.startInteractiveRebase(plan)
+        #expect(try await subjects(t).last == "it's \"quoted\" $(echo no) `x`")
+    }
+
+    @Test func rejectsPlansThatCannotRun() {
+        let a = RebaseItem(hash: "a", subject: "a", action: .squash)
+        #expect(RebasePlan(base: "x", items: [a]).problem != nil)
+        #expect(RebasePlan(base: "x", items: [RebaseItem(hash: "a", subject: "a", action: .drop)]).problem != nil)
+        #expect(RebasePlan(base: "x", items: [RebaseItem(hash: "a", subject: "a", action: .reword, message: " ")]).problem != nil)
+    }
+
+    @Test func rebasesRootCommitRange() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        let h = try await commits(t, 2)
+        let root = try await t.git.runString(["rev-list", "--max-parents=0", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        var (plan, _) = try await t.repo.rebaseCandidates(from: root)
+        #expect(plan.base == nil && plan.items.count == 3)
+        plan.items[2].action = .fixup
+        try await t.repo.startInteractiveRebase(plan)
+        #expect(try await subjects(t) == ["base", "c1"])
+        _ = h
+    }
+
+    @Test func conflictLeavesRebaseInProgressWithoutThrowing() async throws {
+        let t = try await TestRepo.conflicting(); defer { t.cleanup() }
+        try await t.git.run(["switch", "feature"])
+        try await t.repo.rebase(onto: "main")
+        let op = try #require(t.repo.inProgressOperation())
+        #expect(op.kind == .rebase)
+        try await t.repo.abortOperation(op)
+        #expect(t.repo.inProgressOperation() == nil)
+    }
+
+    @Test func plainRebaseMakesBranchLinear() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        try await t.commit("base", file: "a.txt", text: "a\n")
+        try await t.git.run(["switch", "-c", "topic"])
+        try await t.commit("topic", file: "t.txt", text: "t\n")
+        try await t.git.run(["switch", "main"])
+        try await t.commit("main", file: "m.txt", text: "m\n")
+        try await t.git.run(["switch", "topic"])
+        try await t.repo.rebase(onto: "main")
+        #expect(try await subjects(t) == ["base", "main", "topic"])
+    }
+
+    @Test func pullWithRebaseKeepsHistoryLinear() async throws {
+        let remote = try await TestRepo.make(name: "remote"); defer { remote.cleanup() }
+        try await remote.commit("one", file: "a.txt", text: "1\n")
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent("clone-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dest) }
+        try await GitRunner(workingDirectory: FileManager.default.temporaryDirectory).run(["clone", "-q", remote.dir.path, dest.path])
+        let local = GitRunner(workingDirectory: dest)
+        try await local.run(["config", "user.name", "T"]); try await local.run(["config", "user.email", "t@e.c"])
+        try await local.run(["config", "commit.gpgsign", "false"])
+        try await remote.commit("upstream", file: "u.txt", text: "u\n")
+        try "l\n".write(to: dest.appendingPathComponent("l.txt"), atomically: true, encoding: .utf8)
+        try await local.run(["add", "-A"]); try await local.run(["commit", "-m", "local"])
+        try await GitRepository(root: dest).pull(rebase: true)
+        let log = try await local.runString(["log", "--reverse", "--format=%s"]).split(separator: "\n").map(String.init)
+        #expect(log == ["one", "upstream", "local"])
+        let merges = try await local.runString(["rev-list", "--merges", "--count", "HEAD"])
+        #expect(merges.trimmingCharacters(in: .whitespacesAndNewlines) == "0")
+    }
+}

@@ -117,6 +117,7 @@ private struct CommitRow: View {
             Divider()
             Button("Cherry-Pick") { store.cherryPick(c.hash) }
             Button("Revert") { store.revert(c.hash) }
+            Button("Interactive Rebase from Here…") { store.beginInteractiveRebase(from: c.hash) }
             Menu("Reset Branch to Here") {
                 Button("Soft: keep changes staged") { store.reset(to: c.hash, label: c.shortHash, mode: .soft) }
                 Button("Mixed: keep changes unstaged") { store.reset(to: c.hash, label: c.shortHash, mode: .mixed) }

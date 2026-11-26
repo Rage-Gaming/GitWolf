@@ -190,6 +190,7 @@ private struct GeneralSettings: View {
     @AppStorage(SettingsKey.accent) private var accent = AccentChoice.indigo.rawValue
     @AppStorage(SettingsKey.autoFetchMinutes) private var autoFetch = 5
     @AppStorage(SettingsKey.commitPageSize) private var pageSize = 1000
+    @AppStorage(SettingsKey.pullRebase) private var pullRebase = false
     @AppStorage(SettingsKey.diffContext) private var context = 4
     @AppStorage(SettingsKey.syntaxHighlighting) private var syntax = true
     @AppStorage(SettingsKey.diffLayout) private var layout = DiffLayout.unified.rawValue
@@ -238,10 +239,14 @@ private struct GeneralSettings: View {
 
         Group(title: "Sync") {
             Row(icon: "arrow.triangle.2.circlepath", tint: .blue, title: "Background fetch",
-                detail: "Keeps ahead/behind counts up to date", divider: false) {
+                detail: "Keeps ahead/behind counts up to date") {
                 PillPicker(selection: $autoFetch, options: [
                     ("Never", 0), ("Every minute", 1), ("Every 5 minutes", 5),
                     ("Every 15 minutes", 15), ("Every 30 minutes", 30)])
+            }
+            Row(icon: "arrow.triangle.pull", tint: .orange, title: "Pull strategy",
+                detail: "Rebase keeps history linear; merge keeps a merge commit", divider: false) {
+                PillPicker(selection: $pullRebase, options: [("Merge", false), ("Rebase", true)])
             }
         }
 

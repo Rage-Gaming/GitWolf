@@ -7,12 +7,14 @@ enum StoreSheet: Identifiable {
     case newTag(hash: String)
     case stash
     case reflog
+    case rebase(RebasePlan)
     var id: String {
         switch self {
         case .newBranch: "branch"
         case .newTag: "tag"
         case .stash: "stash"
         case .reflog: "reflog"
+        case .rebase: "rebase"
         }
     }
 }
@@ -235,6 +237,7 @@ final class RepositoryStore: Identifiable {
             if !s.status.isClean { mode = .changes }
             #if DEBUG
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "rebase", s.commits.count > 4 { beginInteractiveRebase(from: s.commits[3].hash) }
             if ProcessInfo.processInfo.environment["GITSYNC_MODE"] == "history" {
                 mode = .history
                 selectCommit(s.commits.first?.id)
@@ -480,7 +483,29 @@ final class RepositoryStore: Identifiable {
     }
 
     func fetch() { perform("Fetching…") { try await $0.fetch() } }
-    func pull() { perform("Pulling…") { try await $0.pull() } }
+    func pull() {
+        let rebase = AppSettings.shared.pullRebase
+        perform(rebase ? "Pulling (rebase)…" : "Pulling…") { try await $0.pull(rebase: rebase) }
+    }
+
+    /// Opens the interactive rebase editor for `commit` and everything after it on this branch.
+    func beginInteractiveRebase(from commit: String) {
+        guard operation == nil else { errorMessage = "Finish or abort the current \(operation!.verb.lowercased()) first."; return }
+        Task {
+            do {
+                let (plan, merges) = try await repo.rebaseCandidates(from: commit)
+                guard !plan.items.isEmpty else { errorMessage = "There are no commits to rebase."; return }
+                if merges {
+                    errorMessage = "This range contains merge commits, which an interactive rebase would flatten. Pick a more recent commit."
+                    return
+                }
+                sheet = .rebase(plan)
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    func startRebase(_ plan: RebasePlan) { perform("Rebasing…") { try await $0.startInteractiveRebase(plan) } }
+    func rebase(onto target: String) { perform("Rebasing…") { try await $0.rebase(onto: target) } }
     func push() {
         let (s, r) = (status, remotes)
         perform("Pushing…") { try await $0.push(status: s, remotes: r) }
