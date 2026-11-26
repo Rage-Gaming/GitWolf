@@ -39,6 +39,20 @@ public enum ChangeKind: Character, Hashable, Sendable {
     init(code: Character) {
         self = ChangeKind(rawValue: code) ?? .modified
     }
+
+    /// Plain-language name, used for VoiceOver.
+    public var spokenName: String {
+        switch self {
+        case .modified: "Modified"
+        case .added: "Added"
+        case .deleted: "Deleted"
+        case .renamed: "Renamed"
+        case .copied: "Copied"
+        case .typeChanged: "Type changed"
+        case .untracked: "New file"
+        case .unmerged: "Conflicted"
+        }
+    }
 }
 
 public struct FileChange: Identifiable, Hashable, Sendable {

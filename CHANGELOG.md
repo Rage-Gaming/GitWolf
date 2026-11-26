@@ -7,6 +7,8 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Accessibility: tap-to-select rows (changed files, commits, sidebar branches and tags, commit files) are exposed to VoiceOver and Full Keyboard Access as buttons with spoken labels ("Modified Sources/App.swift"), file rows offer Stage/Unstage as VoiceOver actions, the repository rail, sync buttons and icon-only buttons have labels and values, and Up/Down arrows move through the changed-files list as they already did in history.
+- Localisation groundwork: `apple/Scripts/extract-strings.py` collects every SwiftUI string literal into `Resources/en.lproj/Localizable.strings` (`--check` for CI); translators copy it to `<lang>.lproj`, and `bundle.sh` packages all `.lproj` folders.
 - Diff improvements: changed words are highlighted inside modified lines (paired deleted/added lines), an *Ignore whitespace* toggle (`git diff -w`; staging is switched off while it is on because the hunks no longer match the file), a *Show whole file* toggle, long runs of unchanged lines fold into a clickable "N unchanged lines" row, and image files (PNG, JPEG, GIF, WebP, BMP, TIFF, HEIC, ICO) show a before/after preview with size and dimensions.
 - Open in Finder, Terminal and editor: a toolbar menu, Repository menu items (⌥⌘T terminal, ⌥⌘E editor, ⇧⌥⌘R Finder) and ⌘K entries open the repository root. The editor application is set in Settings > Tools.
 - Custom actions: define named shell commands in Settings > Tools. They run with `/bin/sh -c` in the repository root with `GITSYNC_REPO` and `GITSYNC_BRANCH` in the environment (never substituted into the command), and are listed in the toolbar menu, the Repository menu and the palette. A failing action shows its exit code and output.

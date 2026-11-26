@@ -64,7 +64,7 @@ struct CollabListView: View {
                     Button { collab.load() } label: {
                         Image(systemName: "arrow.clockwise").font(.system(size: 12, weight: .semibold))
                     }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Reload")
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Reload").accessibilityLabel("Reload")
                     .disabled(collab.isLoading)
                 }
                 Picker("", selection: $collab.filter) {

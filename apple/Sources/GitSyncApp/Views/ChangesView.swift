@@ -27,10 +27,26 @@ struct ChangesView: View {
                     }
                     .padding(10)
                 }
+                .focusable()
+                .focusEffectDisabled()
+                .onKeyPress(.downArrow) { moveSelection(1); return .handled }
+                .onKeyPress(.upArrow) { moveSelection(-1); return .handled }
             }
             Divider()
             composer
         }
+    }
+
+    /// Up/Down arrows walk through every listed file, across the Conflicts, Staged and Changes groups.
+    private func moveSelection(_ delta: Int) {
+        let all: [(FileChange, DiffTarget.Source)] = store.status.conflicted.map { ($0, .conflicted) }
+            + store.status.staged.map { ($0, .staged) }
+            + store.status.unstaged.map { ($0, .unstaged) } + store.status.untracked.map { ($0, .untracked) }
+        guard !all.isEmpty else { return }
+        let current = all.firstIndex { $0.0.path == store.selectedTarget?.path && $0.1 == store.selectedTarget?.source }
+            ?? (delta > 0 ? -1 : all.count)
+        let next = min(max(current + delta, 0), all.count - 1)
+        store.selectChange(all[next].0, source: all[next].1)
     }
 
     private func group(_ title: String, _ items: [(FileChange, DiffTarget.Source)],
@@ -160,6 +176,10 @@ private struct ChangeRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { store.selectChange(change, source: source) }
+        .selectableRow("\(change.kind.spokenName) \(change.path)", selected: selected) { store.selectChange(change, source: source) }
+        .accessibilityAction(named: source == .staged ? "Unstage" : "Stage") {
+            if source == .staged { store.unstage([change.path]) } else if source != .conflicted { store.stage([change.path]) }
+        }
         .contextMenu {
             if source == .conflicted {
                 Button("Resolve Using Ours") { store.resolveConflict(change.path, taking: .ours) }

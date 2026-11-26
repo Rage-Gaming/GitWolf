@@ -395,6 +395,21 @@ Selecting a pushed commit (History) or a pull request shows a pill with the over
 | Open on provider | ⇧⌘G |
 | Settings | ⌘, |
 
+## 9b. Accessibility and localisation
+
+- Every interactive element has a spoken label; icon-only buttons use their tooltip text. Rows that
+  select on click are announced as selectable buttons with state. File rows expose *Stage*/*Unstage*
+  as accessibility actions because the visible button only appears on hover. Change kinds have plain
+  names [core `ChangeKind.spokenName`]. Ports should map this to UI Automation (Windows) and AT-SPI
+  (Linux) names, and make every action reachable without a pointer.
+- Keyboard: arrows move through commits and changed files, the command palette is fully keyboard
+  driven, and every menu action has an item in the menu bar.
+- **Strings**: user-visible text is kept as literals so the toolkit's own lookup can translate it.
+  macOS: `Scripts/extract-strings.py` writes `Resources/en.lproj/Localizable.strings` (key = English text);
+  strings with interpolation are listed in `Interpolated.txt` and need `%@`/`%lld` keys added by hand.
+  Other platforms should extract the same set of strings into their resource format (`.resw`, `.po`).
+  Translation files are not shipped yet.
+
 ## 10. Not built yet
 
 See [ROADMAP.md](ROADMAP.md): LFS actions, notarised releases.

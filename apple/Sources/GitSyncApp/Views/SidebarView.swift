@@ -234,5 +234,7 @@ private struct SidebarRow: View {
         .onHover { hovering = $0 }
         .onTapGesture(count: 2, perform: onDoubleTap)
         .onTapGesture(perform: onTap)
+        .selectableRow(current ? "\(title), current" : title, selected: current, action: onTap)
+        .accessibilityAction(named: "Open", onDoubleTap)
     }
 }

@@ -39,6 +39,7 @@ struct RepoRail: View {
             .menuStyle(.borderlessButton).menuIndicator(.hidden)
             .fixedSize()
             .help("Open, clone or create a repository")
+            .accessibilityLabel("Open, clone or create a repository")
         }
         .padding(.bottom, 14)
         .frame(width: 76)
@@ -67,6 +68,8 @@ private struct RailIconButton: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
         .animation(.snappy(duration: 0.18), value: hovering)
         .animation(.snappy(duration: 0.18), value: selected)
@@ -119,6 +122,9 @@ private struct RepoTile: View {
         }
         .buttonStyle(.plain)
         .help("\(store.name) · \(store.status.branchDisplay)")
+        .accessibilityLabel(store.name)
+        .accessibilityValue("\(store.status.branchDisplay), " + (store.status.changeCount == 0 ? "no changes" : "\(store.status.changeCount) changes"))
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
         .animation(.snappy(duration: 0.2), value: selected)
         .animation(.snappy(duration: 0.18), value: hovering)

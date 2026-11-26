@@ -83,7 +83,7 @@ struct HistoryView: View {
                     Image(systemName: hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                         .font(.system(size: 17)).foregroundStyle(hasFilters ? Theme.brand : .secondary)
                 }
-                .buttonStyle(.plain).help("Search options: scope, file and dates")
+                .buttonStyle(.plain).help("Search options: scope, file and dates").accessibilityLabel("Search options: scope, file and dates")
                 .popover(isPresented: $showFilters, arrowEdge: .bottom) { filters }
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
@@ -167,6 +167,8 @@ struct HistoryView: View {
                                           selected: item.id == store.selectedCommitID, store: store)
                                     .id(item.id)
                                     .onTapGesture { store.selectCommit(item.id) }
+                                    .selectableRow("\(item.commit.subject), \(item.commit.authorName), \(item.commit.shortHash)",
+                                                   selected: item.id == store.selectedCommitID) { store.selectCommit(item.id) }
                             }
                             if store.canLoadMore && query.isEmpty && !gitSearch {
                                 Button("Load More…") { store.loadMoreCommits() }

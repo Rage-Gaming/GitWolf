@@ -93,6 +93,7 @@ struct CommitFileRow: View {
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .onTapGesture(perform: action)
+            .selectableRow("\(change.kind.spokenName) \(change.path)", selected: selected, action: action)
     }
 }
 

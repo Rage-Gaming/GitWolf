@@ -344,6 +344,8 @@ private struct SyncButton: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help.components(separatedBy: " (").first ?? help)
+        .accessibilityValue(count > 0 ? "\(count)" : "")
         .onHover { hovering = $0 }
     }
 }

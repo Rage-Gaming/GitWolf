@@ -92,6 +92,14 @@ extension View {
 
     func pill() -> some View { modifier(PillStyle()) }
 
+    /// Exposes a tap-to-select row to VoiceOver and Full Keyboard Access as a button with a spoken label.
+    func selectableRow(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        self.accessibilityElement(children: .contain)
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction(.default, action)
+    }
+
     func rowBackground(selected: Bool, hovering: Bool, radius: CGFloat = 10) -> some View {
         self.background(
             RoundedRectangle(cornerRadius: radius, style: .continuous)

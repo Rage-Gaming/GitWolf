@@ -13,5 +13,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/GitSync"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# Translations: every Resources/<lang>.lproj folder (see Scripts/extract-strings.py).
+for lproj in Resources/*.lproj; do [ -d "$lproj" ] && cp -R "$lproj" "$APP/Contents/Resources/"; done
 codesign --force --sign - "$APP"
 echo "Built $APP"

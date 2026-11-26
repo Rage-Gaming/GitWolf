@@ -57,6 +57,7 @@ struct MessageHelpersMenu: View {
         }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         .help("Commit message helpers")
+        .accessibilityLabel("Commit message helpers")
         .task(id: store.status.staged.count) {
             template = await store.repo.commitTemplate()
             recent = await store.repo.recentMessages()

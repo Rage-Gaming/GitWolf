@@ -262,7 +262,7 @@ struct DiffPane: View {
                     .buttonStyle(.bordered).controlSize(.small)
                 }
                 Button { staging.clear() } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain).help("Clear selection")
+                    .buttonStyle(.plain).help("Clear selection").accessibilityLabel("Clear selection")
             }
             .padding(.horizontal, 16).padding(.vertical, 9)
             .background(.regularMaterial, in: Capsule())
@@ -378,7 +378,7 @@ private struct HunkHeaderRow: View {
                             .padding(.horizontal, 8).padding(.vertical, 3)
                             .background(Color.primary.opacity(0.08), in: Capsule())
                     }
-                    .buttonStyle(.plain).help("Stash this hunk")
+                    .buttonStyle(.plain).help("Stash this hunk").accessibilityLabel("Stash this hunk")
                 }
                 if !staging.staged {
                     Button {
@@ -390,7 +390,7 @@ private struct HunkHeaderRow: View {
                             .padding(.horizontal, 8).padding(.vertical, 3)
                             .background(Color.red.opacity(0.12), in: Capsule())
                     }
-                    .buttonStyle(.plain).help("Discard hunk")
+                    .buttonStyle(.plain).help("Discard hunk").accessibilityLabel("Discard hunk")
                 }
             }
         }
