@@ -56,7 +56,7 @@ struct RootView: View {
             }
         }
         .frame(minWidth: 1080, minHeight: 640)
-        .containerBackground(.ultraThinMaterial, for: .window)
+        .containerBackground(for: .window) { WindowBackdrop() }
         .overlay { if workspace.showPalette { CommandPalette(workspace: workspace) } }
         .focusedSceneValue(\.workspace, workspace)
         .tint(Theme.brand)

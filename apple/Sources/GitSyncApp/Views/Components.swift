@@ -47,23 +47,56 @@ func gradient(for seed: String) -> LinearGradient {
 
 // MARK: - Modifiers
 
-extension View {
-    /// Floating rounded panel used for the main content columns.
-    func panel() -> some View {
-        self
-            .background(Color(nsColor: .textBackgroundColor).opacity(0.92))
+/// Window backdrop. Dark keeps the translucent material; light uses a near-opaque soft canvas so
+/// the wallpaper doesn't turn the whole window grey and muddy.
+struct WindowBackdrop: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+            if scheme == .light {
+                LinearGradient(
+                    colors: [Color(red: 0.957, green: 0.961, blue: 0.980), Color(red: 0.925, green: 0.932, blue: 0.962)],
+                    startPoint: .top, endPoint: .bottom)
+                    .opacity(0.94)
+            }
+        }
+    }
+}
+
+private struct PanelStyle: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        let light = scheme == .light
+        content
+            .background(Color(nsColor: .textBackgroundColor).opacity(light ? 1 : 0.92))
             .clipShape(RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
-            .shadow(color: .black.opacity(0.07), radius: 12, y: 4)
+                .strokeBorder(Color.primary.opacity(light ? 0.11 : 0.08), lineWidth: 1))
+            .shadow(color: .black.opacity(light ? 0.09 : 0.07), radius: light ? 14 : 12, y: light ? 5 : 4)
     }
+}
 
-    func pill() -> some View {
-        self
+private struct PillStyle: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        let light = scheme == .light
+        content
             .padding(.horizontal, 11).padding(.vertical, 6)
-            .background(Color.primary.opacity(0.06), in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06)))
+            .background(light ? Color.white.opacity(0.8) : Color.primary.opacity(0.06), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(light ? 0.12 : 0.06)))
+            .shadow(color: .black.opacity(light ? 0.05 : 0), radius: 2, y: 1)
     }
+}
+
+extension View {
+    /// Floating rounded panel used for the main content columns.
+    func panel() -> some View { modifier(PanelStyle()) }
+
+    func pill() -> some View { modifier(PillStyle()) }
 
     func rowBackground(selected: Bool, hovering: Bool, radius: CGFloat = 10) -> some View {
         self.background(

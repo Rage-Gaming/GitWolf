@@ -139,8 +139,8 @@ struct TopBar: View {
             tab("Changes", "square.and.pencil", .changes, badge: store.status.changeCount)
         }
         .padding(3)
-        .background(Color.primary.opacity(0.06), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06)))
+        .background(Color.primary.opacity(0.07), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10)))
     }
 
     private func tab(_ title: String, _ icon: String, _ mode: RepositoryStore.Mode, badge: Int?) -> some View {
@@ -183,8 +183,8 @@ struct TopBar: View {
             SyncButton(icon: "tray.and.arrow.down", count: 0, help: "Stash changes") { store.sheet = .stash }
                 .disabled(store.status.isClean)
         }
-        .background(Color.primary.opacity(0.06), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06)))
+        .background(Color.primary.opacity(0.07), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10)))
         .clipShape(Capsule())
     }
 }
