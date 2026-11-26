@@ -2138,3 +2138,32 @@ struct ScenarioTests {
         #expect(try await w.alice.worktrees().count == 1)
     }
 }
+
+@Suite("FileIcons")
+struct FileIconTests {
+    @Test func mapsByExtensionAndName() {
+        #expect(FileIcons.icon(forPath: "src/App.tsx").glyph == .react)
+        #expect(FileIcons.icon(forPath: "a/b/Button.JSX").glyph == .react)
+        #expect(FileIcons.icon(forPath: "x.ts").glyph == .letters("TS"))
+        #expect(FileIcons.icon(forPath: "types/index.d.ts").name == "TypeScript declarations")
+        #expect(FileIcons.icon(forPath: "main.swift").glyph == .symbol("swift"))
+        #expect(FileIcons.icon(forPath: "package.json").name == "npm")
+        #expect(FileIcons.icon(forPath: "data.json").glyph == .letters("{}"))
+        #expect(FileIcons.icon(forPath: "Dockerfile").name == "Docker")
+        #expect(FileIcons.icon(forPath: "Dockerfile.dev").name == "Docker")
+        #expect(FileIcons.icon(forPath: ".env.local").name == "Environment")
+        #expect(FileIcons.icon(forPath: "LICENSE").name == "License")
+        #expect(FileIcons.icon(forPath: "docs/README.md").name == "Readme")
+        #expect(FileIcons.icon(forPath: "vendor/app.min.js").name == "Minified")
+        #expect(FileIcons.icon(forPath: "logo.PNG").name == "Image")
+        #expect(FileIcons.icon(forPath: "weird.zzz").name == "File")
+        #expect(FileIcons.icon(forPath: "noextension").name == "File")
+        #expect(FileIcons.icon(forPath: ".gitignore").name == "Git")
+    }
+
+    @Test func everyIconHasAFlatBrandColour() {
+        for icon in Array(FileIcons.extensions.values) + Array(FileIcons.names.values) {
+            #expect(icon.color <= 0xFFFFFF)
+        }
+    }
+}

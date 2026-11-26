@@ -32,7 +32,7 @@ struct DiffPane: View {
         VStack(spacing: 0) {
             if let path {
                 HStack(spacing: 8) {
-                    Image(systemName: "doc.text").foregroundStyle(.secondary)
+                    FileIconView(path: path)
                     let dir = (path as NSString).deletingLastPathComponent
                     if !dir.isEmpty { Text(dir + "/").foregroundStyle(.secondary).lineLimit(1).truncationMode(.head) }
                     Text((path as NSString).lastPathComponent).fontWeight(.semibold).lineLimit(1)

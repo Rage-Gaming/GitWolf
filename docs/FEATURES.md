@@ -229,6 +229,16 @@ A menu button next to "Amend last commit":
   any mutation. Background fetch on a timer (setting; default 5 min, 0 = off).
 - Busy indicator for long operations; cancellation via task cancellation killing the process.
 
+## 6a. File type icons
+
+[core `FileIcons.swift`] `FileIcons.icon(forPath:)` maps a path to `{name, glyph, color, darkText}`. Look up by
+exact lowercase file name first (`package.json`, `dockerfile`, `.gitignore`, `makefile`), then prefixes
+(`.env*`, `readme*`, `license*`, `dockerfile*`), then `.d.ts`/`.min.js`, then the last extension, else a grey
+generic file. Glyphs are `letters` (short text on a rounded square in the brand colour, dark text on light
+colours like JS yellow), `symbol` (SF Symbol name; use the nearest icon on other platforms) or `react` (three
+ellipses at 0°, 60° and 120° plus a centre dot, stroked in #61DAFB). Flat colours only, no gradients. Draw it at
+the start of every file row (after the status badge), in the diff header and file history.
+
 ## 6b. Scale and power
 
 - **Bisect** [core `Bisect.swift`]: state comes from `BISECT_LOG` (marks, and the

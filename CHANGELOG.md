@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- File type icons: every file shows a flat, coloured icon for its type, like the VS Code Material icons: the React atom for `.tsx` and `.jsx`, brand tiles for TypeScript, JavaScript, Python, Go, Rust, Java, Kotlin, Vue, Svelte, HTML, CSS, JSON, Markdown, npm and more, and symbols for Swift, Docker, Git files, images, video, audio, archives, PDFs, lockfiles, scripts and databases. Shown in the changed-files lists, the diff header and file history; hover for the type name.
 - Large repositories: when loading history takes over half a second, GitSync writes git's commit-graph cache once in the background (only a cache under `.git`). On a 100,000-commit repository history loads in about 0.015s instead of 0.4s. History was already paged ("Load More").
 - Clone options: an Advanced section in the clone sheet for shallow clones (latest N commits), blobless or treeless filters, a single branch, and submodules. Shallow clones show a banner with "Fetch Full History".
 - Git LFS: files stored with LFS (from `.gitattributes`) get an LFS badge in the changed-files list. Works without git-lfs installed.

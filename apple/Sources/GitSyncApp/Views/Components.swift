@@ -226,6 +226,7 @@ struct FileRow: View {
     var body: some View {
         HStack(spacing: 9) {
             StatusBadge(kind: change.kind)
+            FileIconView(path: change.path)
             Text(change.fileName).fontWeight(.medium).lineLimit(1)
             if lfsPaths.contains(change.path) {
                 Text("LFS").font(.system(size: 9.5, weight: .bold))
