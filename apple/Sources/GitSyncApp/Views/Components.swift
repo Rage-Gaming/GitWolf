@@ -193,20 +193,32 @@ struct RefChip: View {
         .background(color.opacity(label.isCurrent ? 0.22 : 0.12), in: Capsule())
         .overlay(Capsule().strokeBorder(color.opacity(label.isCurrent ? 0.35 : 0.0)))
     }
-    private var icon: String {
+    /// Local and remote branches use the same icon as in the sidebar, chosen from the branch name.
+    private var branchLook: FileIcon? {
         switch label.kind {
-        case .tag: "tag.fill"
-        case .remote: "cloud.fill"
-        case .head: "scope"
-        case .local: "arrow.triangle.branch"
+        case .local: return FileIcons.branchIcon(named: label.name)
+        case .remote:
+            // "origin/feature/x" → look at "feature/x".
+            let name = label.name.split(separator: "/", maxSplits: 1).dropFirst().first.map(String.init) ?? label.name
+            return FileIcons.branchIcon(named: name)
+        default: return nil
+        }
+    }
+    private var icon: String {
+        if let look = branchLook, case .symbol(let symbol) = look.glyph { return symbol }
+        switch label.kind {
+        case .tag: return "tag.fill"
+        case .remote: return "cloud.fill"
+        case .head: return "scope"
+        case .local: return "arrow.triangle.branch"
         }
     }
     private var color: Color {
+        if let look = branchLook { return Color(hex: look.color) }
         switch label.kind {
-        case .tag: .orange
-        case .remote: .purple
-        case .head: .gray
-        case .local: Theme.brand
+        case .tag: return .orange
+        case .head: return .gray
+        default: return Theme.brand
         }
     }
 }
