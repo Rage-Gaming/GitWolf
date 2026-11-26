@@ -44,7 +44,7 @@ Store layer:
 - [ ] `Accounts.swift` -> Credential Manager, writing the askpass script with LF endings and no BOM
 - [x] `Workspace.swift` (open and recent repositories) -> `src/GitSync.App/Services/Workspace.cs`
 
-120 tests pass against real git and stubbed HTTP.
+126 tests pass against real git and stubbed HTTP.
 
 UI (`src/GitSync.App/`):
 
@@ -61,7 +61,7 @@ UI (`src/GitSync.App/`):
       (`%LOCALAPPDATA%\GitSync\workspace.json`, paths and view preferences only)
 - [x] Jump palette (Ctrl+K), Ctrl+O, Ctrl+Shift+F/L/P
 - [x] File type, folder and branch icons
-- [ ] Hunk/line staging, discard
+- [x] Hunk and line staging; discard a file, hunk or lines after a confirmation
 - [x] Home dashboard: open, jump, recent repositories, drop a folder to open
 - [ ] Clone/new repository, resizable panels
 - [x] Settings (Ctrl+,): theme, accent colour, background fetch, history and diff options, git path

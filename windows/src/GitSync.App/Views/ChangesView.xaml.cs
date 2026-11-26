@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
+using GitSync.App.Services;
 using GitSync.Core;
 using GitSync.Store;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 
 namespace GitSync.App.Views;
 
@@ -118,6 +121,47 @@ public sealed partial class ChangesView : UserControl
                 (source == DiffSource.Untracked ? store.Status.Untracked : store.Status.Unstaged)
                     .Select(f => f.Path).ToList()));
         }
+    }
+
+    private void OnContext(UIElement sender, ContextRequestedEventArgs e)
+    {
+        var element = e.OriginalSource as DependencyObject;
+        while (element is not null and not ListViewItem) element = VisualTreeHelper.GetParent(element);
+        if (_store is not { } store || element is not ListViewItem item
+            || Files.ItemFromContainer(item) is not FileRow { File: { } file } row) return;
+
+        var menu = new MenuFlyout();
+        void Add(string text, Action action)
+        {
+            var entry = new MenuFlyoutItem { Text = text, IsEnabled = !store.IsBusy };
+            entry.Click += (_, _) => action();
+            menu.Items.Add(entry);
+        }
+        var staged = row.Source == DiffSource.Staged;
+        // A staged rename must unstage both of its paths.
+        string[] paths = file.OriginalPath is { } from && staged ? [from, file.Path] : [file.Path];
+        if (staged) Add("Unstage", () => _ = store.UnstageAsync(paths));
+        else Add("Stage", () => _ = store.StageAsync(paths));
+        var untracked = row.Source == DiffSource.Untracked;
+        if (untracked || row.Source == DiffSource.Unstaged)
+            Add("Discard changes\u2026", () => _ = DiscardAsync(store, file, untracked));
+        Add("Copy path", () => Dialogs.Copy(file.Path));
+
+        e.Handled = true;
+        if (e.TryGetPosition(item, out var point)) menu.ShowAt(item, point);
+        else menu.ShowAt(item);
+    }
+
+    /// <summary>Asks first, saying how much is lost.</summary>
+    private async Task DiscardAsync(RepositoryStore store, FileChange file, bool untracked)
+    {
+        var summary = await store.DiscardSummaryAsync([file], untracked);
+        var confirmed = await Dialogs.ConfirmAsync(XamlRoot, $"Discard changes to \u201C{file.FileName}\u201D?",
+            summary?.Sentence ?? "This can\u2019t be undone.", "Discard");
+        // Still the same repository, and the file still has the kind of change that was described.
+        var current = untracked ? store.Status.Untracked : store.Status.Unstaged;
+        if (confirmed && ReferenceEquals(store, _store) && current.Any(f => f.Path == file.Path))
+            await store.DiscardAsync([file], untracked);
     }
 
     private void OnMessageChanged(object sender, TextChangedEventArgs e)

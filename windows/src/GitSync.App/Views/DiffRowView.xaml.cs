@@ -10,6 +10,10 @@ public sealed partial class DiffRowView : UserControl
     /// <summary>Longer lines are cut for display so one minified file can't stall layout.</summary>
     internal const int MaxColumns = 2000;
 
+    private const double ActionsWidth = 170;
+    private LineSelector? _selector;
+    private HunkActions? _actions;
+
     public DiffRowView() => InitializeComponent();
 
     private static string Source(DiffLine line) =>
@@ -41,9 +45,29 @@ public sealed partial class DiffRowView : UserControl
         _ => Palette.Clear,
     };
 
-    internal void Show(DiffLine line, IReadOnlyList<SyntaxToken>? tokens, double width)
+    /// <param name="staging">Null when the diff is read-only.</param>
+    /// <param name="visibleWidth">Width of the list, which hunk buttons are lined up with.</param>
+    internal void Show(
+        DiffLine line, IReadOnlyList<SyntaxToken>? tokens, double width, DiffStaging? staging, double visibleWidth)
     {
         Width = width;
+        var header = line.Kind == DiffLineKind.HunkHeader;
+        Root.Height = header && staging is not null ? 28 : 20;
+        SelectColumn.Width = new GridLength(staging is null ? 0 : LineSelector.ColumnWidth);
+        LineSelector.Place(Root, ref _selector, staging, line, 0, 3);
+        HunkActions.Place(Root, ref _actions, header ? staging : null, line.HunkIndex);
+        Code.MaxWidth = double.PositiveInfinity;
+        Code.TextTrimming = TextTrimming.None;
+        if (header && staging is not null && _actions is not null)
+        {
+            // At the right edge of what is visible, however long the longest line is.
+            var visible = Math.Max(visibleWidth - 8, ActionsWidth * 2);
+            Grid.SetColumnSpan(_actions, 4);
+            _actions.HorizontalAlignment = HorizontalAlignment.Left;
+            _actions.Margin = new Thickness(visible - ActionsWidth, 0, 0, 0);
+            Code.MaxWidth = Math.Max(visible - ActionsWidth - 120, 80);
+            Code.TextTrimming = TextTrimming.CharacterEllipsis;
+        }
         Old.Text = line.OldNumber?.ToString() ?? "";
         New.Text = line.NewNumber?.ToString() ?? "";
         Root.Background = LineFill(line);

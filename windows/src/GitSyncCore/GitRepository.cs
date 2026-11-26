@@ -7,7 +7,7 @@ namespace GitSync.Core;
 /// process. Callers are responsible for serialising mutating operations. Ported from
 /// GitRepository.swift.
 /// </summary>
-public sealed class GitRepository
+public sealed partial class GitRepository
 {
     public string Root { get; }
     /// <summary>Path of the `git` executable to run.</summary>
@@ -249,9 +249,10 @@ public sealed class GitRepository
 
         // Explicit prefixes and no external tools so output is stable regardless of user config
         // (diff.noprefix, diff.mnemonicPrefix, ...), which `git apply` depends on.
+        // Paths are literal: "pages/[id].tsx" must not also match "pages/d.tsx".
         var common = new List<string>
         {
-            "diff", "--no-color", "--no-ext-diff", "--no-textconv",
+            "--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--no-textconv",
             "--src-prefix=a/", "--dst-prefix=b/", $"-U{ContextLines}", "-M",
         };
 
@@ -303,7 +304,7 @@ public sealed class GitRepository
     public async Task StageAsync(IReadOnlyList<string> paths)
     {
         if (paths.Count == 0) return;
-        await Git.RunAsync(["add", "--", .. paths]);
+        await Git.RunAsync(["--literal-pathspecs", "add", "--", .. paths]);
     }
 
     public Task StageAllAsync() => Git.RunAsync(["add", "-A"]);
@@ -311,7 +312,7 @@ public sealed class GitRepository
     public async Task UnstageAsync(IReadOnlyList<string> paths)
     {
         if (paths.Count == 0) return;
-        await Git.RunAsync(["reset", "-q", "--", .. paths]);
+        await Git.RunAsync(["--literal-pathspecs", "reset", "-q", "--", .. paths]);
     }
 
     public Task UnstageAllAsync() => Git.RunAsync(["reset", "-q"]);
@@ -319,8 +320,8 @@ public sealed class GitRepository
     /// <summary>Discards working-tree changes. Destructive.</summary>
     public async Task DiscardAsync(IReadOnlyList<string> tracked, IReadOnlyList<string> untracked)
     {
-        if (tracked.Count > 0) await Git.RunAsync(["restore", "--", .. tracked]);
-        if (untracked.Count > 0) await Git.RunAsync(["clean", "-f", "--", .. untracked]);
+        if (tracked.Count > 0) await Git.RunAsync(["--literal-pathspecs", "restore", "--", .. tracked]);
+        if (untracked.Count > 0) await Git.RunAsync(["--literal-pathspecs", "clean", "-f", "--", .. untracked]);
     }
 
     public async Task CommitAsync(string message, bool amend)

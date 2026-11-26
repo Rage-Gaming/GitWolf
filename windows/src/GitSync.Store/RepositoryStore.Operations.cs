@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using GitSync.Core;
 
 namespace GitSync.Store;
@@ -42,6 +43,35 @@ public sealed partial class RepositoryStore
 
     public Task<bool> ApplySelectedLinesAsync(PatchAction action) =>
         Diff is { } diff ? ApplyPatchAsync(diff, new HashSet<int>(LineSelection), action) : Task.FromResult(false);
+
+    /// <summary>
+    /// Applies lines of a diff the user was looking at, for example after a confirmation. Refused when
+    /// another file or newer changes are on screen, so line numbers can't point at something else.
+    /// </summary>
+    public Task<bool> ApplyShownAsync(DiffTarget target, FileDiff diff, ISet<int> ids, PatchAction action)
+    {
+        if (CanPatch && SelectedTarget == target && Equals(Diff, diff)) return ApplyPatchAsync(diff, ids, action);
+        ErrorMessage = "The file changed, so nothing was done. Check the new changes and try again.";
+        return Task.FromResult(false);
+    }
+
+    /// <summary>What a discard would lose; null when it can't be worked out.</summary>
+    public async Task<DiscardSummary?> DiscardSummaryAsync(IReadOnlyList<FileChange> changes, bool untracked)
+    {
+        var paths = changes.Select(c => c.Path).ToList();
+        var repo = Repo;
+        try
+        {
+            return await Task.Run(() => untracked
+                ? repo.DiscardSummaryAsync([], paths)
+                : repo.DiscardSummaryAsync(paths, []));
+        }
+        catch (Exception e) when (e is GitException or IOException or UnauthorizedAccessException)
+        {
+            Trace.TraceWarning($"Summarising a discard failed: {e.GetType().Name}");
+            return null;
+        }
+    }
 
     private Task<bool> ApplyPatchAsync(FileDiff diff, ISet<int> ids, PatchAction action)
     {

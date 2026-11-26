@@ -97,6 +97,28 @@ internal static class Dialogs
         }
     }
 
+    /// <summary>Asks before something destructive; Cancel is the default.</summary>
+    public static async Task<bool> ConfirmAsync(XamlRoot root, string title, string message, string verb)
+    {
+        var dialog = new ContentDialog
+        {
+            RequestedTheme = (root.Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default,
+            XamlRoot = root, Title = title,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = verb, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close,
+        };
+        try
+        {
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+        catch (Exception e)
+        {
+            // WinUI allows one dialog at a time. Not shown means not confirmed.
+            Trace.TraceWarning($"Confirmation could not be shown: {e.GetType().Name}");
+            return false;
+        }
+    }
+
     public static void Copy(string text)
     {
         var package = new DataPackage();

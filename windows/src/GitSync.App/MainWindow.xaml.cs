@@ -215,6 +215,8 @@ public sealed partial class MainWindow : Window
                 ShowDetail();
                 break;
             case nameof(RepositoryStore.Diff):
+            case nameof(RepositoryStore.CanPatch):
+            case nameof(RepositoryStore.LineSelection):
                 Diff.Show(store);
                 break;
             case nameof(RepositoryStore.Status):

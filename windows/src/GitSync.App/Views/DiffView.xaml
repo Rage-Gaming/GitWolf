@@ -79,5 +79,19 @@
         </ListView>
         <TextBlock x:Name="Empty" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <Border x:Name="SelectionBar" Grid.Row="1" Visibility="Collapsed" HorizontalAlignment="Center"
+                VerticalAlignment="Bottom" Margin="0,0,0,16" Padding="16,8,10,8" CornerRadius="22"
+                Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"
+                BorderBrush="{ThemeResource PanelBorderBrush}" BorderThickness="1">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock x:Name="SelectionText" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <Button x:Name="ApplyLines" Style="{StaticResource AccentButtonStyle}" FontSize="12" Click="OnApplyLines" />
+                <Button x:Name="DiscardLines" Content="Discard" FontSize="12" Foreground="#F4706A" Click="OnDiscardLines" />
+                <Button Style="{StaticResource PlainButtonStyle}" Width="28" Height="28" Click="OnClearLines"
+                        AutomationProperties.Name="Clear selection" ToolTipService.ToolTip="Clear selection">
+                    <FontIcon Glyph="&#xE711;" FontSize="11" />
+                </Button>
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>
