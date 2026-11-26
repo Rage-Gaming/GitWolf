@@ -63,9 +63,12 @@ final class Workspace {
     /// Files with uncommitted changes across every open repository.
     var totalChanges: Int { repos.reduce(0) { $0 + $1.status.changeCount } }
 
-    init() {
+    /// Registers this workspace with the Dock badge and menu bar icon. Called once from the window's
+    /// `.task`, not from `init`: SwiftUI re-runs `Workspace()` whenever the owning view is re-created,
+    /// and publishing observed state from there loops forever.
+    func activate() {
+        guard Self.current !== self else { return }
         Self.current = self
-        MenuBarModel.shared.workspace = self
         trackDockBadge()
     }
 
@@ -77,6 +80,7 @@ final class Workspace {
             Task { @MainActor in self?.trackDockBadge() }
         }
         NSApp?.dockTile.badgeLabel = BadgeLabel.text(forChanges: count)
+        StatusItemController.shared.update(changes: count)
     }
 
     /// Edits the home layout and saves it.

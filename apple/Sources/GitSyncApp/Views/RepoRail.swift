@@ -2,27 +2,34 @@ import GitSyncCore
 import SwiftUI
 
 /// Vertical strip of open repositories, always visible, with live status badges.
+///
+/// Every control is the same 40 pt rounded square so the column reads as one list. Selection is
+/// shown by a solid tile plus an edge marker; nothing scales or moves on hover.
 struct RepoRail: View {
     let workspace: Workspace
 
-    var body: some View {
-        VStack(spacing: 12) {
-            Color.clear.frame(height: 34) // traffic lights
+    fileprivate static let width: CGFloat = 64
+    fileprivate static let tile: CGFloat = 40
+    fileprivate static let radius: CGFloat = 11
 
-            RailIconButton(symbol: "house.fill", help: "Home", selected: workspace.selected == nil) {
+    var body: some View {
+        VStack(spacing: 8) {
+            Color.clear.frame(height: 30) // traffic lights
+
+            RailButton(symbol: "house.fill", help: "Home", selected: workspace.selected == nil) {
                 workspace.select(nil)
             }
-            Capsule().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 1.5)
+            Rectangle().fill(Color.primary.opacity(0.10)).frame(width: 24, height: 1).padding(.vertical, 2)
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 12) {
+                VStack(spacing: 8) {
                     ForEach(workspace.repos) { store in
                         RepoTile(store: store, selected: store.id == workspace.selectedID,
                                  select: { workspace.select(store.id) },
                                  close: { workspace.close(store) })
                     }
                 }
-                .padding(.vertical, 2)
+                .frame(maxWidth: .infinity)
             }
 
             Menu {
@@ -31,24 +38,35 @@ struct RepoRail: View {
                 Button("New Repository…") { workspace.sheet = .create }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
-                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.06)))
+                    .frame(width: RepoRail.tile, height: RepoRail.tile)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: RepoRail.radius, style: .continuous))
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden)
             .fixedSize()
             .help("Open, clone or create a repository")
             .accessibilityLabel("Open, clone or create a repository")
         }
-        .padding(.bottom, 14)
-        .frame(width: 76)
+        .padding(.bottom, 12)
+        .frame(width: Self.width)
         .background(.black.opacity(0.04))
         .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.07)).frame(width: 1) }
     }
 }
 
-private struct RailIconButton: View {
+/// The marker on the rail's left edge that shows which tile is selected.
+private struct SelectionMarker: View {
+    let selected: Bool
+    var body: some View {
+        Capsule().fill(Theme.brand)
+            .frame(width: 3, height: 20)
+            .opacity(selected ? 1 : 0)
+            .padding(.leading, 1)
+    }
+}
+
+private struct RailButton: View {
     let symbol: String
     let help: String
     let selected: Bool
@@ -59,20 +77,18 @@ private struct RailIconButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
-                .frame(width: 44, height: 44)
-                .background(
-                    RoundedRectangle(cornerRadius: selected ? 14 : 18, style: .continuous)
-                        .fill(selected ? AnyShapeStyle(Theme.brand) : AnyShapeStyle(Color.primary.opacity(hovering ? 0.10 : 0.06))))
-                .scaleEffect(hovering ? 1.05 : 1)
+                .foregroundStyle(selected ? Color.white : Color.secondary)
+                .frame(width: RepoRail.tile, height: RepoRail.tile)
+                .background(selected ? Theme.brand : Color.primary.opacity(hovering ? 0.10 : 0.06),
+                            in: RoundedRectangle(cornerRadius: RepoRail.radius, style: .continuous))
         }
         .buttonStyle(.plain)
+        .frame(width: RepoRail.width, height: RepoRail.tile)
+        .overlay(alignment: .leading) { SelectionMarker(selected: selected) }
         .help(help)
         .accessibilityLabel(help)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
-        .animation(.snappy(duration: 0.18), value: hovering)
-        .animation(.snappy(duration: 0.18), value: selected)
     }
 }
 
@@ -89,45 +105,27 @@ private struct RepoTile: View {
         return String(store.name.prefix(2)).capitalized
     }
 
-    var body: some View {
-        Button(action: select) {
-            ZStack(alignment: .topTrailing) {
-                Text(initials)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(avatarColor(for: store.name),
-                                in: RoundedRectangle(cornerRadius: selected ? 14 : 18, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: selected ? 14 : 18, style: .continuous)
-                        .strokeBorder(.white.opacity(0.22), lineWidth: 0.75))
-                    .shadow(color: .black.opacity(selected ? 0.25 : 0.12), radius: selected ? 8 : 4, y: 2)
-                    .scaleEffect(hovering && !selected ? 1.06 : 1)
+    private var changes: Int { store.status.changeCount }
 
-                if store.status.changeCount > 0 {
-                    Text(store.status.changeCount > 99 ? "99+" : "\(store.status.changeCount)")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).frame(minWidth: 17, minHeight: 17)
-                        .background(Color.orange, in: Capsule())
-                        .overlay(Capsule().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
-                        .offset(x: 6, y: -6)
-                }
-            }
-            .frame(width: 76, height: 48)
-            .overlay(alignment: .leading) {
-                Capsule().fill(Theme.brand)
-                    .frame(width: 4, height: selected ? 28 : (hovering ? 12 : 0))
-                    .offset(x: -2)
-            }
+    var body: some View {
+        let color = avatarColor(for: store.name)
+        let shape = RoundedRectangle(cornerRadius: RepoRail.radius, style: .continuous)
+        Button(action: select) {
+            Text(initials)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(selected ? Color.white : color)
+                .frame(width: RepoRail.tile, height: RepoRail.tile)
+                .background(selected ? color : color.opacity(hovering ? 0.26 : 0.17), in: shape)
+                .overlay(alignment: .bottomTrailing) { badge }
         }
         .buttonStyle(.plain)
+        .frame(width: RepoRail.width, height: RepoRail.tile)
+        .overlay(alignment: .leading) { SelectionMarker(selected: selected) }
         .help("\(store.name) · \(store.status.branchDisplay)")
         .accessibilityLabel(store.name)
-        .accessibilityValue("\(store.status.branchDisplay), " + (store.status.changeCount == 0 ? "no changes" : "\(store.status.changeCount) changes"))
+        .accessibilityValue("\(store.status.branchDisplay), " + (changes == 0 ? "no changes" : "\(changes) changes"))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
-        .animation(.snappy(duration: 0.2), value: selected)
-        .animation(.snappy(duration: 0.18), value: hovering)
         .contextMenu {
             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.repo.root]) }
             Button("Copy Path") {
@@ -136,6 +134,19 @@ private struct RepoTile: View {
             }
             Divider()
             Button("Close Repository", role: .destructive, action: close)
+        }
+    }
+
+    /// Uncommitted-change count, tucked into the tile's bottom-right corner.
+    @ViewBuilder private var badge: some View {
+        if changes > 0 {
+            Text(changes > 99 ? "99+" : "\(changes)")
+                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
+                .background(Color.orange, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
+                .offset(x: 4, y: 4)
         }
     }
 }

@@ -1,62 +1,105 @@
 import AppKit
 import GitSyncCore
-import SwiftUI
-
-/// Lets scenes outside the window (the menu bar extra) observe the window's workspace.
-@MainActor @Observable
-final class MenuBarModel {
-    static let shared = MenuBarModel()
-    var workspace: Workspace?
-}
 
 enum MenuBarSetting { static let key = "settings.showMenuBarExtra" }
 
-/// Menu bar icon: open repositories with their branch and change count, recents, and a few actions.
-struct MenuBarContent: View {
-    private var workspace: Workspace? { MenuBarModel.shared.workspace }
+/// The menu bar icon, as a plain AppKit status item. (A SwiftUI `MenuBarExtra` scene that observed the
+/// workspace made SwiftUI rebuild the main menu in an endless loop.) The menu is built only when it
+/// opens, so nothing is observed or refreshed in the background.
+@MainActor
+final class StatusItemController: NSObject, NSMenuDelegate {
+    static let shared = StatusItemController()
 
-    var body: some View {
-        if let workspace, !workspace.repos.isEmpty {
-            ForEach(workspace.repos) { store in
-                Button {
-                    workspace.select(store.id)
-                    Self.showWindow()
-                } label: {
-                    let n = store.status.changeCount
-                    Text("\(store.name) · \(store.status.branchDisplay)" + (n > 0 ? " · \(n) change\(n == 1 ? "" : "s")" : ""))
-                }
-            }
-            Divider()
+    private var item: NSStatusItem?
+    private var changes = 0
+
+    /// Shows or hides the item to match the setting (default on).
+    func sync() {
+        let wanted = UserDefaults.standard.object(forKey: MenuBarSetting.key) as? Bool ?? true
+        if wanted, item == nil {
+            let created = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            created.button?.image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: "GitSync")
+            created.button?.imagePosition = .imageLeading
+            let menu = NSMenu()
+            menu.delegate = self
+            created.menu = menu
+            item = created
+            apply()
+        } else if !wanted, let existing = item {
+            NSStatusBar.system.removeStatusItem(existing)
+            item = nil
         }
-        let recents = (workspace?.recents ?? RecentRepositories.load()).filter { url in
-            !(workspace?.repos.contains { $0.id == url.path } ?? false)
-        }
-        if !recents.isEmpty {
-            Menu("Open Recent") {
-                ForEach(recents.prefix(8), id: \.self) { url in
-                    Button(url.lastPathComponent) { workspace?.open(url); Self.showWindow() }
-                }
-            }
-        }
-        Button("Open Repository…") { Self.showWindow(); workspace?.openPanel() }
-        Button("Show GitSync") { Self.showWindow() }
-        Divider()
-        Button("Quit GitSync") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }
 
-    static func showWindow() {
+    /// Total changed files across open repositories, shown beside the icon.
+    func update(changes count: Int) {
+        guard count != changes else { return }
+        changes = count
+        apply()
+    }
+
+    private func apply() {
+        guard let button = item?.button else { return }
+        let text = BadgeLabel.text(forChanges: changes).map { " " + $0 } ?? ""
+        if button.title != text { button.title = text }
+    }
+
+    // MARK: NSMenuDelegate
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let workspace = Workspace.current
+        let open = workspace?.repos ?? []
+        for store in open {
+            let n = store.status.changeCount
+            let title = "\(store.name) · \(store.status.branchDisplay)" + (n > 0 ? " · \(n) change\(n == 1 ? "" : "s")" : "")
+            let entry = NSMenuItem(title: title, action: #selector(select(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.representedObject = store.id
+            menu.addItem(entry)
+        }
+        if !open.isEmpty { menu.addItem(.separator()) }
+
+        let recents = RecentRepositories.load().filter { url in !open.contains { $0.id == url.path } }.prefix(8)
+        if !recents.isEmpty {
+            let submenu = NSMenu()
+            for url in recents {
+                let entry = NSMenuItem(title: url.lastPathComponent, action: #selector(openRecent(_:)), keyEquivalent: "")
+                entry.target = self
+                entry.representedObject = url
+                submenu.addItem(entry)
+            }
+            let parent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+            parent.submenu = submenu
+            menu.addItem(parent)
+        }
+        let openPanel = NSMenuItem(title: "Open Repository…", action: #selector(openPanel), keyEquivalent: "")
+        openPanel.target = self
+        menu.addItem(openPanel)
+        let show = NSMenuItem(title: "Show GitSync", action: #selector(show), keyEquivalent: "")
+        show.target = self
+        menu.addItem(show)
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Quit GitSync", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    }
+
+    @objc private func select(_ sender: NSMenuItem) {
+        Workspace.current?.select(sender.representedObject as? String)
+        show()
+    }
+
+    @objc private func openRecent(_ sender: NSMenuItem) {
+        if let url = sender.representedObject as? URL { Workspace.current?.open(url) }
+        show()
+    }
+
+    @objc private func openPanel() {
+        show()
+        Workspace.current?.openPanel()
+    }
+
+    @objc private func show() {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
-    }
-}
-
-/// The menu bar label: the branch icon, plus the total number of changed files when there are any.
-struct MenuBarLabel: View {
-    var body: some View {
-        let total = MenuBarModel.shared.workspace?.totalChanges ?? 0
-        HStack(spacing: 3) {
-            Image(systemName: "arrow.triangle.branch")
-            if total > 0 { Text(BadgeLabel.text(forChanges: total) ?? "") }
-        }
     }
 }

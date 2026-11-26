@@ -21,7 +21,7 @@ and should follow each platform's native idioms.
   shows *Pinned*, one section per user-named *Group*, then *Recent*. Context menu on a card: Pin/Unpin,
   Add to Group (toggle, New Group…), Reveal, Remove from Home. `HomeLayout` is a Codable value type
   (pinned paths, groups of paths) persisted as JSON; missing folders are pruned on load.
-- **Menu bar / tray icon** [ui]. Status item with the branch symbol and the total changed-file count
+- **Menu bar / tray icon** [ui]. Status item (a native status item built when the menu opens; a declarative, observing tray scene caused a redraw loop on macOS) with the branch symbol and the total changed-file count
   (`BadgeLabel`); menu: open repositories (name, branch, changes; selecting one focuses it), Open Recent,
   Open Repository…, Show GitSync, Quit. Setting `showMenuBarExtra` (default on). Windows/Linux: the
   notification-area / tray icon with the same menu.

@@ -7,6 +7,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         Task { @MainActor in UpdateManager.checkInBackground() }
+        StatusItemController.shared.sync()
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in StatusItemController.shared.sync() }
+        }
         #if DEBUG
         // GITSYNC_SNAPSHOT=/path.png renders the window to a PNG after a delay, then quits.
         // GITSYNC_APPEARANCE=dark|light forces an appearance for the capture.
@@ -68,7 +72,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct GitSyncApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @AppStorage(MenuBarSetting.key) private var showMenuBarExtra = true
 
     var body: some Scene {
         WindowGroup {
@@ -78,12 +81,6 @@ struct GitSyncApp: App {
         .defaultSize(width: 1440, height: 880)
         .commands { AppCommands() }
 
-        MenuBarExtra(isInserted: $showMenuBarExtra) {
-            MenuBarContent()
-        } label: {
-            MenuBarLabel()
-        }
-        .menuBarExtraStyle(.menu)
 
         // A regular window (not the `Settings` scene) so it gets the same hidden-title-bar chrome
         // as the main window; the Settings scene re-applies its own opaque title bar.
@@ -139,6 +136,7 @@ struct RootView: View {
         .focusedSceneValue(\.workspace, workspace)
         .modifier(AppearanceModifier())
         .task {
+            workspace.activate()
             await workspace.bootstrap()
             #if DEBUG
             if let name = ProcessInfo.processInfo.environment["GITSYNC_SHEET"] { workspace.sheet = WorkspaceSheet(rawValue: name) }
