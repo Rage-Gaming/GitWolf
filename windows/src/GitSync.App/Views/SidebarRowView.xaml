@@ -4,6 +4,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Grid x:Name="Root" Height="30" ColumnSpacing="8" Background="Transparent">
+        <Grid.RenderTransform>
+            <TranslateTransform x:Name="Slide" />
+        </Grid.RenderTransform>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="16" />
             <ColumnDefinition Width="*" />
@@ -21,7 +24,11 @@
         </StackPanel>
         <TextBlock x:Name="Trailing" Grid.Column="2" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
                    Foreground="{ThemeResource AccentLabelBrush}" />
-        <FontIcon x:Name="Chevron" Grid.Column="2" FontSize="10" VerticalAlignment="Center"
-                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <FontIcon x:Name="Chevron" Grid.Column="2" FontSize="10" VerticalAlignment="Center" Glyph="&#xE76C;"
+                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" RenderTransformOrigin="0.5,0.5">
+            <FontIcon.RenderTransform>
+                <RotateTransform x:Name="ChevronTurn" />
+            </FontIcon.RenderTransform>
+        </FontIcon>
     </Grid>
 </UserControl>

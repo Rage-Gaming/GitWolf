@@ -11,9 +11,11 @@ namespace GitSync.App.Views;
 /// <summary>Branches, remote branches, tags and stashes. Ported from SidebarView.swift.</summary>
 public sealed partial class SidebarView : UserControl
 {
-    private readonly ObservableCollection<SidebarRow> _rows = [];
+    private readonly ObservableCollection<SidebarItem> _rows = [];
     private readonly HashSet<SidebarKind> _open = [SidebarKind.LocalBranch, SidebarKind.RemoteBranch, SidebarKind.Stash];
     private readonly HashSet<string> _openRemotes = [];
+    /// <summary>Rows just revealed by opening a group, which animate in when first drawn.</summary>
+    private HashSet<SidebarItem> _entering = [];
     private RepositoryStore? _store;
 
     public SidebarView()
@@ -25,6 +27,7 @@ public sealed partial class SidebarView : UserControl
     internal void Attach(RepositoryStore store)
     {
         _store = store;
+        _entering.Clear();
         _rows.Clear();
         Show();
     }
@@ -84,28 +87,46 @@ public sealed partial class SidebarView : UserControl
                 new SidebarRow(SidebarKind.Stash, SidebarKind.Stash, x.Message, Stash: x)));
 
         // Stash messages can repeat, so stashes are keyed by their ref.
-        ListSync.Apply(_rows, rows, r => (r.Kind, r.Section, r.Stash?.Ref ?? r.Branch?.Name ?? r.Title));
+        ListSync.Apply(_rows, rows.Select(r => new SidebarItem(r)).ToList(),
+            i => (i.Row.Kind, i.Row.Section, i.Row.Stash?.Ref ?? i.Row.Branch?.Name ?? i.Row.Title), Update);
+    }
+
+    /// <summary>Redraws a row where it is. Rows scrolled out of view are drawn when they return.</summary>
+    private void Update(SidebarItem item, SidebarItem next)
+    {
+        if (item.Row == next.Row) return;
+        item.Row = next.Row;
+        if (Rows.ContainerFromItem(item) is ListViewItem { ContentTemplateRoot: SidebarRowView view })
+            view.Show(item.Row, animate: true);
     }
 
     private void OnWeb(object sender, RoutedEventArgs e) => _store?.OpenOnWeb(new WebTarget.Repository());
 
     private void OnClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not SidebarRow row) return;
+        if (e.ClickedItem is not SidebarItem { Row: var row }) return;
         if (row.Kind == SidebarKind.Header)
         {
             if (!_open.Remove(row.Section)) _open.Add(row.Section);
-            Show();
+            ShowToggled();
         }
         else if (row.Kind == SidebarKind.RemoteGroup)
         {
             if (!_openRemotes.Remove(row.Title)) _openRemotes.Add(row.Title);
-            Show();
+            ShowToggled();
         }
         else if (row.Hash is { } hash)
         {
             _store?.Reveal(hash);
         }
+    }
+
+    private void ShowToggled()
+    {
+        var before = _rows.ToHashSet();
+        Show();
+        // The list draws the new rows after this returns.
+        _entering = _rows.Where(item => !before.Contains(item)).ToHashSet();
     }
 
     private void OnDoubleTap(object sender, DoubleTappedRoutedEventArgs e)
@@ -188,12 +209,15 @@ public sealed partial class SidebarView : UserControl
     {
         while (element is not null and not ListViewItem)
             element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
-        return element is ListViewItem item ? Rows.ItemFromContainer(item) as SidebarRow : null;
+        return element is ListViewItem container ? (Rows.ItemFromContainer(container) as SidebarItem)?.Row : null;
     }
 
     private void OnRow(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        if (!args.InRecycleQueue && args.ItemContainer.ContentTemplateRoot is SidebarRowView view && args.Item is SidebarRow row)
-            view.Show(row);
+        if (!args.InRecycleQueue && args.ItemContainer.ContentTemplateRoot is SidebarRowView view && args.Item is SidebarItem item)
+        {
+            view.Show(item.Row);
+            if (_entering.Remove(item)) view.Enter();
+        }
     }
 }
