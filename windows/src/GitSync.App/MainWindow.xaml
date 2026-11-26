@@ -71,7 +71,12 @@
             </StackPanel>
         </Border>
         <InfoBar x:Name="Error" Grid.Column="1" VerticalAlignment="Bottom" Margin="16" Severity="Error" IsOpen="False"
-                 Closed="OnErrorClosed" Background="{ThemeResource PanelBrush}" />
+                 Title="Something went wrong" Closed="OnErrorClosed" Background="{ThemeResource PanelBrush}">
+            <!-- Git output can run to many lines, so the message scrolls instead of growing the banner. -->
+            <ScrollViewer x:Name="ErrorScroller" MaxHeight="160" Margin="0,0,0,12" Padding="0,0,12,0">
+                <TextBlock x:Name="ErrorText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+            </ScrollViewer>
+        </InfoBar>
         <views:SettingsView x:Name="Settings" Grid.ColumnSpan="2" Visibility="Collapsed" />
         <views:CommandPaletteView x:Name="CommandPalette" Grid.ColumnSpan="2" Visibility="Collapsed" />
     </Grid>
