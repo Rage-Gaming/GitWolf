@@ -10,6 +10,11 @@ struct RepositoryView: View {
     var body: some View {
         VStack(spacing: 0) {
             TopBar(store: store, workspace: workspace)
+            if let operation = store.operation {
+                OperationBanner(store: store, operation: operation)
+                    .padding(.horizontal, 10).padding(.bottom, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             GeometryReader { geo in
                 let sidebar = CGFloat(sidebarWidth)
                 let content = min(CGFloat(contentWidth), max(320, geo.size.width - sidebar - 380 - 24))
@@ -26,6 +31,7 @@ struct RepositoryView: View {
         .task { store.start() }
         .overlay(alignment: .bottom) { if let label = store.busyLabel { BusyPill(label: label) } }
         .animation(.snappy, value: store.busyLabel)
+        .animation(.snappy, value: store.operation)
         .alert("Git Error", isPresented: Binding(
             get: { store.errorMessage != nil },
             set: { if !$0 { store.errorMessage = nil } })

@@ -31,6 +31,11 @@ struct CommandPalette: View {
                 Item(id: "history", title: "Show History", subtitle: "View", icon: "clock.arrow.circlepath") { s.mode = .history },
                 Item(id: "changes", title: "Show Changes", subtitle: "View", icon: "square.and.pencil") { s.mode = .changes },
             ]
+            if let op = s.operation {
+                all.append(Item(id: "op-continue", title: "Continue \(op.verb)", subtitle: "Repository action", icon: "play.fill") { s.continueOperation() })
+                if op.canSkip { all.append(Item(id: "op-skip", title: "Skip Current Commit", subtitle: "Repository action", icon: "forward.fill") { s.skipOperation() }) }
+                all.append(Item(id: "op-abort", title: "Abort \(op.verb)", subtitle: "Repository action", icon: "xmark.octagon") { s.abortOperation() })
+            }
             if s.supports(.pullRequest) {
                 all.append(Item(id: "show-prs", title: "Show \(s.pullRequestsTitle)", subtitle: "View", icon: "arrow.triangle.pull") { s.mode = .pullRequests })
             }

@@ -196,8 +196,9 @@ public struct RepositorySnapshot: Equatable, Sendable {
     public var tags: [GitTag]
     public var stashes: [Stash]
     public var remotes: [String]
+    public var operation: InProgressOperation?
 
     public static let empty = RepositorySnapshot(
         status: .empty, commits: [], graph: [], localBranches: [], remoteBranches: [],
-        tags: [], stashes: [], remotes: [])
+        tags: [], stashes: [], remotes: [], operation: nil)
 }

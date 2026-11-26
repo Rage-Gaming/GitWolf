@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- In-progress operation banner: detects a merge, rebase, cherry-pick or revert in progress (including a sequence of picks) and offers Continue, Skip and Abort, plus palette commands.
 - Hosting provider accounts (GitHub, GitLab, Bitbucket, Gitea/Forgejo/Codeberg, Azure DevOps, including self-hosted) with tokens in the Keychain; authenticated fetch, pull, push and clone for private repositories via `GIT_ASKPASS` (secrets never appear in URLs or config).
 - Enterprise and self-managed servers: GitHub Enterprise (Server and ghe.com), GitLab self-managed, Gitea/Forgejo, Bitbucket Data Center; custom ports and http; sign in with a token or a username and password.
 - Pull request / merge request and issue lists (GitHub, GitLab, Gitea; Bitbucket Cloud pull requests) with open/closed/all filters, search, paging, details, check out branch and open on web. Public repositories work without an account.

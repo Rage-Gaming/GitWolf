@@ -45,6 +45,13 @@ and should follow each platform's native idioms.
   and non-UTF-8 diffs are read-only.
 - Commit box: multi-line message, Commit button, **amend** (pre-fills the HEAD message).
 - Selection follows a file between the unstaged and staged areas.
+- **In-progress operation banner** [core `OperationDetector`]: while a merge, rebase, cherry-pick or
+  revert is unfinished, a flat orange banner under the top bar shows the operation (with "step N of M"
+  for rebases and sequences), the number of conflicted files, **Show Conflicts**, **Skip** (not for
+  merges), **Abort** (confirmed) and **Continue** (disabled until conflicts are resolved). Detection
+  reads the git dir (`rebase-merge/`, `rebase-apply/`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`,
+  `REVERT_HEAD`, `sequencer/`), following a `gitdir:` pointer for worktrees/submodules; actions run
+  `git <op> --continue|--abort|--skip`. Also in the command palette.
 
 ## 4. Diff view
 

@@ -42,6 +42,8 @@ final class RepositoryStore: Identifiable {
     private(set) var tags: [GitTag] = []
     private(set) var stashes: [Stash] = []
     private(set) var remotes: [String] = []
+    /// A merge / rebase / cherry-pick / revert that is waiting for the user.
+    private(set) var operation: InProgressOperation?
     /// Where `origin` (or the first remote) lives, for web links.
     private(set) var remoteLocation: RemoteLocation?
     private(set) var isLoaded = false
@@ -225,6 +227,7 @@ final class RepositoryStore: Identifiable {
         if tags != s.tags { tags = s.tags }
         if stashes != s.stashes { stashes = s.stashes }
         if remotes != s.remotes { remotes = s.remotes; refreshRemoteLocation() }
+        if operation != s.operation { operation = s.operation }
         if !isLoaded {
             isLoaded = true
             if !s.status.isClean { mode = .changes }
@@ -411,6 +414,19 @@ final class RepositoryStore: Identifiable {
             busyLabel = nil
             requestRefresh()
         }
+    }
+
+    func continueOperation() {
+        guard let op = operation else { return }
+        perform("Continuing…") { try await $0.continueOperation(op) }
+    }
+    func skipOperation() {
+        guard let op = operation else { return }
+        perform("Skipping…") { try await $0.skipOperation(op) }
+    }
+    func abortOperation() {
+        guard let op = operation else { return }
+        perform("Aborting…") { try await $0.abortOperation(op) }
     }
 
     func fetch() { perform("Fetching…") { try await $0.fetch() } }

@@ -116,7 +116,8 @@ public struct GitRepository: Sendable {
         return RepositorySnapshot(
             status: try await status, commits: commits, graph: graph,
             localBranches: local, remoteBranches: remote,
-            tags: try await tags, stashes: try await stashes, remotes: remotes)
+            tags: try await tags, stashes: try await stashes, remotes: remotes,
+            operation: inProgressOperation())
     }
 
     public func status() async throws -> WorkingStatus {

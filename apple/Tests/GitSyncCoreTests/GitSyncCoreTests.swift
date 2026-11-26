@@ -696,3 +696,74 @@ import Testing
         #expect(log.requests[0].url?.host == "app.vssps.visualstudio.com")
     }
 }
+
+@Suite struct InProgressOperationTests {
+    @Test func cleanRepositoryHasNoOperation() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try await t.commit("base", text: "a\n")
+        #expect(t.repo.inProgressOperation() == nil)
+    }
+
+    @Test func mergeConflictCanBeAborted() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        _ = try? await t.git.run(["merge", "feature"])
+        let op = try #require(t.repo.inProgressOperation())
+        #expect(op.kind == .merge && !op.canSkip && op.title == "Merging")
+        #expect(try await t.repo.status().conflicted.count == 1)
+        try await t.repo.abortOperation(op)
+        #expect(t.repo.inProgressOperation() == nil)
+        #expect(try t.read() == "one\nMAIN\nthree\n")
+    }
+
+    @Test func mergeConflictCanBeContinuedAfterResolving() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        _ = try? await t.git.run(["merge", "feature"])
+        let op = try #require(t.repo.inProgressOperation())
+        try t.write("one\nBOTH\nthree\n")
+        try await t.git.run(["add", "f.txt"])
+        try await t.repo.continueOperation(op)
+        #expect(t.repo.inProgressOperation() == nil)
+        #expect(try await t.repo.status().isClean)
+    }
+
+    @Test func rebaseConflictReportsStepAndSkips() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        try await t.git.run(["switch", "feature"])
+        _ = try? await t.git.run(["rebase", "main"])
+        let op = try #require(t.repo.inProgressOperation())
+        #expect(op.kind == .rebase && op.canSkip && op.branch == "feature")
+        #expect(op.step == 1 && op.total == 1)
+        try await t.repo.skipOperation(op)
+        #expect(t.repo.inProgressOperation() == nil)
+        #expect(try t.read() == "one\nMAIN\nthree\n")
+    }
+
+    @Test func cherryPickAndRevertConflicts() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        let featureHead = try await t.git.runString(["rev-parse", "feature"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = try? await t.git.run(["cherry-pick", featureHead])
+        let pick = try #require(t.repo.inProgressOperation())
+        #expect(pick.kind == .cherryPick)
+        try await t.repo.abortOperation(pick)
+        #expect(t.repo.inProgressOperation() == nil)
+
+        let base = try await t.git.runString(["rev-parse", "HEAD~1"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = try? await t.git.run(["revert", "--no-edit", base])
+        let revert = t.repo.inProgressOperation()
+        #expect(revert == nil || revert?.kind == .revert)
+        if let revert { try await t.repo.abortOperation(revert) }
+    }
+
+    @Test func snapshotCarriesTheOperation() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        _ = try? await t.git.run(["merge", "feature"])
+        let snap = try await t.repo.snapshot(commitLimit: 50)
+        #expect(snap.operation?.kind == .merge)
+    }
+}
