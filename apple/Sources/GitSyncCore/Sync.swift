@@ -71,7 +71,7 @@ public extension GitRepository {
     }
 
     /// `https://user:secret@host/x` becomes `https://user@host/x`.
-    static func redact(_ url: String) -> String {
+    public static func redact(_ url: String) -> String {
         guard let parsed = URL(string: url), parsed.password != nil, var c = URLComponents(url: parsed, resolvingAgainstBaseURL: false) else { return url }
         c.password = nil
         return c.string ?? url

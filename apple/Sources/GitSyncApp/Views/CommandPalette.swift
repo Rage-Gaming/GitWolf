@@ -38,6 +38,11 @@ struct CommandPalette: View {
                 all.append(Item(id: "new-issue", title: "New Issue…", subtitle: "Hosting", icon: "smallcircle.filled.circle") { s.sheet = .newCollab(.issue) })
             }
             if s.canFork { all.append(Item(id: "fork", title: "Fork on \(s.providerTitle ?? "provider")…", subtitle: "Hosting", icon: "arrow.triangle.branch") { s.sheet = .fork }) }
+            all.append(Item(id: "worktrees", title: "Worktrees & Submodules…", subtitle: "Repository action", icon: "square.stack.3d.up") { s.sheet = .worktrees })
+            all.append(Item(id: "apply-patch", title: "Apply Patch…", subtitle: "Repository action", icon: "doc.badge.gearshape") { s.applyPatches() })
+            all.append(Item(id: "make-patch", title: "Create Patch from Changes…", subtitle: "Repository action", icon: "doc.badge.plus") { s.createPatchFromChanges() })
+            if s.bisect.isActive { all.append(Item(id: "stop-bisect", title: "Stop Bisect", subtitle: "Repository action", icon: "scope") { s.stopBisect() }) }
+            if s.isShallow { all.append(Item(id: "unshallow", title: "Fetch Full History", subtitle: "Sync", icon: "arrow.down.to.line") { s.fetchFullHistory() }) }
             all.append(Item(id: "remotes", title: "Manage Remotes…", subtitle: "Sync", icon: "network") { s.sheet = .remotes })
             all.append(Item(id: "force-push", title: "Force Push (with Lease)…", subtitle: "Sync", icon: "arrow.up.circle") { s.confirmForcePush() })
             all.append(Item(id: "notifications", title: "Notifications…", subtitle: "Hosting", icon: "bell") { s.sheet = .notifications })

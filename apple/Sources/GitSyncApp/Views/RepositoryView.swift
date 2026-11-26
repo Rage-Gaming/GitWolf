@@ -15,6 +15,15 @@ struct RepositoryView: View {
                     .padding(.horizontal, 10).padding(.bottom, 8)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
+            if store.bisect.isActive || store.bisectBad != nil || store.bisectGood != nil {
+                BisectBanner(store: store)
+                    .padding(.horizontal, 10).padding(.bottom, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if store.isShallow {
+                ShallowBanner(store: store)
+                    .padding(.horizontal, 10).padding(.bottom, 8)
+            }
             GeometryReader { geo in
                 let sidebar = CGFloat(sidebarWidth)
                 let content = min(CGFloat(contentWidth), max(320, geo.size.width - sidebar - 380 - 24))
@@ -28,6 +37,8 @@ struct RepositoryView: View {
                 .padding(.trailing, 10).padding(.bottom, 10)
             }
         }
+        .environment(\.lfsPaths, store.lfsPaths)
+        .animation(.snappy, value: store.bisect.isActive)
         .task { store.start(); NotificationsStore.shared.startPolling() }
         .overlay(alignment: .bottom) { if let label = store.busyLabel { BusyPill(label: label) } }
         .animation(.snappy, value: store.busyLabel)
@@ -71,6 +82,8 @@ struct RepositoryView: View {
                 ForkSheet(store: store)
             case .remotes:
                 RemotesSheet(store: store)
+            case .worktrees:
+                WorktreesSheet(store: store, workspace: workspace)
             case .cleanup:
                 BranchCleanupSheet(store: store)
             case .reflog:

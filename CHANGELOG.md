@@ -7,6 +7,12 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Large repositories: when loading history takes over half a second, GitSync writes git's commit-graph cache once in the background (only a cache under `.git`). On a 100,000-commit repository history loads in about 0.015s instead of 0.4s. History was already paged ("Load More").
+- Clone options: an Advanced section in the clone sheet for shallow clones (latest N commits), blobless or treeless filters, a single branch, and submodules. Shallow clones show a banner with "Fetch Full History".
+- Git LFS: files stored with LFS (from `.gitattributes`) get an LFS badge in the changed-files list. Works without git-lfs installed.
+- Worktrees and submodules: "Worktrees & Submodules…" lists, adds, opens and removes worktrees, and lists submodules with their state, with Initialize, Update All, Update to Latest, Open and Add.
+- Patches: export a commit as a `.patch` file, save your uncommitted changes as a patch, and apply patch files to the working tree, to the index, or as commits with author and message kept (`git am`, with a continue/skip/abort banner on conflicts).
+- Bisect: right-click commits to mark a bad and a good one, then mark each commit git picks as Good, Bad or Skip from a banner until it names the first bad commit.
 - Pull and push options: right-click Pull for merge, rebase or fast-forward only; right-click Push for push with tags, force push with lease (always confirmed) and push to another remote. A rejected push offers to pull first or force push with lease; a diverged fast-forward-only pull says so plainly.
 - Remotes: "Manage Remotes…" lists remotes with their URLs (passwords redacted) and adds, renames, changes the URL of or removes them, with fetch and push per remote. URLs with embedded passwords are refused.
 - Fork: "Fork Repository…" forks the current repository on GitHub, GitLab, Gitea or Bitbucket Cloud with your connected account, then either makes the fork `origin` and the original `upstream`, or adds it as another remote, and fetches it.

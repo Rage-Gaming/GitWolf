@@ -229,6 +229,29 @@ A menu button next to "Amend last commit":
   any mutation. Background fetch on a timer (setting; default 5 min, 0 = off).
 - Busy indicator for long operations; cancellation via task cancellation killing the process.
 
+## 6b. Scale and power
+
+- **Bisect** [core `Bisect.swift`]: state comes from `BISECT_LOG` (marks, and the
+  `# first bad commit:` line). Start with a bad and good commit (`bisect start <bad> <good> --`), mark HEAD or
+  a given hash with `bisect good|bad|skip`, parse `Bisecting: N revisions left…` for progress, `bisect reset`
+  to end. UI: context-menu picks, a banner with Skip/Bad/Good/Stop, then "Show Commit"/"Finish".
+- **Patches** [`Patches.swift`]: `format-patch -1 <hash> -o dir`; `diff --binary HEAD`; `apply --check` before
+  `apply [--index]`; `am --3way`. An `am` in progress is detected by `rebase-apply/applying` and shown as the
+  operation "Applying patches" (continue/skip/abort use `git am`).
+- **Worktrees** [`Worktrees.swift`]: `worktree list --porcelain` (first entry is the main one; `locked`,
+  `prunable`), `add [-b]`, `remove` (never forced), `prune`. Open one as another repository.
+- **Submodules** [`Submodules.swift`]: `submodule status` (flags ` `, `-`, `+`, `U`) joined with URLs from
+  `.gitmodules`; `update --init --recursive [-- path]`, `update --remote`, `add -- url path` (refuse `-`
+  prefixes). Network calls use the account credential like fetch.
+- **LFS** [`LFS.swift`]: `check-attr -z --stdin filter` marks paths whose filter is `lfs`; shown as a badge. Only
+  run when `.gitattributes` mentions `filter=lfs`. `LFSPointer.parse` reads pointer files.
+- **Clone options** [`CloneOptions.swift`]: `--depth`, `--filter=blob:none|tree:0`, `--single-branch`,
+  `--branch` (not accepted with a leading `-`), `--recurse-submodules`. `rev-parse --is-shallow-repository`
+  drives a banner; `fetch --unshallow` fetches the rest.
+- **Large repositories** [`Performance.swift`]: history is paged. `git log --topo-order` walks all of
+  history without a commit-graph, so if a refresh takes over 0.5s write it once with
+  `commit-graph write --reachable --changed-paths` in the background.
+
 ## 7. Settings
 
 | Key | Values |
@@ -314,4 +337,4 @@ Selecting a pushed commit (History) or a pull request shows a pill with the over
 
 ## 10. Not built yet
 
-See [ROADMAP.md](ROADMAP.md): submodules/worktrees, LFS, notarised releases.
+See [ROADMAP.md](ROADMAP.md): LFS actions, notarised releases.

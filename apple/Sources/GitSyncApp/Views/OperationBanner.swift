@@ -47,6 +47,7 @@ struct OperationBanner: View {
         case .rebase: "arrow.triangle.swap"
         case .cherryPick: "arrow.uturn.right"
         case .revert: "arrow.uturn.backward"
+        case .am: "envelope.open"
         }
     }
 

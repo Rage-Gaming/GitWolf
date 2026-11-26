@@ -13,6 +13,7 @@ enum StoreSheet: Identifiable {
     case renameBranch(String)
     case cleanup
     case remotes
+    case worktrees
     case fork
     case notifications
     case newCollab(CollabKind)
@@ -29,6 +30,7 @@ enum StoreSheet: Identifiable {
         case .renameBranch: "renameBranch"
         case .cleanup: "cleanup"
         case .remotes: "remotes"
+        case .worktrees: "worktrees"
         case .fork: "fork"
         case .notifications: "notifications"
         case .newCollab(let kind): "newCollab-\(kind.rawValue)"
@@ -66,6 +68,16 @@ final class RepositoryStore: Identifiable {
     private(set) var remotes: [String] = []
     /// A merge / rebase / cherry-pick / revert that is waiting for the user.
     private(set) var operation: InProgressOperation?
+    /// Bisect session state, plus the commits picked before one has started.
+    var bisect = BisectState()
+    var bisectProgress: String?
+    var bisectBad: String?
+    var bisectGood: String?
+    /// Changed files stored with Git LFS (shown with a badge).
+    var lfsPaths: Set<String> = []
+    var isShallow = false
+    var shallowChecked = false
+    private var commitGraphTried = false
     /// Where `origin` (or the first remote) lives, for web links.
     private(set) var remoteLocation: RemoteLocation?
     private(set) var isLoaded = false
@@ -289,8 +301,11 @@ final class RepositoryStore: Identifiable {
 
     private func performRefresh() async {
         do {
+            let started = Date()
             let snap = try await repo.snapshot(commitLimit: commitLimit)
             apply(snap)
+            await speedUpIfSlow(took: Date().timeIntervalSince(started))
+            await refreshExtras(snap.status)
         } catch {
             if !isLoaded { errorMessage = error.localizedDescription }
         }
@@ -318,6 +333,7 @@ final class RepositoryStore: Identifiable {
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "cleanup" { sheet = .cleanup }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "fork" { sheet = .fork }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "remotes" { sheet = .remotes }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "worktrees" { sheet = .worktrees }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "notes" { NotificationsStore.shared.loadSamples(); sheet = .notifications }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "newpr" { sheet = .newCollab(.pullRequest) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "hook" { sheet = .hookFailure(HookFailedError(hook: "pre-commit", output: "eslint: src/app.ts\n  12:5  error  Unexpected console statement  no-console\n\n1 problem (1 error, 0 warnings)")) }
@@ -337,6 +353,32 @@ final class RepositoryStore: Identifiable {
             #endif
         }
         reconcileSelection()
+    }
+
+    /// Cheap checks that are not part of the snapshot: bisect state and Git LFS files.
+    private func refreshExtras(_ status: WorkingStatus) async {
+        let state = repo.bisectState()
+        if state != bisect { bisect = state }
+        let attributes = (try? String(contentsOf: repo.root.appendingPathComponent(".gitattributes"), encoding: .utf8)) ?? ""
+        var found: Set<String> = []
+        if attributes.contains("filter=lfs") {
+            let paths = (status.staged + status.unstaged + status.untracked + status.conflicted).map(\.path)
+            found = await repo.lfsPaths(among: paths)
+        }
+        if found != lfsPaths { lfsPaths = found }
+        if !shallowChecked { shallowChecked = true; await refreshShallow() }
+    }
+
+    /// Loading history this slowly means a big repository without git's commit-graph cache. Write it once
+    /// (in the background); afterwards every refresh is fast.
+    private func speedUpIfSlow(took seconds: TimeInterval) async {
+        guard seconds > 0.5, !commitGraphTried else { return }
+        commitGraphTried = true
+        let repo = self.repo
+        Task.detached(priority: .utility) {
+            guard await !repo.hasCommitGraph() else { return }
+            try? await repo.writeCommitGraph()
+        }
     }
 
     func loadMoreCommits() {
@@ -595,7 +637,7 @@ final class RepositoryStore: Identifiable {
 
     // MARK: Operations
 
-    private func perform(_ label: String, pushOptions: PushOptions? = nil, _ op: @escaping @Sendable (GitRepository) async throws -> Void) {
+    func perform(_ label: String, pushOptions: PushOptions? = nil, _ op: @escaping @Sendable (GitRepository) async throws -> Void) {
         guard !isBusy else { return }
         isBusy = true
         busyLabel = label

@@ -17,7 +17,7 @@ public struct GitRepository: Sendable {
     var git: GitRunner { GitRunner(workingDirectory: root, gitPath: gitPath) }
 
     /// A runner for network operations, carrying the account credential for this repo's remote.
-    private func networkGit() async -> GitRunner {
+    func networkGit() async -> GitRunner {
         guard let credentials, let askpassPath,
               let names = try? await remotes(), let name = names.contains("origin") ? "origin" : names.first,
               let url = try? await git.runString(["remote", "get-url", name], readOnly: true),
@@ -77,6 +77,7 @@ public struct GitRepository: Sendable {
         gitPath: String = "/usr/bin/git",
         credential: GitCredential? = nil,
         askpassPath: String? = nil,
+        options: CloneOptions = CloneOptions(),
         onProgress: (@Sendable (String) -> Void)? = nil
     ) async throws -> URL {
         let destination = parent.appendingPathComponent(name, isDirectory: true)
@@ -87,7 +88,7 @@ public struct GitRepository: Sendable {
         var env: [String: String] = [:]
         if let credential, let askpassPath { env = credential.environment(askpassPath: askpassPath) }
         let runner = GitRunner(workingDirectory: parent, gitPath: gitPath, extraEnvironment: env)
-        try await runner.run(["clone", "--progress", "--", url, name], onProgress: onProgress)
+        try await runner.run(["clone", "--progress"] + options.arguments + ["--", url, name], onProgress: onProgress)
         return destination
     }
 

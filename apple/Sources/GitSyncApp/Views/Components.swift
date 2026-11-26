@@ -211,12 +211,28 @@ struct RefChip: View {
     }
 }
 
+private struct LFSPathsKey: EnvironmentKey { static let defaultValue: Set<String> = [] }
+extension EnvironmentValues {
+    /// Paths of changed files stored with Git LFS.
+    var lfsPaths: Set<String> {
+        get { self[LFSPathsKey.self] }
+        set { self[LFSPathsKey.self] = newValue }
+    }
+}
+
 struct FileRow: View {
     let change: FileChange
+    @Environment(\.lfsPaths) private var lfsPaths
     var body: some View {
         HStack(spacing: 9) {
             StatusBadge(kind: change.kind)
             Text(change.fileName).fontWeight(.medium).lineLimit(1)
+            if lfsPaths.contains(change.path) {
+                Text("LFS").font(.system(size: 9.5, weight: .bold))
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Color.teal.opacity(0.18), in: Capsule()).foregroundStyle(.teal)
+                    .help("Stored with Git LFS")
+            }
             if !change.directory.isEmpty {
                 Text(change.directory).foregroundStyle(.secondary).font(.caption).lineLimit(1).truncationMode(.head)
             }

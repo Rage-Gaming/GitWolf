@@ -1790,3 +1790,173 @@ import Testing
         #expect(try await t.repo.status().upstream == "second/main")
     }
 }
+
+// MARK: - Scale and power features
+
+@Suite("Scale")
+struct ScaleTests {
+    @Test func bisectFindsTheBadCommit() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        var hashes: [String] = []
+        for i in 1...8 { hashes.append(try await t.commit("c\(i)", file: "n.txt", text: (i >= 5 ? "bad" : "ok") + "\n\(i)\n")) }
+        #expect(!t.repo.bisectState().isActive)
+        var state = try await t.repo.bisectStart(bad: hashes[7], good: hashes[0])
+        #expect(state.isActive)
+        #expect(state.progress != nil)
+        var steps = 0
+        while state.firstBad == nil, steps < 10 {
+            let isBad = try t.read("n.txt").hasPrefix("bad")
+            state = try await t.repo.bisectMark(isBad ? .bad : .good)
+            steps += 1
+        }
+        #expect(state.firstBad == hashes[4])
+        #expect(state.marks.count >= 3)
+        try await t.repo.bisectReset()
+        #expect(!t.repo.bisectState().isActive)
+        let branch = try await t.git.runString(["branch", "--show-current"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(branch == "main")
+    }
+
+    @Test func patchesRoundTrip() async throws {
+        let src = try await TestRepo.make()
+        let dst = try await TestRepo.make()
+        defer { src.cleanup(); dst.cleanup() }
+        let base = try await src.commit("base", text: "one\n")
+        try await dst.git.run(["fetch", src.dir.path, "main"])
+        try await dst.git.run(["reset", "--hard", base])
+        let c2 = try await src.commit("second change", text: "one\ntwo\n")
+        let out = src.dir.appendingPathComponent("out")
+        let files = try await src.repo.formatPatches(commits: [c2], into: out)
+        #expect(files.count == 1)
+        #expect(files[0].lastPathComponent.hasSuffix("second-change.patch"))
+        #expect(await dst.repo.checkPatch(files[0]) == nil)
+        try await dst.repo.applyMailbox(files)
+        #expect(try dst.read() == "one\ntwo\n")
+        let log = try await dst.git.runString(["log", "-1", "--format=%s"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(log == "second change")
+
+        // Plain diff apply, staged and not.
+        try dst.write("one\ntwo\nthree\n")
+        let diff = try await dst.repo.workingPatch(stagedOnly: false)
+        let file = dst.dir.appendingPathComponent("w.diff")
+        try diff.write(to: file, atomically: true, encoding: .utf8)
+        try await dst.git.run(["checkout", "--", "f.txt"])
+        #expect(await dst.repo.checkPatch(file) == nil)
+        try await dst.repo.applyPatchFile(file, stage: true)
+        #expect(try await dst.repo.status().staged.count == 1)
+        // A patch that no longer applies explains why.
+        try await dst.git.run(["reset", "--hard"])
+        try dst.write("different\n")
+        #expect(await dst.repo.checkPatch(file) != nil)
+    }
+
+    @Test func amConflictIsAnOperation() async throws {
+        let a = try await TestRepo.make()
+        defer { a.cleanup() }
+        let base = try await a.commit("base", text: "one\n")
+        let c2 = try await a.commit("change", text: "ONE\n")
+        let files = try await a.repo.formatPatches(commits: [c2], into: a.dir.appendingPathComponent("p"))
+        try await a.git.run(["reset", "--hard", base])
+        try await a.commit("conflicting", text: "uno\n")
+        _ = try? await a.repo.applyMailbox(files)
+        let op = a.repo.inProgressOperation()
+        #expect(op?.kind == .am)
+        try await a.repo.abortOperation(try #require(op))
+        #expect(a.repo.inProgressOperation() == nil)
+    }
+
+    @Test func worktrees() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try await t.commit("base", text: "x\n")
+        let path = t.dir.deletingLastPathComponent().appendingPathComponent("wt-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: path) }
+        try await t.repo.addWorktree(at: path, branch: "side", newBranch: true)
+        var list = try await t.repo.worktrees()
+        #expect(list.count == 2)
+        #expect(list[0].isMain && list[0].branch == "main")
+        #expect(list[1].branch == "side")
+        try await t.repo.removeWorktree(list[1].path, force: false)
+        list = try await t.repo.worktrees()
+        #expect(list.count == 1)
+    }
+
+    @Test func submodules() async throws {
+        let lib = try await TestRepo.make()
+        let app = try await TestRepo.make()
+        defer { lib.cleanup(); app.cleanup() }
+        try await lib.commit("lib", file: "lib.txt", text: "lib\n")
+        try await app.commit("app", text: "app\n")
+        #expect(try await app.repo.submodules().isEmpty)
+        try await app.git.run(["-c", "protocol.file.allow=always", "submodule", "add", "--", lib.dir.path, "vendor/lib"])
+        var subs = try await app.repo.submodules()
+        #expect(subs.count == 1)
+        #expect(subs[0].path == "vendor/lib")
+        #expect(subs[0].url == lib.dir.path)
+        #expect(subs[0].state == .upToDate)
+        try await app.git.run(["commit", "-m", "add lib"])
+        // A fresh clone has it uninitialised until updated.
+        let clone = FileManager.default.temporaryDirectory.appendingPathComponent("sub-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: clone) }
+        try await GitRunner(workingDirectory: app.dir).run(["clone", app.dir.path, clone.path])
+        let repo = GitRepository(root: clone)
+        subs = try await repo.submodules()
+        #expect(subs.first?.state == .notInitialized)
+        try await GitRunner(workingDirectory: clone).run(["-c", "protocol.file.allow=always", "submodule", "update", "--init"])
+        #expect(try await repo.submodules().first?.state == .upToDate)
+        #expect(FileManager.default.fileExists(atPath: clone.appendingPathComponent("vendor/lib/lib.txt").path))
+        await #expect(throws: GitError.self) { try await repo.addSubmodule(url: "--evil", path: "x") }
+    }
+
+    @Test func lfsDetection() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try t.write("*.psd filter=lfs diff=lfs merge=lfs -text\n", ".gitattributes")
+        let found = await t.repo.lfsPaths(among: ["a.psd", "b.txt", "dir/c.psd"])
+        #expect(found == ["a.psd", "dir/c.psd"])
+        #expect(await t.repo.lfsPaths(among: []).isEmpty)
+        let pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:abc123\nsize 2048\n"
+        let parsed = try #require(LFSPointer.parse(pointer))
+        #expect(parsed.oid == "abc123" && parsed.size == 2048)
+        #expect(LFSPointer.parse("just text") == nil)
+        // git-lfs may not be installed, so commit the pointer without the filter attribute active.
+        try FileManager.default.removeItem(at: t.dir.appendingPathComponent(".gitattributes"))
+        try await t.commit("pointer", file: "a.psd", text: pointer)
+        try await t.commit("other", file: "o.txt", text: "plain\n")
+        #expect(await t.repo.lfsPointer(path: "a.psd")?.size == 2048)
+        #expect(await t.repo.lfsPointer(path: "o.txt") == nil)
+    }
+
+    @Test func commitGraphCache() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        for i in 1...5 { try await t.commit("c\(i)", text: "\(i)\n") }
+        let before = try await t.repo.log(limit: 100, remotes: []).map(\.hash)
+        #expect(!(await t.repo.hasCommitGraph()))
+        try await t.repo.writeCommitGraph()
+        #expect(await t.repo.hasCommitGraph())
+        #expect(try await t.repo.log(limit: 100, remotes: []).map(\.hash) == before)
+    }
+
+    @Test func shallowAndFilteredClones() async throws {
+        let origin = try await TestRepo.make()
+        defer { origin.cleanup() }
+        for i in 1...4 { try await origin.commit("c\(i)", text: "\(i)\n") }
+        #expect(CloneOptions(depth: 1, filter: .blobless, singleBranch: true, branch: "main").arguments
+                == ["--depth", "1", "--filter=blob:none", "--single-branch", "--branch", "main"])
+        #expect(CloneOptions(branch: "--upload-pack=x").arguments.isEmpty)
+        let parent = FileManager.default.temporaryDirectory.appendingPathComponent("cl-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        // file:// so --depth is honoured for a local path.
+        let dest = try await GitRepository.clone(url: "file://" + origin.dir.path, into: parent, name: "shallow",
+                                                 options: CloneOptions(depth: 1))
+        let repo = GitRepository(root: dest)
+        #expect(await repo.isShallow())
+        #expect(try await repo.log(limit: 100, remotes: []).count == 1)
+        try await repo.unshallow()
+        #expect(!(await repo.isShallow()))
+        #expect(try await repo.log(limit: 100, remotes: []).count == 4)
+    }
+}

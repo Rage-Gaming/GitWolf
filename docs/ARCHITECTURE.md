@@ -17,6 +17,10 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `GraphLayout` | Turns topologically ordered commits into per-row lane edges for drawing the branch graph. |
 | `GitRepository` | Stateless, `Sendable` façade for every read and write operation. |
 | `SyntaxHighlighter`, `SideBySide` | Pure helpers for diff presentation: token ranges per line, split-view row pairing. |
+| `Bisect` | `BisectState` (from `BISECT_LOG`), start/mark/reset. |
+| `Patches` | format-patch, working diff, apply/check, `am`. |
+| `Worktrees`, `Submodules` | list/add/remove worktrees; submodule status, update, add. |
+| `LFS`, `CloneOptions`, `Performance` | LFS paths and pointers; shallow/partial clone arguments; commit-graph cache. |
 | `Sync` | `PullStrategy`, `PushOptions`, `GitError.isPushRejected/isDivergedPull`, `RemoteInfo`, remote add/rename/set-url/remove. |
 | `Fork` | `ProviderClient.fork`, `GitRepository.adoptFork` (rename/add remotes, fetch), `ForkRemoteMode`. |
 | `Notifications` | `ProviderNotification`, `ProviderClient.notifications()`, `markRead`, `markAllRead`. App side: `NotificationsStore` polls every account. |

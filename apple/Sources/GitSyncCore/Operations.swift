@@ -2,7 +2,7 @@ import Foundation
 
 /// A multi-step Git operation that stopped and is waiting for the user (usually because of conflicts).
 public struct InProgressOperation: Equatable, Sendable {
-    public enum Kind: String, Sendable { case merge, rebase, cherryPick, revert }
+    public enum Kind: String, Sendable { case merge, rebase, cherryPick, revert, am }
 
     public var kind: Kind
     /// 1-based position and total for rebases and multi-commit picks.
@@ -27,6 +27,7 @@ public struct InProgressOperation: Equatable, Sendable {
         case .rebase: "Rebasing"
         case .cherryPick: "Cherry-picking"
         case .revert: "Reverting"
+        case .am: "Applying patches"
         }
     }
 
@@ -69,6 +70,10 @@ enum OperationDetector {
             return InProgressOperation(
                 kind: .rebase, step: read("rebase-merge/msgnum").flatMap(Int.init),
                 total: read("rebase-merge/end").flatMap(Int.init), branch: branchName(read("rebase-merge/head-name")))
+        }
+        if exists("rebase-apply/applying") {
+            return InProgressOperation(kind: .am, step: read("rebase-apply/next").flatMap(Int.init),
+                                       total: read("rebase-apply/last").flatMap(Int.init))
         }
         if exists("rebase-apply") {
             return InProgressOperation(
@@ -122,6 +127,7 @@ public extension GitRepository {
         case .rebase: "rebase"
         case .cherryPick: "cherry-pick"
         case .revert: "revert"
+        case .am: "am"
         }
     }
 }
