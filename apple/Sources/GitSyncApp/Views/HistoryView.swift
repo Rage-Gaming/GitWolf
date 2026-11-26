@@ -224,7 +224,7 @@ private struct CommitRow: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 6)
-            Text(c.date.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated)))
+            Text(RelativeDates.short(c.date))
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 .help(c.date.formatted(date: .complete, time: .shortened))
         }
@@ -303,4 +303,15 @@ struct GraphCell: View {
         }
         .frame(width: CGFloat(laneCount) * Theme.laneWidth, height: Theme.historyRowHeight)
     }
+}
+
+/// Relative dates ("5 min ago") through one shared formatter; building one per row is slow while scrolling.
+@MainActor
+enum RelativeDates {
+    private static let formatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+    static func short(_ date: Date) -> String { formatter.localizedString(for: date, relativeTo: Date()) }
 }

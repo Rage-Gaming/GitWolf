@@ -64,12 +64,16 @@ private struct PanelStyle: ViewModifier {
 
     func body(content: Content) -> some View {
         let light = scheme == .light
+        let shape = RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous)
+        // The shadow sits on a background shape, not on the content, so scrolling content is never
+        // re-rendered through an offscreen shadow pass.
         content
-            .background((light ? Color(nsColor: .textBackgroundColor) : Color(red: 0.118, green: 0.122, blue: 0.149)))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous)
-                .strokeBorder(Color.primary.opacity(light ? 0.11 : 0.12), lineWidth: 1))
-            .shadow(color: .black.opacity(light ? 0.09 : 0.35), radius: light ? 14 : 16, y: light ? 5 : 6)
+            .background {
+                shape.fill(light ? Color(nsColor: .textBackgroundColor) : Color(red: 0.118, green: 0.122, blue: 0.149))
+                    .shadow(color: .black.opacity(light ? 0.09 : 0.35), radius: light ? 14 : 16, y: light ? 5 : 6)
+            }
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Color.primary.opacity(light ? 0.11 : 0.12), lineWidth: 1))
     }
 }
 
