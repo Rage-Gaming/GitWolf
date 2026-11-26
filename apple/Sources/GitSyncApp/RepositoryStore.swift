@@ -1,6 +1,7 @@
 import AppKit
 import GitSyncCore
 import Observation
+import SwiftUI
 
 enum StoreSheet: Identifiable {
     case newBranch(from: String?)
@@ -462,13 +463,15 @@ final class RepositoryStore: Identifiable {
             async let message = try? repo.message(of: commit.hash)
             let (sig, f, m) = (await signature, await files ?? [], await message ?? commit.subject)
             guard token == commitToken else { return }
-            selectedSignature = sig
-            commitFiles = f
-            commitMessage = m
-            if let first = f.first {
-                selectChange(first, source: .commit(commit.hash))
-            } else {
-                selectedTarget = nil; diff = nil
+            withAnimation(.easeOut(duration: 0.18)) {
+                selectedSignature = sig
+                commitFiles = f
+                commitMessage = m
+                if let first = f.first {
+                    selectChange(first, source: .commit(commit.hash))
+                } else {
+                    selectedTarget = nil; diff = nil
+                }
             }
         }
     }
@@ -555,7 +558,12 @@ final class RepositoryStore: Identifiable {
             let result = (try? await repo.diff(for: target)) ?? .empty
             guard token == diffToken else { return }
             if diff != result {
-                diff = result; clearLineSelection()
+                if case .commit = target.source {
+                    withAnimation(.easeOut(duration: 0.18)) { diff = result }
+                } else {
+                    diff = result
+                }
+                clearLineSelection()
                 #if DEBUG
                 demoHook(result)
                 #endif
