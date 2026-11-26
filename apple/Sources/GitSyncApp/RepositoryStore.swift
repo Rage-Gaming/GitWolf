@@ -446,27 +446,30 @@ final class RepositoryStore: Identifiable {
         guard id != selectedCommitID else { return }
         selectedCommitID = id
         if let id { loadChecks(sha: id) }
-        selectedTarget = nil
-        diff = nil
-        commitFiles = []
-        commitMessage = ""
-        selectedSignature = nil
         diffToken += 1
         commitToken += 1
-        guard let id, let commit = commits.first(where: { $0.id == id }) else { return }
+        guard let id, let commit = commits.first(where: { $0.id == id }) else {
+            selectedTarget = nil; diff = nil; commitFiles = []; commitMessage = ""; selectedSignature = nil
+            return
+        }
+        // Keep the previous file list and diff on screen until the new ones arrive, then swap them in
+        // together, so selecting a commit doesn't blank and re-layout the pane.
+        commitMessage = commit.subject
         let token = commitToken
         Task {
-            let signature = try? await repo.signature(of: commit.hash)
-            if token == commitToken { selectedSignature = signature }
-        }
-        Task {
+            async let signature = try? await repo.signature(of: commit.hash)
             async let files = try? repo.files(in: commit)
             async let message = try? repo.message(of: commit.hash)
-            let (f, m) = (await files ?? [], await message ?? commit.subject)
+            let (sig, f, m) = (await signature, await files ?? [], await message ?? commit.subject)
             guard token == commitToken else { return }
+            selectedSignature = sig
             commitFiles = f
             commitMessage = m
-            if let first = f.first { selectChange(first, source: .commit(commit.hash)) }
+            if let first = f.first {
+                selectChange(first, source: .commit(commit.hash))
+            } else {
+                selectedTarget = nil; diff = nil
+            }
         }
     }
 
