@@ -92,6 +92,8 @@ public struct Branch: Identifiable, Hashable, Sendable {
     public var ahead: Int
     public var behind: Int
     public var hash: String
+    /// The upstream branch was deleted on the remote (`[gone]`).
+    public var upstreamGone: Bool = false
 
     /// `origin` for `refs/remotes/origin/main`.
     public var remote: String? {
@@ -108,7 +110,18 @@ public struct Branch: Identifiable, Hashable, Sendable {
 public struct GitTag: Identifiable, Hashable, Sendable {
     public var id: String { name }
     public var name: String
+    /// The commit the tag points at (peeled for annotated tags).
     public var hash: String
+    public var isAnnotated: Bool = false
+    /// First line of an annotated tag's message.
+    public var message: String = ""
+
+    public init(name: String, hash: String, isAnnotated: Bool = false, message: String = "") {
+        self.name = name
+        self.hash = hash
+        self.isAnnotated = isAnnotated
+        self.message = message
+    }
 }
 
 public struct Stash: Identifiable, Hashable, Sendable {
@@ -172,6 +185,8 @@ public struct DiffTarget: Hashable, Sendable {
     public enum Source: Hashable, Sendable {
         case staged, unstaged, untracked, conflicted
         case commit(String)
+        /// Everything between two commits (resolved hashes), as in `git diff base head`.
+        case compare(base: String, head: String)
     }
     public var source: Source
     public var path: String
@@ -196,8 +211,9 @@ public struct RepositorySnapshot: Equatable, Sendable {
     public var tags: [GitTag]
     public var stashes: [Stash]
     public var remotes: [String]
+    public var operation: InProgressOperation?
 
     public static let empty = RepositorySnapshot(
         status: .empty, commits: [], graph: [], localBranches: [], remoteBranches: [],
-        tags: [], stashes: [], remotes: [])
+        tags: [], stashes: [], remotes: [], operation: nil)
 }

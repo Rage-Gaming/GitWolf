@@ -696,3 +696,787 @@ import Testing
         #expect(log.requests[0].url?.host == "app.vssps.visualstudio.com")
     }
 }
+
+@Suite struct InProgressOperationTests {
+    @Test func cleanRepositoryHasNoOperation() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try await t.commit("base", text: "a\n")
+        #expect(t.repo.inProgressOperation() == nil)
+    }
+
+    @Test func mergeConflictCanBeAborted() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        _ = try? await t.git.run(["merge", "feature"])
+        let op = try #require(t.repo.inProgressOperation())
+        #expect(op.kind == .merge && !op.canSkip && op.title == "Merging")
+        #expect(try await t.repo.status().conflicted.count == 1)
+        try await t.repo.abortOperation(op)
+        #expect(t.repo.inProgressOperation() == nil)
+        #expect(try t.read() == "one\nMAIN\nthree\n")
+    }
+
+    @Test func mergeConflictCanBeContinuedAfterResolving() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        _ = try? await t.git.run(["merge", "feature"])
+        let op = try #require(t.repo.inProgressOperation())
+        try t.write("one\nBOTH\nthree\n")
+        try await t.git.run(["add", "f.txt"])
+        try await t.repo.continueOperation(op)
+        #expect(t.repo.inProgressOperation() == nil)
+        #expect(try await t.repo.status().isClean)
+    }
+
+    @Test func rebaseConflictReportsStepAndSkips() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        try await t.git.run(["switch", "feature"])
+        _ = try? await t.git.run(["rebase", "main"])
+        let op = try #require(t.repo.inProgressOperation())
+        #expect(op.kind == .rebase && op.canSkip && op.branch == "feature")
+        #expect(op.step == 1 && op.total == 1)
+        try await t.repo.skipOperation(op)
+        #expect(t.repo.inProgressOperation() == nil)
+        #expect(try t.read() == "one\nMAIN\nthree\n")
+    }
+
+    @Test func cherryPickAndRevertConflicts() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        let featureHead = try await t.git.runString(["rev-parse", "feature"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = try? await t.git.run(["cherry-pick", featureHead])
+        let pick = try #require(t.repo.inProgressOperation())
+        #expect(pick.kind == .cherryPick)
+        try await t.repo.abortOperation(pick)
+        #expect(t.repo.inProgressOperation() == nil)
+
+        let base = try await t.git.runString(["rev-parse", "HEAD~1"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = try? await t.git.run(["revert", "--no-edit", base])
+        let revert = t.repo.inProgressOperation()
+        #expect(revert == nil || revert?.kind == .revert)
+        if let revert { try await t.repo.abortOperation(revert) }
+    }
+
+    @Test func snapshotCarriesTheOperation() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        _ = try? await t.git.run(["merge", "feature"])
+        let snap = try await t.repo.snapshot(commitLimit: 50)
+        #expect(snap.operation?.kind == .merge)
+    }
+}
+
+@Suite struct ConflictResolutionTests {
+    @Test func parsesBlocksAndRendersChoices() throws {
+        let text = "a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> feature\nb\n<<<<<<< HEAD\nx\n||||||| base\nw\n=======\ny\n>>>>>>> feature\n"
+        let doc = try #require(ConflictDocument.parse(text))
+        #expect(doc.blocks.count == 2)
+        #expect(doc.blocks[0].oursLabel == "HEAD" && doc.blocks[0].theirsLabel == "feature")
+        #expect(doc.blocks[1].base == ["w"])
+        #expect(doc.render([0: .ours, 1: .theirs]) == "a\nmine\nb\ny\n")
+        #expect(doc.render([0: .both, 1: .bothReversed]) == "a\nmine\ntheirs\nb\ny\nx\n")
+        // Unresolved blocks keep their markers (diff3 base included).
+        #expect(doc.render([0: .ours]).contains("||||||| base"))
+        #expect(doc.render([:]).hasPrefix("a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> feature\n"))
+    }
+
+    @Test func keepsLineEndingsAndMissingFinalNewline() throws {
+        let text = "a\r\n<<<<<<< HEAD\r\nmine\r\n=======\r\ntheirs\r\n>>>>>>> f\r\nend"
+        let doc = try #require(ConflictDocument.parse(text))
+        #expect(doc.render([0: .theirs]) == "a\r\ntheirs\r\nend")
+    }
+
+    @Test func ignoresFilesWithoutCompleteBlocks() {
+        #expect(ConflictDocument.parse("plain\n") == nil)
+        #expect(ConflictDocument.parse("<<<<<<< HEAD\nonly start\n") == nil)
+        // Markers that are not seven characters wide (e.g. Markdown rules) are ordinary text.
+        #expect(ConflictDocument.parse("=======\n>>>>>>>>\n") == nil)
+    }
+
+    @Test func resolvesFileAndStagesIt() async throws {
+        let t = try await TestRepo.conflicting()
+        defer { t.cleanup() }
+        let repo = t.repo
+        _ = try? await t.git.run(["merge", "feature"])
+        let stages = try await repo.conflictStages("f.txt")
+        #expect(stages.hasContentConflict)
+        let doc = try #require(try await repo.conflictDocument("f.txt"))
+        try await repo.resolveConflict("f.txt", content: doc.render([0: .both]))
+        let status = try await repo.status()
+        #expect(status.conflicted.isEmpty)
+        #expect(status.staged.contains { $0.path == "f.txt" })
+        #expect(try t.read() == "one\nMAIN\nFEATURE\nthree\n")
+        try await repo.continueOperation(try #require(repo.inProgressOperation()))
+        #expect(repo.inProgressOperation() == nil)
+    }
+
+    @Test func takesOneSideOfDeleteModifyConflict() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try await t.commit("base", file: "g.txt", text: "1\n")
+        try await t.git.run(["switch", "-c", "feature"])
+        try await t.git.run(["rm", "g.txt"]); try await t.git.run(["commit", "-m", "del"])
+        try await t.git.run(["switch", "main"])
+        try await t.commit("edit", file: "g.txt", text: "2\n")
+        _ = try? await t.git.run(["merge", "feature"])
+        let stages = try await t.repo.conflictStages("g.txt")
+        #expect(!stages.hasContentConflict && stages.title == "Deleted by them")
+        try await t.repo.resolveConflict("g.txt", taking: .delete)
+        #expect(try await t.repo.status().conflicted.isEmpty)
+    }
+}
+
+@Suite struct ResetAndReflogTests {
+    private func history() async throws -> (TestRepo, [String]) {
+        let t = try await TestRepo.make()
+        var hashes: [String] = []
+        for i in 1...3 { hashes.append(try await t.commit("c\(i)", text: "v\(i)\n")) }
+        return (t, hashes)
+    }
+
+    @Test func softMixedHardKeepDifferInWhatTheyTouch() async throws {
+        let (t, h) = try await history()
+        defer { t.cleanup() }
+        try await t.repo.reset(to: h[1], mode: .soft)
+        var s = try await t.repo.status()
+        var text = try t.read()
+        #expect(s.staged.count == 1 && text == "v3\n")
+        try await t.repo.reset(to: h[0], mode: .mixed)
+        s = try await t.repo.status()
+        text = try t.read()
+        #expect(s.staged.isEmpty && s.unstaged.count == 1 && text == "v3\n")
+        try await t.repo.reset(to: h[0], mode: .hard)
+        s = try await t.repo.status()
+        text = try t.read()
+        #expect(s.isClean && text == "v1\n")
+    }
+
+    @Test func keepRefusesToOverwriteLocalEdits() async throws {
+        let (t, h) = try await history()
+        defer { t.cleanup() }
+        try t.write("local\n")
+        await #expect(throws: (any Error).self) { try await t.repo.reset(to: h[0], mode: .keep) }
+        #expect(try t.read() == "local\n")
+    }
+
+    @Test func reflogListsMovesAndUndoRestoresADroppedCommit() async throws {
+        let (t, h) = try await history()
+        defer { t.cleanup() }
+        try await t.repo.reset(to: h[0], mode: .hard)
+        let log = try await t.repo.reflog()
+        #expect(log.first?.hash == h[0] && log.first?.index == 0)
+        #expect(log.first?.message.hasPrefix("reset") == true)
+        #expect(log.first?.selector == "HEAD@{0}")
+        let before = try #require(log.dropFirst().first)
+        #expect(before.hash == h[2])
+        try await t.repo.reset(to: before.hash, mode: .keep)
+        #expect(try t.read() == "v3\n")
+    }
+
+    @Test func impactCountsDroppedCommitsAndModifiedFiles() async throws {
+        let (t, h) = try await history()
+        defer { t.cleanup() }
+        try t.write("dirty\n")
+        let impact = try await t.repo.resetImpact(to: h[0])
+        #expect(impact == ResetImpact(droppedCommits: 2, modifiedFiles: 1))
+    }
+}
+
+@Suite struct RebaseTests {
+    private func commits(_ t: TestRepo, _ n: Int) async throws -> [String] {
+        var out: [String] = []
+        try await t.commit("base", file: "base.txt", text: "b\n")
+        for i in 1...n { out.append(try await t.commit("c\(i)", file: "f\(i).txt", text: "\(i)\n")) }
+        return out
+    }
+    private func subjects(_ t: TestRepo) async throws -> [String] {
+        try await t.git.runString(["log", "--reverse", "--format=%s"]).split(separator: "\n").map(String.init)
+    }
+
+    @Test func candidatesListCommitsOldestFirst() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        let h = try await commits(t, 3)
+        let (plan, merges) = try await t.repo.rebaseCandidates(from: h[0])
+        #expect(plan.items.map(\.subject) == ["c1", "c2", "c3"] && !merges)
+        #expect(plan.base != nil && plan.isNoOp && plan.problem == nil)
+    }
+
+    @Test func reordersSquashesFixesUpDropsAndRewords() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        let h = try await commits(t, 5)
+        var (plan, _) = try await t.repo.rebaseCandidates(from: h[0])
+        // c1 c2 c3 c4 c5  ->  c3 (reworded) + c2 squashed, c1 dropped, c4 fixup into c5's slot
+        plan.items = [plan.items[2], plan.items[1], plan.items[0], plan.items[4], plan.items[3]]
+        plan.items[0].action = .reword; plan.items[0].message = "third, renamed\n\nwith a body"
+        plan.items[1].action = .squash
+        plan.items[2].action = .drop
+        plan.items[4].action = .fixup
+        #expect(plan.problem == nil)
+        try await t.repo.startInteractiveRebase(plan)
+        #expect(t.repo.inProgressOperation() == nil)
+        let log = try await subjects(t)
+        #expect(log == ["base", "third, renamed", "c5"])
+        let body = try await t.git.runString(["log", "-2", "--format=%B", "--skip=1"])
+        #expect(body.contains("with a body"))
+        #expect(!FileManager.default.fileExists(atPath: t.dir.appendingPathComponent(".git/gitsync-rebase").path))
+        // Content of all kept commits survives; the dropped one is gone.
+        #expect(FileManager.default.fileExists(atPath: t.dir.appendingPathComponent("f2.txt").path))
+        #expect(!FileManager.default.fileExists(atPath: t.dir.appendingPathComponent("f1.txt").path))
+    }
+
+    @Test func rewordsMessagesWithQuotesSafely() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        let h = try await commits(t, 1)
+        var (plan, _) = try await t.repo.rebaseCandidates(from: h[0])
+        plan.items[0].action = .reword; plan.items[0].message = "it's \"quoted\" $(echo no) `x`"
+        try await t.repo.startInteractiveRebase(plan)
+        #expect(try await subjects(t).last == "it's \"quoted\" $(echo no) `x`")
+    }
+
+    @Test func rejectsPlansThatCannotRun() {
+        let a = RebaseItem(hash: "a", subject: "a", action: .squash)
+        #expect(RebasePlan(base: "x", items: [a]).problem != nil)
+        #expect(RebasePlan(base: "x", items: [RebaseItem(hash: "a", subject: "a", action: .drop)]).problem != nil)
+        #expect(RebasePlan(base: "x", items: [RebaseItem(hash: "a", subject: "a", action: .reword, message: " ")]).problem != nil)
+    }
+
+    @Test func rebasesRootCommitRange() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        let h = try await commits(t, 2)
+        let root = try await t.git.runString(["rev-list", "--max-parents=0", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        var (plan, _) = try await t.repo.rebaseCandidates(from: root)
+        #expect(plan.base == nil && plan.items.count == 3)
+        plan.items[2].action = .fixup
+        try await t.repo.startInteractiveRebase(plan)
+        #expect(try await subjects(t) == ["base", "c1"])
+        _ = h
+    }
+
+    @Test func conflictLeavesRebaseInProgressWithoutThrowing() async throws {
+        let t = try await TestRepo.conflicting(); defer { t.cleanup() }
+        try await t.git.run(["switch", "feature"])
+        try await t.repo.rebase(onto: "main")
+        let op = try #require(t.repo.inProgressOperation())
+        #expect(op.kind == .rebase)
+        try await t.repo.abortOperation(op)
+        #expect(t.repo.inProgressOperation() == nil)
+    }
+
+    @Test func plainRebaseMakesBranchLinear() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        try await t.commit("base", file: "a.txt", text: "a\n")
+        try await t.git.run(["switch", "-c", "topic"])
+        try await t.commit("topic", file: "t.txt", text: "t\n")
+        try await t.git.run(["switch", "main"])
+        try await t.commit("main", file: "m.txt", text: "m\n")
+        try await t.git.run(["switch", "topic"])
+        try await t.repo.rebase(onto: "main")
+        #expect(try await subjects(t) == ["base", "main", "topic"])
+    }
+
+    @Test func pullWithRebaseKeepsHistoryLinear() async throws {
+        let remote = try await TestRepo.make(name: "remote"); defer { remote.cleanup() }
+        try await remote.commit("one", file: "a.txt", text: "1\n")
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent("clone-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dest) }
+        try await GitRunner(workingDirectory: FileManager.default.temporaryDirectory).run(["clone", "-q", remote.dir.path, dest.path])
+        let local = GitRunner(workingDirectory: dest)
+        try await local.run(["config", "user.name", "T"]); try await local.run(["config", "user.email", "t@e.c"])
+        try await local.run(["config", "commit.gpgsign", "false"])
+        try await remote.commit("upstream", file: "u.txt", text: "u\n")
+        try "l\n".write(to: dest.appendingPathComponent("l.txt"), atomically: true, encoding: .utf8)
+        try await local.run(["add", "-A"]); try await local.run(["commit", "-m", "local"])
+        try await GitRepository(root: dest).pull(rebase: true)
+        let log = try await local.runString(["log", "--reverse", "--format=%s"]).split(separator: "\n").map(String.init)
+        #expect(log == ["one", "upstream", "local"])
+        let merges = try await local.runString(["rev-list", "--merges", "--count", "HEAD"])
+        #expect(merges.trimmingCharacters(in: .whitespacesAndNewlines) == "0")
+    }
+}
+
+@Suite struct StashSafetyTests {
+    private func twoHunks() async throws -> (TestRepo, FileDiff) {
+        let t = try await TestRepo.make()
+        let base = (1...30).map { "line \($0)" }.joined(separator: "\n") + "\n"
+        try await t.commit("base", text: base)
+        var lines = base.split(separator: "\n").map(String.init)
+        lines[1] = "TOP CHANGED"; lines[27] = "BOTTOM CHANGED"
+        try t.write(lines.joined(separator: "\n") + "\n")
+        let diff = try await t.repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt", originalPath: nil))
+        return (t, diff)
+    }
+
+    @Test func stashesOnlyTheChosenHunk() async throws {
+        let (t, diff) = try await twoHunks()
+        defer { t.cleanup() }
+        #expect(diff.hunks.count == 2)
+        let ids = diff.changedLineIDs(inHunk: 0)
+        let fwd = try #require(PatchBuilder.make(diff: diff, selecting: ids, action: .stage))
+        let back = try #require(PatchBuilder.make(diff: diff, selecting: ids, action: .discard))
+        try await t.repo.stashHunk(forwardPatch: fwd, discardPatch: back, path: "f.txt", message: "top only")
+
+        let now = try t.read()
+        #expect(now.contains("line 2\n") && !now.contains("TOP CHANGED") && now.contains("BOTTOM CHANGED"))
+        let stashes = try await t.repo.stashes()
+        #expect(stashes.count == 1 && stashes[0].message.contains("top only"))
+        let files = try await t.repo.stashFiles("stash@{0}")
+        #expect(files.map(\.path) == ["f.txt"])
+        let hash = try await t.repo.stashHash("stash@{0}")
+        let stashed = try await t.repo.diff(for: DiffTarget(source: .commit(hash), path: "f.txt", originalPath: nil))
+        #expect(stashed.hunks.count == 1 && stashed.additions == 1 && stashed.lines.contains { $0.raw == "TOP CHANGED" })
+        #expect(!stashed.lines.contains { $0.raw == "BOTTOM CHANGED" })
+
+        try await t.repo.stashPop("stash@{0}")
+        let restored = try t.read()
+        #expect(restored.contains("TOP CHANGED") && restored.contains("BOTTOM CHANGED"))
+        #expect(try await t.repo.stashes().isEmpty)
+    }
+
+    @Test func refusesWhenFileHasStagedChanges() async throws {
+        let (t, diff) = try await twoHunks()
+        defer { t.cleanup() }
+        try await t.repo.stage(["f.txt"])
+        let ids = diff.changedLineIDs(inHunk: 0)
+        let fwd = try #require(PatchBuilder.make(diff: diff, selecting: ids, action: .stage))
+        let back = try #require(PatchBuilder.make(diff: diff, selecting: ids, action: .discard))
+        await #expect(throws: (any Error).self) {
+            try await t.repo.stashHunk(forwardPatch: fwd, discardPatch: back, path: "f.txt", message: "")
+        }
+        #expect(try await t.repo.stashes().isEmpty)
+    }
+
+    @Test func discardSummaryCountsWhatWouldBeLost() async throws {
+        let (t, _) = try await twoHunks()
+        defer { t.cleanup() }
+        try t.write("12345", "new.txt")
+        let s = try await t.repo.discardSummary(tracked: ["f.txt"], untracked: ["new.txt"])
+        #expect(s.files == 1 && s.addedLines == 2 && s.removedLines == 2)
+        #expect(s.untrackedFiles == 1 && s.untrackedBytes == 5)
+        #expect(s.sentence.contains("2 lines added") && s.sentence.contains("1 untracked file"))
+        #expect(DiscardSummary().sentence == "Nothing will change.")
+    }
+}
+
+@Suite struct SigningTests {
+    /// A repo configured to sign with a freshly generated SSH key.
+    private func sshRepo() async throws -> TestRepo {
+        let t = try await TestRepo.make()
+        let key = t.dir.deletingLastPathComponent().appendingPathComponent("key-\(UUID().uuidString)")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
+        p.arguments = ["-q", "-t", "ed25519", "-N", "", "-C", "t@example.com", "-f", key.path]
+        try p.run(); p.waitUntilExit()
+        let pub = try String(contentsOf: URL(fileURLWithPath: key.path + ".pub"), encoding: .utf8)
+        let allowed = key.path + ".allowed"
+        try ("t@example.com " + pub).write(toFile: allowed, atomically: true, encoding: .utf8)
+        try await t.git.run(["config", "gpg.format", "ssh"])
+        try await t.git.run(["config", "user.signingkey", key.path + ".pub"])
+        try await t.git.run(["config", "gpg.ssh.allowedSignersFile", allowed])
+        return t
+    }
+
+    @Test func unsignedCommitHasNoSignature() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        let h = try await t.commit("plain", text: "x\n")
+        #expect(try await t.repo.signature(of: h) == nil)
+        let cfg = await t.repo.signingConfig()
+        #expect(!cfg.signsByDefault && cfg.format == .gpg && !cfg.isConfigured)
+    }
+
+    @Test func verifiesSshSignedCommitAndOptsInPerCommit() async throws {
+        let t = try await sshRepo(); defer { t.cleanup() }
+        let cfg = await t.repo.signingConfig()
+        #expect(cfg.format == .ssh && cfg.key != nil && cfg.isConfigured && !cfg.signsByDefault)
+
+        try t.write("a\n"); try await t.git.run(["add", "-A"])
+        try await t.repo.commit(message: "signed", amend: false, sign: true)
+        let h = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let sig = try #require(try await t.repo.signature(of: h))
+        #expect(sig.format == .ssh && sig.state == .good && sig.signer == "t@example.com")
+        #expect(sig.title == "Verified SSH signature")
+
+        try t.write("b\n"); try await t.git.run(["add", "-A"])
+        try await t.repo.commit(message: "unsigned", amend: false, sign: false)
+        let h2 = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(try await t.repo.signature(of: h2) == nil)
+    }
+
+    @Test func unknownSignerIsReportedAsUnverifiable() async throws {
+        let t = try await sshRepo(); defer { t.cleanup() }
+        try await t.git.run(["config", "--unset", "gpg.ssh.allowedSignersFile"])
+        try t.write("a\n"); try await t.git.run(["add", "-A"])
+        try await t.repo.commit(message: "signed", amend: false, sign: true)
+        let h = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let sig = try #require(try await t.repo.signature(of: h))
+        #expect(sig.format == .ssh && sig.state == .unverifiable && !sig.state.isVerified)
+    }
+
+    @Test func defaultSigningFollowsConfig() async throws {
+        let t = try await sshRepo(); defer { t.cleanup() }
+        try await t.git.run(["config", "commit.gpgsign", "true"])
+        #expect(await t.repo.signingConfig().signsByDefault)
+        try t.write("a\n"); try await t.git.run(["add", "-A"])
+        try await t.repo.commit(message: "auto", amend: false)
+        let h = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(try await t.repo.signature(of: h)?.state == .good)
+    }
+}
+
+@Suite struct BlameAndFileHistoryTests {
+    private func setup() async throws -> (TestRepo, String, String) {
+        let t = try await TestRepo.make()
+        let a = try await t.commit("first", text: "one\ntwo\nthree\n")
+        try t.write("one\nTWO\nthree\nfour\n")
+        try await t.git.run(["add", "-A"])
+        try await t.git.run(["commit", "-m", "second edit", "--author", "Other Person <o@example.com>"])
+        let b = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (t, a, b)
+    }
+
+    @Test func blameAttributesEachLine() async throws {
+        let (t, a, b) = try await setup(); defer { t.cleanup() }
+        let lines = try await t.repo.blame(path: "f.txt")
+        #expect(lines.map(\.text) == ["one", "TWO", "three", "four"])
+        #expect(lines.map(\.hash) == [a, b, a, b])
+        #expect(lines[1].author == "Other Person" && lines[0].author == "Tester")
+        #expect(lines[1].summary == "second edit" && !lines[1].isUncommitted)
+    }
+
+    @Test func blameMarksUncommittedLinesAndHonoursRevision() async throws {
+        let (t, a, _) = try await setup(); defer { t.cleanup() }
+        try t.write("one\nTWO\nthree\nfour\nLOCAL\n")
+        let now = try await t.repo.blame(path: "f.txt")
+        #expect(now.last?.isUncommitted == true && now.last?.text == "LOCAL")
+        let old = try await t.repo.blame(path: "f.txt", revision: a)
+        #expect(old.count == 3 && Set(old.map(\.hash)) == [a])
+    }
+
+    @Test func fileHistoryFollowsRenamesAndDiffsPerCommit() async throws {
+        let (t, a, b) = try await setup(); defer { t.cleanup() }
+        try await t.git.run(["mv", "f.txt", "g.txt"])
+        try await t.git.run(["commit", "-m", "rename"])
+        let c = try await t.git.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        try await t.commit("other file", file: "z.txt", text: "z\n")
+
+        let history = try await t.repo.fileHistory(path: "g.txt")
+        #expect(history.map(\.hash) == [c, b, a])
+        let edit = try await t.repo.fileDiff(path: "g.txt", at: b)
+        #expect(edit.additions == 2 && edit.deletions == 1)
+        let first = try await t.repo.fileDiff(path: "g.txt", at: a)
+        #expect(first.additions == 3)
+    }
+}
+
+@Suite struct CompareRefsTests {
+    /// main: base, m1.  feature: base, f1, f2.
+    private func diverged() async throws -> TestRepo {
+        let t = try await TestRepo.make()
+        try await t.commit("base", file: "a.txt", text: "a\n")
+        try await t.git.run(["switch", "-c", "feature"])
+        try await t.commit("f1", file: "f1.txt", text: "1\n")
+        try await t.commit("f2", file: "f2.txt", text: "2\n")
+        try await t.git.run(["switch", "main"])
+        try await t.commit("m1", file: "m1.txt", text: "m\n")
+        return t
+    }
+
+    @Test func listsFilesAndCommitsBetweenTips() async throws {
+        let t = try await diverged(); defer { t.cleanup() }
+        let c = try await t.repo.compare(from: "main", to: "feature", sinceAncestor: false)
+        #expect(Set(c.files.map(\.path)) == ["f1.txt", "f2.txt", "m1.txt"])
+        #expect(c.commits.map(\.subject) == ["f2", "f1"] && c.ahead == 2 && c.behind == 1)
+    }
+
+    @Test func sinceAncestorShowsOnlyChangesMadeOnTheBranch() async throws {
+        let t = try await diverged(); defer { t.cleanup() }
+        let c = try await t.repo.compare(from: "main", to: "feature", sinceAncestor: true)
+        #expect(Set(c.files.map(\.path)) == ["f1.txt", "f2.txt"])
+        let mergeBase = try await t.git.runString(["merge-base", "main", "feature"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(c.base == mergeBase)
+    }
+
+    @Test func diffsAFileBetweenTheResolvedCommits() async throws {
+        let t = try await diverged(); defer { t.cleanup() }
+        let c = try await t.repo.compare(from: "main", to: "feature", sinceAncestor: true)
+        let d = try await t.repo.diff(for: DiffTarget(source: .compare(base: c.base, head: c.head), path: "f2.txt"))
+        #expect(d.additions == 1 && d.lines.contains { $0.raw == "2" })
+    }
+
+    @Test func comparesTagsAndHashesAndRejectsUnknownRefs() async throws {
+        let t = try await diverged(); defer { t.cleanup() }
+        let hash = try await t.git.runString(["rev-parse", "feature~1"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        try await t.git.run(["tag", "v1", "feature"])
+        let c = try await t.repo.compare(from: hash, to: "v1", sinceAncestor: false)
+        #expect(c.commits.map(\.subject) == ["f2"])
+        await #expect(throws: (any Error).self) { try await t.repo.compare(from: "main", to: "nope", sinceAncestor: false) }
+        await #expect(throws: (any Error).self) { try await t.repo.compare(from: "--all", to: "main", sinceAncestor: false) }
+    }
+}
+
+@Suite struct BranchToolsTests {
+    /// A clone of a bare "remote" with main pushed.
+    private func cloned() async throws -> (TestRepo, GitRunner, URL) {
+        let t = try await TestRepo.make()
+        try await t.commit("base", file: "a.txt", text: "a\n")
+        let bare = FileManager.default.temporaryDirectory.appendingPathComponent("bare-\(UUID().uuidString).git")
+        try await GitRunner(workingDirectory: t.dir).run(["init", "-q", "--bare", bare.path])
+        try await t.git.run(["remote", "add", "origin", bare.path])
+        try await t.git.run(["push", "-q", "-u", "origin", "main"])
+        return (t, GitRunner(workingDirectory: bare), bare)
+    }
+
+    @Test func renamesAndValidates() async throws {
+        let t = try await TestRepo.make(); defer { t.cleanup() }
+        try await t.commit("base", text: "a\n")
+        try await t.git.run(["branch", "old"])
+        try await t.repo.renameBranch("old", to: "new-name")
+        #expect(try await t.repo.branches().local.map(\.name).contains("new-name"))
+        await #expect(throws: (any Error).self) { try await t.repo.renameBranch("new-name", to: "bad name~") }
+    }
+
+    @Test func setsAndClearsUpstream() async throws {
+        let (t, _, bare) = try await cloned(); defer { t.cleanup(); try? FileManager.default.removeItem(at: bare) }
+        try await t.git.run(["push", "-q", "origin", "main:other"])
+        try await t.git.run(["fetch", "-q"])
+        try await t.repo.setUpstream(of: "main", to: "origin/other")
+        #expect(try await t.repo.branches().local.first { $0.name == "main" }?.upstream == "origin/other")
+        try await t.repo.setUpstream(of: "main", to: nil)
+        #expect(try await t.repo.branches().local.first { $0.name == "main" }?.upstream == nil)
+    }
+
+    @Test func deletesBranchOnRemote() async throws {
+        let (t, remote, bare) = try await cloned(); defer { t.cleanup(); try? FileManager.default.removeItem(at: bare) }
+        try await t.git.run(["push", "-q", "origin", "main:topic"])
+        #expect(try await remote.runString(["branch", "--list", "topic"]).contains("topic"))
+        try await t.repo.deleteRemoteBranch(remote: "origin", branch: "topic")
+        #expect(try await remote.runString(["branch", "--list", "topic"]).isEmpty)
+    }
+
+    @Test func cleanupFindsMergedAndGoneBranchesAndKeepsTheRest() async throws {
+        let (t, remote, bare) = try await cloned(); defer { t.cleanup(); try? FileManager.default.removeItem(at: bare) }
+        // merged: points at main already
+        try await t.git.run(["branch", "merged-one"])
+        // unmerged work that must NOT be listed
+        try await t.git.run(["switch", "-q", "-c", "wip"]); try await t.commit("wip", file: "w.txt", text: "w\n")
+        // gone: pushed, then deleted on the remote
+        try await t.git.run(["switch", "-q", "-c", "shipped"]); try await t.commit("ship", file: "s.txt", text: "s\n")
+        try await t.git.run(["push", "-q", "-u", "origin", "shipped"])
+        try await t.git.run(["switch", "-q", "main"])
+        try await remote.run(["branch", "-D", "shipped"])
+        try await t.git.run(["fetch", "-q", "--prune"])
+
+        let items = try await t.repo.cleanupCandidates(base: "main")
+        #expect(Set(items.map(\.name)) == ["merged-one", "shipped"])
+        let gone = try #require(items.first { $0.name == "shipped" })
+        #expect(gone.reason == .upstreamGone && !gone.isMerged)
+        #expect(try #require(items.first { $0.name == "merged-one" }).isMerged)
+
+        let failed = await t.repo.deleteBranches(items)
+        #expect(failed.isEmpty)
+        let left = Set(try await t.repo.branches().local.map(\.name))
+        #expect(left == ["main", "wip"])
+    }
+}
+
+@Suite struct TagToolsTests {
+    @Test func annotatedAndLightweightTags() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        let head = try await t.commit("one", file: "a.txt", text: "a")
+        try await t.repo.createTag("light", at: head)
+        try await t.repo.createTag("v1", at: head, message: "Release one\n\nbody")
+        let tags = try await t.repo.tags()
+        let light = try #require(tags.first { $0.name == "light" })
+        let ann = try #require(tags.first { $0.name == "v1" })
+        #expect(!light.isAnnotated)
+        #expect(ann.isAnnotated)
+        #expect(ann.message == "Release one")
+        #expect(ann.hash == head)
+        #expect(light.hash == head)
+    }
+
+    @Test func pushAndDeleteOnRemote() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        let head = try await t.commit("one", file: "a.txt", text: "a")
+        let bare = FileManager.default.temporaryDirectory.appendingPathComponent("tag-remote-\(UUID().uuidString).git")
+        defer { try? FileManager.default.removeItem(at: bare) }
+        _ = try await GitRunner(workingDirectory: bare.deletingLastPathComponent()).run(["init", "--bare", "-q", bare.path])
+        try await t.git.run(["remote", "add", "origin", bare.path])
+        try await t.repo.createTag("v1", at: head, message: "m")
+        try await t.repo.createTag("v2", at: head)
+        try await t.repo.pushTag("v1", remote: "origin")
+        var remoteTags = String(decoding: try await t.git.run(["ls-remote", "--tags", "origin"], readOnly: true), as: UTF8.self)
+        #expect(remoteTags.contains("refs/tags/v1"))
+        #expect(!remoteTags.contains("refs/tags/v2"))
+        try await t.repo.pushAllTags(remote: "origin")
+        remoteTags = String(decoding: try await t.git.run(["ls-remote", "--tags", "origin"], readOnly: true), as: UTF8.self)
+        #expect(remoteTags.contains("refs/tags/v2"))
+        try await t.repo.deleteRemoteTag("v1", remote: "origin")
+        remoteTags = String(decoding: try await t.git.run(["ls-remote", "--tags", "origin"], readOnly: true), as: UTF8.self)
+        #expect(!remoteTags.contains("refs/tags/v1"))
+    }
+}
+
+@Suite struct HistorySearchTests {
+    @Test func searchesByMessageAuthorContentPathAndDate() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("add greeting", file: "hello.txt", text: "hello world\n")
+        _ = try await t.commit("tune config", file: "config.txt", text: "timeout=30\n")
+        _ = try await t.commit("rename greeting", file: "hello.txt", text: "hello there\n")
+        let remotes: Set<String> = []
+
+        let message = try await t.repo.search(HistoryQuery(kind: .message, text: "GREETING"), remotes: remotes)
+        #expect(message.map(\.subject) == ["rename greeting", "add greeting"])
+
+        let pickaxe = try await t.repo.search(HistoryQuery(kind: .contentChanged, text: "timeout=30"), remotes: remotes)
+        #expect(pickaxe.map(\.subject) == ["tune config"])
+
+        let regex = try await t.repo.search(HistoryQuery(kind: .contentRegex, text: "hello (world|there)"), remotes: remotes)
+        #expect(regex.count == 2)
+
+        let byPath = try await t.repo.search(HistoryQuery(kind: .message, text: "", path: "config.txt"), remotes: remotes)
+        #expect(byPath.map(\.subject) == ["tune config"])
+
+        let future = try await t.repo.search(HistoryQuery(since: Date().addingTimeInterval(86_400 * 2)), remotes: remotes)
+        #expect(future.isEmpty)
+        let today = try await t.repo.search(HistoryQuery(since: Date().addingTimeInterval(-86_400), until: Date().addingTimeInterval(86_400)), remotes: remotes)
+        #expect(today.count == 3)
+
+        let byAuthor = try await t.repo.search(HistoryQuery(kind: .author, text: "nobody-like-this"), remotes: remotes)
+        #expect(byAuthor.isEmpty)
+    }
+
+    @Test func optionLikeTextIsNotAnOption() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("one", file: "a.txt", text: "a")
+        let found = try await t.repo.search(HistoryQuery(kind: .message, text: "--all"), remotes: [])
+        #expect(found.isEmpty)
+        let hyphen = try await t.repo.search(HistoryQuery(kind: .contentChanged, text: "-x"), remotes: [])
+        #expect(hyphen.isEmpty)
+    }
+}
+
+@Suite struct HookTests {
+    private func installHook(_ t: TestRepo, _ name: String, _ body: String) throws {
+        let url = t.dir.appendingPathComponent(".git/hooks/\(name)")
+        try body.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    }
+
+    @Test func failingPreCommitHookSurfacesItsOutput() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("base", file: "a.txt", text: "a")
+        try installHook(t, "pre-commit", "#!/bin/sh\necho 'lint: trailing whitespace in a.txt'\necho 'details on stderr' >&2\nexit 1\n")
+        try t.write("changed", "a.txt")
+        try await t.git.run(["add", "a.txt"])
+        do {
+            try await t.repo.commit(message: "try", amend: false)
+            Issue.record("commit should have failed")
+        } catch let failure as HookFailedError {
+            #expect(failure.hook == "pre-commit")
+            #expect(failure.output.contains("lint: trailing whitespace in a.txt"))
+            #expect(failure.output.contains("details on stderr"))
+        }
+        try await t.repo.commit(message: "try", amend: false, skipHooks: true)
+        #expect(try await t.repo.headMessage() == "try")
+    }
+
+    @Test func nonHookFailuresStayPlainErrors() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("base", file: "a.txt", text: "a")
+        try installHook(t, "pre-commit", "#!/bin/sh\nexit 0\n")
+        do {
+            try await t.repo.commit(message: "nothing staged", amend: false)
+            Issue.record("commit should have failed")
+        } catch is HookFailedError {
+            Issue.record("a clean tree is not a hook failure")
+        } catch {}
+        let active = await t.repo.activeHooks()
+        #expect(active == ["pre-commit"])
+        #expect(HookDiagnosis.diagnose(stderr: "\u{1B}[31mboom\u{1B}[0m", activeHooks: ["pre-commit"])?.output == "boom")
+        #expect(HookDiagnosis.diagnose(stderr: "boom", activeHooks: []) == nil)
+    }
+}
+
+@Suite struct IgnoreTests {
+    @Test func optionsForNestedFile() {
+        let o = IgnoreRules.options(for: "build/out/app.log")
+        #expect(o.map(\.pattern) == ["/build/out/app.log", "app.log", "*.log", "/build/out/"])
+        #expect(IgnoreRules.options(for: "README").map(\.pattern) == ["/README", "README"])
+        #expect(IgnoreRules.options(for: "#odd[1].txt").first?.pattern == "/\\#odd\\[1\\].txt")
+    }
+
+    @Test func rulesTakeEffectAndAreNotDuplicated() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("base", file: "keep.txt", text: "k")
+        try t.write("x", "debug.log")
+        try t.write("y", "cache.tmp")
+        #expect(try await t.repo.status().untracked.map(\.path).sorted() == ["cache.tmp", "debug.log"])
+        #expect(try await t.repo.addIgnoreRule("*.log"))
+        #expect(try await t.repo.addIgnoreRule("*.log") == false)
+        #expect(try await t.repo.addIgnoreRule("cache.tmp", local: true))
+        let untracked = try await t.repo.status().untracked.map(\.path)
+        #expect(!untracked.contains("debug.log") && !untracked.contains("cache.tmp"))
+        #expect(try t.read(".gitignore") == "*.log\n")
+        let exclude = try String(contentsOf: t.dir.appendingPathComponent(".git/info/exclude"), encoding: .utf8)
+        #expect(exclude.contains("cache.tmp"))
+    }
+
+    @Test func ignoredTrackedFileNeedsStopTracking() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("base", file: "secret.env", text: "S=1")
+        try await t.repo.addIgnoreRule("secret.env")
+        try t.write("S=2", "secret.env")
+        #expect(try await t.repo.status().unstaged.map(\.path) == ["secret.env"])
+        try await t.repo.stopTracking("secret.env")
+        try await t.git.run(["add", ".gitignore"])
+        let status = try await t.repo.status()
+        #expect(status.unstaged.isEmpty && status.untracked.isEmpty)
+        #expect(try t.read("secret.env") == "S=2")
+    }
+}
+
+@Suite struct CommitMessageTests {
+    @Test func prefixIsAppliedAndReplaced() {
+        #expect(CommitMessage.applyPrefix(type: "feat", to: "add login") == "feat: add login")
+        #expect(CommitMessage.applyPrefix(type: "fix", scope: "auth", to: "feat: add login\n\nbody") == "fix(auth): add login\n\nbody")
+        #expect(CommitMessage.applyPrefix(type: "chore", to: "") == "chore: ")
+        #expect(CommitMessage.stripPrefix("feat(ui)!: big change") == "big change")
+        #expect(CommitMessage.stripPrefix("Fix: not conventional") == "Fix: not conventional")
+        #expect(CommitMessage.stripPrefix("update: x y") == "x y")
+    }
+
+    @Test func referencesGoInAFooter() {
+        var m = CommitMessage.addReference(keyword: "Closes", number: 12, to: "fix crash")
+        #expect(m == "fix crash\n\nCloses #12")
+        m = CommitMessage.addReference(keyword: "Refs", number: 7, to: m)
+        #expect(m == "fix crash\n\nCloses #12\nRefs #7")
+        #expect(CommitMessage.addReference(keyword: "Refs", number: 7, to: m) == m)
+        #expect(CommitMessage.addReference(keyword: "Closes", number: 1, to: "") == "Closes #1")
+    }
+
+    @Test func scopesComeFromFolders() {
+        #expect(CommitMessage.suggestedScopes(for: ["README.md", "src/a.swift", "src/b.swift", "docs/x.md", "t/1", "u/2"]) == ["src", "docs", "t"])
+    }
+
+    @Test func templateAndRecentMessages() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("first\n\nwith body", file: "a.txt", text: "1")
+        _ = try await t.commit("second", file: "a.txt", text: "2")
+        #expect(await t.repo.commitTemplate() == nil)
+        try t.write("# comment\nsubject here\n\n# more\nBody:\n", ".gitmessage")
+        try await t.git.run(["config", "commit.template", ".gitmessage"])
+        #expect(await t.repo.commitTemplate() == "subject here\n\nBody:\n")
+        #expect(await t.repo.recentMessages() == ["second", "first\n\nwith body"])
+    }
+}

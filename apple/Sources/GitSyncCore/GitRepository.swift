@@ -116,7 +116,8 @@ public struct GitRepository: Sendable {
         return RepositorySnapshot(
             status: try await status, commits: commits, graph: graph,
             localBranches: local, remoteBranches: remote,
-            tags: try await tags, stashes: try await stashes, remotes: remotes)
+            tags: try await tags, stashes: try await stashes, remotes: remotes,
+            operation: inProgressOperation())
     }
 
     public func status() async throws -> WorkingStatus {
@@ -140,7 +141,9 @@ public struct GitRepository: Sendable {
 
     public func tags() async throws -> [GitTag] {
         let data = try await git.run(
-            ["for-each-ref", "--format=%(refname:short)%1f%(objectname)", "--sort=-creatordate", "refs/tags"],
+            ["for-each-ref",
+             "--format=%(refname:short)%1f%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)%1f%(objecttype)%1f%(contents:subject)",
+             "--sort=-creatordate", "refs/tags"],
             readOnly: true)
         return RefParser.parseTags(data)
     }
@@ -194,6 +197,8 @@ public struct GitRepository: Sendable {
         case .commit(let hash):
             let base = try await parentOrEmptyTree(of: hash)
             data = try await git.run(common + [base, hash, "--"] + paths, readOnly: true)
+        case .compare(let base, let head):
+            data = try await git.run(common + [base, head, "--"] + paths, readOnly: true)
         }
         return DiffParser.parse(data, maxLines: maxLines)
     }
@@ -235,15 +240,25 @@ public struct GitRepository: Sendable {
         if !untracked.isEmpty { try await git.run(["clean", "-f", "--"] + untracked) }
     }
 
-    public func commit(message: String, amend: Bool) async throws {
+    /// - Parameter sign: `true` forces `-S`, `false` forces `--no-gpg-sign`, nil follows git config.
+    /// - Parameter skipHooks: passes `--no-verify` (skips pre-commit and commit-msg).
+    /// - Throws: `HookFailedError` when a hook refused the commit.
+    public func commit(message: String, amend: Bool, sign: Bool? = nil, skipHooks: Bool = false) async throws {
         var args = ["commit"]
         if amend { args.append("--amend") }
+        if skipHooks { args.append("--no-verify") }
+        if let sign { args.append(sign ? "--gpg-sign" : "--no-gpg-sign") }
         if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             args.append("--no-edit")
         } else {
             args += ["-m", message]
         }
-        try await git.run(args)
+        do {
+            try await git.run(args)
+        } catch let error as GitError {
+            if !skipHooks, let failure = HookDiagnosis.diagnose(stderr: error.stderr, activeHooks: await activeHooks()) { throw failure }
+            throw error
+        }
     }
 
     // MARK: Branches
@@ -279,8 +294,26 @@ public struct GitRepository: Sendable {
 
     // MARK: Tags
 
-    public func createTag(_ name: String, at hash: String) async throws {
-        try await git.run(["tag", name, hash])
+    /// A non-empty `message` makes an annotated tag (with tagger and date); otherwise a lightweight one.
+    public func createTag(_ name: String, at hash: String, message: String = "") async throws {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty {
+            try await git.run(["tag", name, hash])
+        } else {
+            try await git.run(["tag", "-a", name, "-m", text, hash])
+        }
+    }
+
+    public func pushTag(_ name: String, remote: String) async throws {
+        try await networkGit().run(["push", remote, "refs/tags/\(name)"])
+    }
+
+    public func pushAllTags(remote: String) async throws {
+        try await networkGit().run(["push", remote, "--tags"])
+    }
+
+    public func deleteRemoteTag(_ name: String, remote: String) async throws {
+        try await networkGit().run(["push", remote, "--delete", "refs/tags/\(name)"])
     }
 
     public func deleteTag(_ name: String) async throws {
@@ -295,8 +328,32 @@ public struct GitRepository: Sendable {
         try await git.run(args)
     }
 
-    public func stashApply(_ ref: String) async throws { try await git.run(["stash", "apply", ref]) }
-    public func stashPop(_ ref: String) async throws { try await git.run(["stash", "pop", ref]) }
+    public func stashApply(_ ref: String) async throws {
+        do { try await git.run(["stash", "apply", ref]) }
+        catch let error as GitError {
+            if !(await applyStashAsPatch(ref, after: error)) { throw error }
+        }
+    }
+
+    public func stashPop(_ ref: String) async throws {
+        do { try await git.run(["stash", "pop", ref]) }
+        catch let error as GitError {
+            if !(await applyStashAsPatch(ref, after: error)) { throw error }
+            try await git.run(["stash", "drop", ref])
+        }
+    }
+
+    /// `git stash apply` refuses when a file the stash touches has other local changes. If the
+    /// stash is plain tracked changes (the case for a stashed hunk), applying its diff as a patch
+    /// still works whenever the changes don't overlap. Returns true when the patch was applied.
+    private func applyStashAsPatch(_ ref: String, after error: GitError) async -> Bool {
+        guard error.stderr.contains("would be overwritten") else { return false }
+        if (try? await git.run(["rev-parse", "--verify", "--quiet", "\(ref)^3"], readOnly: true)) != nil { return false }
+        guard let patch = try? await git.run(["diff", "--binary", "--no-color", "--no-ext-diff", "\(ref)^1", ref], readOnly: true),
+              (try? await git.run(["apply", "--recount", "--whitespace=nowarn", "-"], input: patch)) != nil
+        else { return false }
+        return true
+    }
     public func stashDrop(_ ref: String) async throws { try await git.run(["stash", "drop", ref]) }
 
     // MARK: Remotes
@@ -305,13 +362,24 @@ public struct GitRepository: Sendable {
         try await networkGit().run(["fetch", "--all", "--prune"])
     }
 
-    public func pull() async throws {
+    /// Fetches and integrates the upstream branch, by merging or (with `rebase`) rebasing.
+    public func pull(rebase: Bool = false) async throws {
         let net = await networkGit()
+        if rebase {
+            do { try await net.run(["pull", "--rebase", "--autostash", "--no-edit"]) }
+            catch let error as GitError { if inProgressOperation() == nil { throw error } }
+            return
+        }
         do {
             try await net.run(["pull", "--no-edit"])
         } catch let error as GitError where error.stderr.contains("divergent branches") {
             try await net.run(["pull", "--no-edit", "--no-rebase"])
         }
+    }
+
+    /// Deletes a branch on the remote (`git push <remote> --delete <branch>`).
+    public func deleteRemoteBranch(remote: String, branch: String) async throws {
+        try await networkGit().run(["push", remote, "--delete", branch])
     }
 
     public func push(status: WorkingStatus, remotes: [String]) async throws {

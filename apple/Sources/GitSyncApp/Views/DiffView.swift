@@ -11,6 +11,10 @@ struct DiffStaging {
     var clear: @MainActor () -> Void
     var hunk: @MainActor (Int, PatchAction) -> Void
     var lines: @MainActor (PatchAction) -> Void
+    var hunkSummary: @MainActor (Int) -> String
+    var lineSummary: @MainActor () -> String
+    /// Nil when this file's hunks can't be stashed (e.g. it has staged changes).
+    var stashHunk: (@MainActor (Int) -> Void)?
 }
 
 struct DiffPane: View {
@@ -189,7 +193,7 @@ struct DiffPane: View {
                 .buttonStyle(.borderedProminent).controlSize(.small)
                 if !staging.staged {
                     Button("Discard", role: .destructive) {
-                        confirmDiscard("\(n) selected line\(n == 1 ? "" : "s")") { staging.lines(.discard) }
+                        confirmDiscard("\(n) selected line\(n == 1 ? "" : "s") (\(staging.lineSummary()))") { staging.lines(.discard) }
                     }
                     .buttonStyle(.bordered).controlSize(.small)
                 }
@@ -208,7 +212,7 @@ struct DiffPane: View {
     private func confirmDiscard(_ what: String, _ action: @escaping () -> Void) {
         let alert = NSAlert()
         alert.messageText = "Discard \(what)?"
-        alert.informativeText = "These changes will be removed from your working tree. This can’t be undone."
+        alert.informativeText = "These changes will be removed from your working tree and can’t be recovered."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: "Cancel")
@@ -237,9 +241,19 @@ private struct HunkHeaderRow: View {
                         .background(Theme.brand, in: Capsule())
                 }
                 .buttonStyle(.plain)
+                if let stash = staging.stashHunk {
+                    Button { stash(line.hunkIndex) } label: {
+                        Image(systemName: "tray.and.arrow.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.08), in: Capsule())
+                    }
+                    .buttonStyle(.plain).help("Stash this hunk")
+                }
                 if !staging.staged {
                     Button {
-                        confirmDiscard("this hunk") { staging.hunk(line.hunkIndex, .discard) }
+                        confirmDiscard("this hunk (\(staging.hunkSummary(line.hunkIndex)))") { staging.hunk(line.hunkIndex, .discard) }
                     } label: {
                         Image(systemName: "arrow.uturn.backward")
                             .font(.system(size: 11, weight: .semibold))

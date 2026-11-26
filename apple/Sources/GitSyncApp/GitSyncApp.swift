@@ -169,6 +169,13 @@ struct AppCommands: Commands {
                 Button("Create \(store.webLinks?.pullRequestsWord ?? "Pull Request") on \(store.providerTitle ?? "Web")") { store.openOnWeb(.pullRequest) }
             }
             Divider()
+            Button("Undo Last Change…") { workspace?.selected?.undoLastChange() }
+                .keyboardShortcut("z", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Button("Compare Refs…") { workspace?.selected?.openCompare() }
+                .keyboardShortcut("c", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Button("Clean Up Branches…") { workspace?.selected?.sheet = .cleanup }.disabled(workspace?.selected == nil)
+            Button("Reflog…") { workspace?.selected?.sheet = .reflog }.disabled(workspace?.selected == nil)
+            Divider()
             Button("Show History") { workspace?.selected?.mode = .history }
                 .keyboardShortcut("1", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
             Button("Show Changes") { workspace?.selected?.mode = .changes }

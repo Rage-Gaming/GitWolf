@@ -54,6 +54,16 @@ struct ChangesView: View {
         }
     }
 
+    @AppStorage("spellCheckCommitMessages") private var spellCheck = true
+
+    /// Applies the system's check-as-you-type setting to the text view that has just become the composer.
+    private func applySpellChecking() {
+        let enabled = spellCheck
+        DispatchQueue.main.async {
+            (NSApp.keyWindow?.firstResponder as? NSTextView)?.isContinuousSpellCheckingEnabled = enabled
+        }
+    }
+
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
             // A vertical TextField draws its own placeholder, so the caret and placeholder always align.
@@ -62,6 +72,10 @@ struct ChangesView: View {
                 .font(.body)
                 .lineLimit(4...5)
                 .focused($composerFocused)
+                .onChange(of: composerFocused) { _, focused in
+                    if focused { applySpellChecking() }
+                }
+                .task { store.issues.loadIfNeeded() }
                 .padding(12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .frame(height: 96)
@@ -72,6 +86,14 @@ struct ChangesView: View {
 
             HStack {
                 Toggle("Amend last commit", isOn: $store.amend).toggleStyle(.checkbox).controlSize(.small)
+                MessageHelpersMenu(store: store)
+                if let signing = store.signing, signing.isConfigured {
+                    Toggle(isOn: $store.signCommit) {
+                        Label("Sign", systemImage: "signature")
+                    }
+                    .toggleStyle(.checkbox).controlSize(.small)
+                    .help("Sign this commit with your \(signing.format.rawValue) key")
+                }
                 let subject = store.draftMessage.split(separator: "\n").first.map(String.init) ?? ""
                 if subject.count > 72 {
                     Text("\(subject.count)").font(.caption.monospacedDigit()).foregroundStyle(.orange)
@@ -139,26 +161,32 @@ private struct ChangeRow: View {
         .onHover { hovering = $0 }
         .onTapGesture { store.selectChange(change, source: source) }
         .contextMenu {
-            if source == .staged {
+            if source == .conflicted {
+                Button("Resolve Using Ours") { store.resolveConflict(change.path, taking: .ours) }
+                Button("Resolve Using Theirs") { store.resolveConflict(change.path, taking: .theirs) }
+            } else if source == .staged {
                 Button("Unstage") { store.unstage([change.path]) }
             } else {
                 Button("Stage") { store.stage([change.path]) }
-                Button("Discard Changes…", role: .destructive) { confirmDiscard(untracked: source == .untracked) }
+                Button("Discard Changes…", role: .destructive) { store.confirmDiscard([change], untracked: source == .untracked) }
+            }
+            if source != .untracked {
+                Button("History & Blame…") { store.sheet = .fileHistory(change.path) }
+            }
+            Menu("Ignore") {
+                ForEach(IgnoreRules.options(for: change.path)) { option in
+                    Button(option.title) { store.ignore(option, local: false, untrack: source == .untracked ? nil : change.path) }
+                }
+                Divider()
+                Menu("Only on This Machine") {
+                    ForEach(IgnoreRules.options(for: change.path)) { option in
+                        Button(option.title) { store.ignore(option, local: true, untrack: source == .untracked ? nil : change.path) }
+                    }
+                }
             }
             Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([store.repo.root.appendingPathComponent(change.path)])
             }
         }
-    }
-
-    private func confirmDiscard(untracked: Bool) {
-        let alert = NSAlert()
-        alert.messageText = "Discard changes to “\(change.fileName)”?"
-        alert.informativeText = untracked ? "This untracked file will be deleted. This can’t be undone."
-                                          : "Your modifications will be lost. This can’t be undone."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Discard")
-        alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn { store.discard([change], untracked: untracked) }
     }
 }

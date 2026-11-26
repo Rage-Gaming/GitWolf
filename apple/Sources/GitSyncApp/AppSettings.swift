@@ -57,6 +57,7 @@ enum SettingsKey {
     static let syntaxHighlighting = "settings.syntaxHighlighting"
     static let diffLayout = "settings.diffLayout"
     static let gitPath = "settings.gitPath"
+    static let pullRebase = "settings.pullRebase"
 }
 
 /// Read-side access to user settings for non-view code. Always reads current values, so changes
@@ -76,6 +77,8 @@ struct AppSettings: Sendable {
     var diffContext: Int {
         defaults.object(forKey: SettingsKey.diffContext) as? Int ?? 4
     }
+    /// Pull by rebasing local commits onto the upstream instead of merging.
+    var pullRebase: Bool { defaults.bool(forKey: SettingsKey.pullRebase) }
     var gitPath: String {
         let custom = (defaults.string(forKey: SettingsKey.gitPath) ?? "").trimmingCharacters(in: .whitespaces)
         guard !custom.isEmpty, FileManager.default.isExecutableFile(atPath: custom) else { return Self.defaultGitPath }

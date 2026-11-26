@@ -7,11 +7,60 @@ private struct HistoryItem: Identifiable {
     var id: String { commit.id }
 }
 
+private enum HistoryScope: String, CaseIterable, Identifiable {
+    case loaded = "Message, author or hash"
+    case message = "Message (all history)"
+    case author = "Author (all history)"
+    case contentChanged = "Code added or removed"
+    case contentRegex = "Code matching regex"
+    var id: String { rawValue }
+
+    var kind: HistoryQuery.Kind? {
+        switch self {
+        case .loaded: nil
+        case .message: .message
+        case .author: .author
+        case .contentChanged: .contentChanged
+        case .contentRegex: .contentRegex
+        }
+    }
+
+    var prompt: String {
+        switch self {
+        case .loaded: "Search commits"
+        case .message: "Search commit messages"
+        case .author: "Search by author"
+        case .contentChanged: "Text added or removed in a diff"
+        case .contentRegex: "Regex matched in a diff"
+        }
+    }
+}
+
 struct HistoryView: View {
     @Bindable var store: RepositoryStore
     @State private var query = ""
+    @State private var scope = HistoryScope.loaded
+    @State private var path = ""
+    @State private var useSince = false
+    @State private var useUntil = false
+    @State private var since = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+    @State private var until = Date()
+    @State private var showFilters = false
+    @State private var found: [Commit] = []
+    @State private var searching = false
+    @State private var searchError: String?
+
+    private var hasFilters: Bool { scope != .loaded || !path.isEmpty || useSince || useUntil }
+    /// Searching in git (instead of filtering the loaded commits) when a scope, file or date is set.
+    private var gitSearch: Bool { scope != .loaded || !path.trimmingCharacters(in: .whitespaces).isEmpty || useSince || useUntil }
+
+    private var gitQuery: HistoryQuery {
+        HistoryQuery(kind: scope.kind ?? .message, text: query, path: path,
+                     since: useSince ? since : nil, until: useUntil ? until : nil)
+    }
 
     private var items: [HistoryItem] {
+        if gitSearch { return found.map { HistoryItem(commit: $0, graph: nil) } }
         if query.isEmpty {
             return zip(store.commits, store.graph).map { HistoryItem(commit: $0, graph: $1) }
         }
@@ -21,13 +70,82 @@ struct HistoryView: View {
             .map { HistoryItem(commit: $0, graph: nil) }
     }
 
+    private var searchKey: String {
+        "\(scope.rawValue)|\(query)|\(path)|\(useSince ? since.description : "")|\(useUntil ? until.description : "")"
+    }
+
     var body: some View {
         let items = items
         VStack(spacing: 0) {
-            SearchField(text: $query, prompt: "Search commits")
-                .padding(.horizontal, 12).padding(.vertical, 10)
+            HStack(spacing: 8) {
+                SearchField(text: $query, prompt: scope.prompt)
+                Button { showFilters.toggle() } label: {
+                    Image(systemName: hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 17)).foregroundStyle(hasFilters ? Theme.brand : .secondary)
+                }
+                .buttonStyle(.plain).help("Search options: scope, file and dates")
+                .popover(isPresented: $showFilters, arrowEdge: .bottom) { filters }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
             Divider()
+            if gitSearch, let searchError {
+                Text(searchError).font(.caption).foregroundStyle(.red).padding(8)
+            }
             list(items)
+        }
+        .task(id: searchKey) { await runSearch() }
+        #if DEBUG
+        .onAppear {
+            // GITSYNC_HISTORY_SEARCH="<scope>|<text>|<path>" for snapshots.
+            guard let v = ProcessInfo.processInfo.environment["GITSYNC_HISTORY_SEARCH"] else { return }
+            let parts = v.components(separatedBy: "|")
+            if let scope = HistoryScope.allCases.first(where: { $0.kind?.rawValue == parts[0] }) { self.scope = scope }
+            if parts.count > 1 { query = parts[1] }
+            if parts.count > 2 { path = parts[2] }
+        }
+        #endif
+    }
+
+    private var filters: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Search Options").font(.headline)
+            Picker("Look in", selection: $scope) {
+                ForEach(HistoryScope.allCases) { Text($0.rawValue).tag($0) }
+            }
+            if scope == .contentChanged || scope == .contentRegex {
+                Text("Finds commits whose changes add or remove the text. Can take a moment on large repositories.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            TextField("Only commits touching this file or folder", text: $path).textFieldStyle(.roundedBorder)
+            HStack {
+                Toggle("From", isOn: $useSince)
+                DatePicker("", selection: $since, displayedComponents: .date).labelsHidden().disabled(!useSince)
+            }
+            HStack {
+                Toggle("To", isOn: $useUntil)
+                DatePicker("", selection: $until, displayedComponents: .date).labelsHidden().disabled(!useUntil)
+            }
+            if hasFilters {
+                Button("Reset") { scope = .loaded; path = ""; useSince = false; useUntil = false }
+            }
+        }
+        .padding(16).frame(width: 340)
+    }
+
+    private func runSearch() async {
+        guard gitSearch else { found = []; searchError = nil; searching = false; return }
+        // A short pause so typing doesn't start a search per keystroke.
+        try? await Task.sleep(for: .milliseconds(300))
+        if Task.isCancelled { return }
+        let text = query.trimmingCharacters(in: .whitespaces)
+        if text.isEmpty && scope != .loaded && path.isEmpty && !useSince && !useUntil { found = []; return }
+        searching = true
+        defer { searching = false }
+        do {
+            let result = try await store.repo.search(gitQuery, remotes: Set(store.remotes))
+            if !Task.isCancelled { found = result; searchError = nil }
+        } catch {
+            if !Task.isCancelled { found = []; searchError = error.localizedDescription }
         }
     }
 
@@ -37,9 +155,9 @@ struct HistoryView: View {
             if !store.isLoaded {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if items.isEmpty {
-                ContentUnavailableView(query.isEmpty ? "No Commits Yet" : "No Matches",
+                ContentUnavailableView((query.isEmpty && !gitSearch) ? "No Commits Yet" : (searching ? "Searching…" : "No Matches"),
                                        systemImage: "clock.arrow.circlepath",
-                                       description: Text(query.isEmpty ? "Commit your changes to start the history." : "Try a different search."))
+                                       description: Text((query.isEmpty && !gitSearch) ? "Commit your changes to start the history." : "Try a different search."))
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -50,7 +168,7 @@ struct HistoryView: View {
                                     .id(item.id)
                                     .onTapGesture { store.selectCommit(item.id) }
                             }
-                            if store.canLoadMore && query.isEmpty {
+                            if store.canLoadMore && query.isEmpty && !gitSearch {
                                 Button("Load More…") { store.loadMoreCommits() }
                                     .buttonStyle(.link).padding(12)
                             }
@@ -117,6 +235,13 @@ private struct CommitRow: View {
             Divider()
             Button("Cherry-Pick") { store.cherryPick(c.hash) }
             Button("Revert") { store.revert(c.hash) }
+            Button("Compare with Current Branch") { store.openCompare(from: c.hash, to: store.status.branch ?? "HEAD") }
+            Button("Interactive Rebase from Here…") { store.beginInteractiveRebase(from: c.hash) }
+            Menu("Reset Branch to Here") {
+                Button("Soft: keep changes staged") { store.reset(to: c.hash, label: c.shortHash, mode: .soft) }
+                Button("Mixed: keep changes unstaged") { store.reset(to: c.hash, label: c.shortHash, mode: .mixed) }
+                Button("Hard: discard changes…") { store.reset(to: c.hash, label: c.shortHash, mode: .hard) }
+            }
             Divider()
             if store.webLinks != nil {
                 Button("Open on \(store.providerTitle ?? "Web")") { store.openOnWeb(.commit(c.hash)) }

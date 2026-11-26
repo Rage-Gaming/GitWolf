@@ -18,6 +18,19 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `GitRepository` | Stateless, `Sendable` façade for every read and write operation. |
 | `SyntaxHighlighter`, `SideBySide` | Pure helpers for diff presentation: token ranges per line, split-view row pairing. |
 | `Providers`, `ProviderClient` | Hosting provider kinds, remote URL parsing, web links, askpass credential environment, REST clients for listing/verifying. See [PROVIDERS.md](PROVIDERS.md). |
+| `Operations` | Detects an in-progress merge/rebase/cherry-pick/revert from files in the git dir and runs `--continue`, `--abort`, `--skip`. The snapshot carries it so the UI banner follows the refresh loop. |
+| `Reset` | `reset(to:mode:)`, `reflog()` and `resetImpact(to:)` (commits dropped, files modified) so the UI can warn before a hard reset. |
+| `Rebase` | `RebasePlan` (actions, validation, todo generation), `rebaseCandidates`, `startInteractiveRebase`, `rebase(onto:)`. Conflicts leave the rebase in progress instead of throwing. |
+| `StashTools` | `discardSummary`, `stashFiles`, `stashHash`, `stashHunk` (plumbing-built single-hunk stash). |
+| `Signing` | `signature(of:)` (format, state, signer, key), `signingConfig()`, and the `sign` option of `commit`. |
+| `Blame` | `blame` (porcelain parser), `fileHistory` (`--follow`), `fileDiff` (rename-aware per-commit diff). |
+| `Compare` | `compare(from:to:sinceAncestor:)` returns resolved hashes, changed files, commits and ahead/behind. |
+| `CommitMessage` | Pure helpers: `applyPrefix`, `stripPrefix`, `addReference`, `suggestedScopes`; `commitTemplate()` and `recentMessages()` on `GitRepository`. |
+| `Ignore` | `IgnoreRules.options(for:)`, `addIgnoreRule(_:local:)`, `stopTracking`. |
+| `Hooks` | `HookFailedError`, `HookDiagnosis.diagnose` (is this commit failure a hook?), `activeHooks()`; `commit` throws `HookFailedError`. |
+| `HistorySearch` | `HistoryQuery` (scope, text, path, dates) and `GitRepository.search`. |
+| Tags (in `GitRepository`) | `createTag(message:)`, `pushTag`, `pushAllTags`, `deleteRemoteTag`; `GitTag` carries `isAnnotated` and `message`. |
+| `BranchTools` | `renameBranch`, `setUpstream`, `cleanupCandidates` (merged or upstream gone), `deleteBranches`; `deleteRemoteBranch` lives in `GitRepository`. |
 | `FileWatcher` | FSEvents watcher that emits a coalesced "something changed" signal, filtering object-db and lock-file noise. |
 
 ## Keeping the UI in sync

@@ -6,11 +6,25 @@ enum StoreSheet: Identifiable {
     case newBranch(from: String?)
     case newTag(hash: String)
     case stash
+    case reflog
+    case rebase(RebasePlan)
+    case stashHunk(Int)
+    case fileHistory(String)
+    case renameBranch(String)
+    case cleanup
+    case hookFailure(HookFailedError)
     var id: String {
         switch self {
         case .newBranch: "branch"
         case .newTag: "tag"
         case .stash: "stash"
+        case .reflog: "reflog"
+        case .rebase: "rebase"
+        case .stashHunk: "stashHunk"
+        case .fileHistory: "fileHistory"
+        case .renameBranch: "renameBranch"
+        case .cleanup: "cleanup"
+        case .hookFailure: "hookFailure"
         }
     }
 }
@@ -25,7 +39,7 @@ private final class TaskBag: @unchecked Sendable {
 /// always converges on the real repository state.
 @MainActor @Observable
 final class RepositoryStore: Identifiable {
-    enum Mode: Hashable { case history, changes, pullRequests, issues }
+    enum Mode: Hashable { case history, changes, pullRequests, issues, stash, compare }
 
     private let baseRepo: GitRepository
     /// The repository with the user's current settings (git path, diff context) applied.
@@ -42,6 +56,8 @@ final class RepositoryStore: Identifiable {
     private(set) var tags: [GitTag] = []
     private(set) var stashes: [Stash] = []
     private(set) var remotes: [String] = []
+    /// A merge / rebase / cherry-pick / revert that is waiting for the user.
+    private(set) var operation: InProgressOperation?
     /// Where `origin` (or the first remote) lives, for web links.
     private(set) var remoteLocation: RemoteLocation?
     private(set) var isLoaded = false
@@ -51,7 +67,22 @@ final class RepositoryStore: Identifiable {
     private(set) var selectedCommitID: String?
     private(set) var selectedTarget: DiffTarget?
     private(set) var commitFiles: [FileChange] = []
+    private(set) var selectedStash: Stash?
+    private(set) var stashFiles: [FileChange] = []
+    private(set) var stashCommit: String?
+    var compareFrom = ""
+    var compareTo = ""
+    var compareSinceAncestor = true
+    private(set) var comparison: RefComparison?
+    private(set) var compareError: String?
+    private(set) var isComparing = false
+    private var compareToken = 0
     private(set) var commitMessage = ""
+    /// Signature of the selected commit; nil when unsigned or not loaded yet.
+    private(set) var selectedSignature: CommitSignature?
+    private(set) var signing: SigningConfig?
+    /// Sign the next commit. Starts from `commit.gpgsign`; the commit box can override it.
+    var signCommit = false
     private(set) var diff: FileDiff?
     private(set) var lineSelection: Set<Int> = []
     private var selectionAnchor: Int?
@@ -106,6 +137,11 @@ final class RepositoryStore: Identifiable {
         guard !started else { return }
         started = true
         pullRequests.context = { [weak self] in self?.collabContext() }
+        Task {
+            let config = await repo.signingConfig()
+            signing = config
+            signCommit = config.signsByDefault
+        }
         #if DEBUG
         if let requested = ProcessInfo.processInfo.environment["GITSYNC_MODE"] {
             Task { @MainActor in
@@ -223,15 +259,30 @@ final class RepositoryStore: Identifiable {
         if localBranches != s.localBranches { localBranches = s.localBranches }
         if remoteBranches != s.remoteBranches { remoteBranches = s.remoteBranches }
         if tags != s.tags { tags = s.tags }
-        if stashes != s.stashes { stashes = s.stashes }
+        if stashes != s.stashes {
+            stashes = s.stashes
+            // Stash refs shift when entries come and go, so leave the preview rather than show the wrong one.
+            if mode == .stash, let sel = selectedStash, !s.stashes.contains(sel) { selectedStash = nil; mode = .changes }
+        }
         if remotes != s.remotes { remotes = s.remotes; refreshRemoteLocation() }
+        if operation != s.operation { operation = s.operation }
         if !isLoaded {
             isLoaded = true
             if !s.status.isClean { mode = .changes }
             #if DEBUG
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "cleanup" { sheet = .cleanup }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "hook" { sheet = .hookFailure(HookFailedError(hook: "pre-commit", output: "eslint: src/app.ts\n  12:5  error  Unexpected console statement  no-console\n\n1 problem (1 error, 0 warnings)")) }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "tag", let h = s.commits.first?.hash { sheet = .newTag(hash: h) }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "compare" { openCompare(from: "main", to: "feature") }
+            if let v = ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"], v.hasPrefix("history:") { sheet = .fileHistory(String(v.dropFirst(8))) }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "stash", let first = s.stashes.first { selectStash(first) }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "rebase", s.commits.count > 4 { beginInteractiveRebase(from: s.commits[3].hash) }
             if ProcessInfo.processInfo.environment["GITSYNC_MODE"] == "history" {
                 mode = .history
                 selectCommit(s.commits.first?.id)
+            } else if let c = s.status.conflicted.first {
+                selectChange(c, source: .conflicted)
             } else if let c = s.status.unstaged.first {
                 selectChange(c, source: .unstaged)
             }
@@ -255,6 +306,7 @@ final class RepositoryStore: Identifiable {
         clearLineSelection()
         commitFiles = []
         commitMessage = ""
+        selectedSignature = nil
         diffToken += 1
         commitToken += 1
     }
@@ -284,7 +336,7 @@ final class RepositoryStore: Identifiable {
                     // Commits are immutable; nothing to reload.
                 } else { clearSelection() }
             }
-        case .pullRequests, .issues:
+        case .pullRequests, .issues, .stash, .compare:
             break
         }
     }
@@ -296,10 +348,15 @@ final class RepositoryStore: Identifiable {
         diff = nil
         commitFiles = []
         commitMessage = ""
+        selectedSignature = nil
         diffToken += 1
         commitToken += 1
         guard let id, let commit = commits.first(where: { $0.id == id }) else { return }
         let token = commitToken
+        Task {
+            let signature = try? await repo.signature(of: commit.hash)
+            if token == commitToken { selectedSignature = signature }
+        }
         Task {
             async let files = try? repo.files(in: commit)
             async let message = try? repo.message(of: commit.hash)
@@ -314,6 +371,55 @@ final class RepositoryStore: Identifiable {
     func reveal(hash: String) {
         mode = .history
         selectCommit(hash)
+    }
+
+    /// Opens the compare view. Empty `from` / `to` default to the current branch.
+    func openCompare(from: String? = nil, to: String? = nil) {
+        if let from { compareFrom = from } else if compareFrom.isEmpty { compareFrom = status.branch ?? "HEAD" }
+        if let to { compareTo = to }
+        mode = .compare
+        if !compareFrom.isEmpty, !compareTo.isEmpty { runCompare() } else { comparison = nil; compareError = nil }
+    }
+
+    func runCompare() {
+        compareToken += 1
+        let token = compareToken
+        let (from, to, since, remotes) = (compareFrom, compareTo, compareSinceAncestor, Set(self.remotes))
+        isComparing = true
+        compareError = nil
+        Task {
+            do {
+                let result = try await repo.compare(from: from, to: to, sinceAncestor: since, remotes: remotes)
+                guard token == compareToken else { return }
+                comparison = result
+                selectedTarget = nil; diff = nil; diffToken += 1
+                if let first = result.files.first { selectChange(first, source: .compare(base: result.base, head: result.head)) }
+            } catch {
+                guard token == compareToken else { return }
+                comparison = nil
+                compareError = error.localizedDescription
+            }
+            if token == compareToken { isComparing = false }
+        }
+    }
+
+    func swapCompare() {
+        (compareFrom, compareTo) = (compareTo, compareFrom)
+        if !compareFrom.isEmpty, !compareTo.isEmpty { runCompare() }
+    }
+
+    /// Shows what a stash contains (files and diffs) without applying it.
+    func selectStash(_ stash: Stash) {
+        mode = .stash
+        selectedStash = stash
+        stashFiles = []; stashCommit = nil
+        selectedTarget = nil; diff = nil; diffToken += 1
+        Task {
+            guard let hash = try? await repo.stashHash(stash.ref), let files = try? await repo.stashFiles(stash.ref),
+                  selectedStash == stash else { return }
+            stashCommit = hash; stashFiles = files
+            if let first = files.first { selectChange(first, source: .commit(hash)) }
+        }
     }
 
     func selectChange(_ change: FileChange, source: DiffTarget.Source) {
@@ -388,6 +494,45 @@ final class RepositoryStore: Identifiable {
         applyPatch(diff, ids: diff.changedLineIDs(inHunk: index), action: action)
     }
 
+    /// "+3 −1" for the given changed lines of the current diff.
+    func changeSummary(_ ids: Set<Int>) -> String {
+        guard let diff else { return "" }
+        let lines = diff.lines.filter { ids.contains($0.id) }
+        return "+\(lines.filter { $0.kind == .addition }.count) −\(lines.filter { $0.kind == .deletion }.count)"
+    }
+    func hunkSummary(_ index: Int) -> String { changeSummary(diff?.changedLineIDs(inHunk: index) ?? []) }
+
+    /// A hunk can be stashed from the unstaged diff of a file that has nothing staged.
+    var canStashHunk: Bool {
+        guard canPatch, let t = selectedTarget, t.source == .unstaged else { return false }
+        return !status.staged.contains { $0.path == t.path }
+    }
+
+    func stashHunk(_ index: Int, message: String) {
+        guard let diff, let target = selectedTarget else { return }
+        let ids = diff.changedLineIDs(inHunk: index)
+        guard let forward = PatchBuilder.make(diff: diff, selecting: ids, action: .stage),
+              let back = PatchBuilder.make(diff: diff, selecting: ids, action: .discard) else { return }
+        perform("Stashing hunk…") {
+            try await $0.stashHunk(forwardPatch: forward, discardPatch: back, path: target.path, message: message)
+        }
+    }
+
+    /// Asks before discarding, saying exactly how many lines and files are lost.
+    func confirmDiscard(_ changes: [FileChange], untracked: Bool) {
+        let paths = changes.map(\.path)
+        Task {
+            let summary = try? await repo.discardSummary(tracked: untracked ? [] : paths, untracked: untracked ? paths : [])
+            let alert = NSAlert()
+            alert.messageText = changes.count == 1 ? "Discard changes to “\(changes[0].fileName)”?" : "Discard changes to \(changes.count) files?"
+            alert.informativeText = summary?.sentence ?? "This can’t be undone."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Discard")
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() == .alertFirstButtonReturn { discard(changes, untracked: untracked) }
+        }
+    }
+
     func applySelectedLines(action: PatchAction) {
         guard let diff else { return }
         applyPatch(diff, ids: lineSelection, action: action)
@@ -406,18 +551,110 @@ final class RepositoryStore: Identifiable {
         isBusy = true
         busyLabel = label
         Task {
-            do { try await op(repo) } catch { errorMessage = error.localizedDescription }
+            do { try await op(repo) } catch let failure as HookFailedError {
+                sheet = .hookFailure(failure)
+            } catch { errorMessage = error.localizedDescription }
             isBusy = false
             busyLabel = nil
             requestRefresh()
         }
     }
 
+    func resolveConflict(_ path: String, content: String) {
+        perform("Resolving…") { try await $0.resolveConflict(path, content: content) }
+    }
+    func resolveConflict(_ path: String, taking side: ConflictSide) {
+        perform("Resolving…") { try await $0.resolveConflict(path, taking: side) }
+    }
+
+    /// Resets the current branch to `target`. A hard reset says what it will lose and asks first.
+    func reset(to target: String, label: String, mode: ResetMode) {
+        Task {
+            let impact = try? await repo.resetImpact(to: target)
+            if mode == .hard {
+                let alert = NSAlert()
+                alert.messageText = "Hard reset to \(label)?"
+                var lost: [String] = []
+                if let n = impact?.droppedCommits, n > 0 { lost.append("\(n) commit\(n == 1 ? "" : "s") will no longer be on this branch (still reachable from the reflog)") }
+                if let n = impact?.modifiedFiles, n > 0 { lost.append("uncommitted changes in \(n) file\(n == 1 ? "" : "s") will be permanently lost") }
+                alert.informativeText = lost.isEmpty ? "The working tree will match that commit." : lost.joined(separator: "; ").capitalizedFirst + "."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "Hard Reset")
+                alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+            }
+            perform("Resetting…") { try await $0.reset(to: target, mode: mode) }
+        }
+    }
+
+    /// Moves HEAD back to where it was before the last reflog entry, keeping uncommitted work
+    /// (git refuses rather than overwrite it).
+    func undoLastChange() {
+        Task {
+            guard let log = try? await repo.reflog(limit: 2), log.count > 1 else {
+                errorMessage = "There is nothing to undo."; return
+            }
+            let alert = NSAlert()
+            alert.messageText = "Undo “\(log[0].message)”?"
+            alert.informativeText = "HEAD moves back to \(log[1].shortHash). Uncommitted changes are kept; if they would be overwritten, nothing happens."
+            alert.addButton(withTitle: "Undo")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            let target = log[1].hash
+            perform("Undoing…") { try await $0.reset(to: target, mode: .keep) }
+        }
+    }
+
+    func continueOperation() {
+        guard let op = operation else { return }
+        perform("Continuing…") { try await $0.continueOperation(op) }
+    }
+    func skipOperation() {
+        guard let op = operation else { return }
+        perform("Skipping…") { try await $0.skipOperation(op) }
+    }
+    func abortOperation() {
+        guard let op = operation else { return }
+        perform("Aborting…") { try await $0.abortOperation(op) }
+    }
+
     func fetch() { perform("Fetching…") { try await $0.fetch() } }
-    func pull() { perform("Pulling…") { try await $0.pull() } }
+    func pull() {
+        let rebase = AppSettings.shared.pullRebase
+        perform(rebase ? "Pulling (rebase)…" : "Pulling…") { try await $0.pull(rebase: rebase) }
+    }
+
+    /// Opens the interactive rebase editor for `commit` and everything after it on this branch.
+    func beginInteractiveRebase(from commit: String) {
+        guard operation == nil else { errorMessage = "Finish or abort the current \(operation!.verb.lowercased()) first."; return }
+        Task {
+            do {
+                let (plan, merges) = try await repo.rebaseCandidates(from: commit)
+                guard !plan.items.isEmpty else { errorMessage = "There are no commits to rebase."; return }
+                if merges {
+                    errorMessage = "This range contains merge commits, which an interactive rebase would flatten. Pick a more recent commit."
+                    return
+                }
+                sheet = .rebase(plan)
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    func startRebase(_ plan: RebasePlan) { perform("Rebasing…") { try await $0.startInteractiveRebase(plan) } }
+    func rebase(onto target: String) { perform("Rebasing…") { try await $0.rebase(onto: target) } }
     func push() {
         let (s, r) = (status, remotes)
         perform("Pushing…") { try await $0.push(status: s, remotes: r) }
+    }
+
+    /// Adds an ignore rule to `.gitignore` (or `.git/info/exclude` when `local`), optionally untracking the file so it takes effect.
+    func ignore(_ option: IgnoreOption, local: Bool, untrack path: String? = nil) {
+        // A folder rule untracks the whole folder; the others only the chosen file.
+        let target = option.kind == .folder ? path.map { ($0 as NSString).deletingLastPathComponent } : path
+        perform("Updating ignore rules…") { repo in
+            try await repo.addIgnoreRule(option.pattern, local: local)
+            if let target { try await repo.stopTracking(target) }
+        }
     }
 
     func stage(_ paths: [String]) { perform("Staging…") { try await $0.stage(paths) } }
@@ -433,14 +670,19 @@ final class RepositoryStore: Identifiable {
         }
     }
 
-    func commit() {
+    func commit(skipHooks: Bool = false) {
         let message = draftMessage
         let amend = amend
-        perform("Committing…") { try await $0.commit(message: message, amend: amend) }
+        // Only pass an explicit choice when it differs from git's own default.
+        let sign: Bool? = signing.map { $0.signsByDefault == signCommit ? nil : signCommit } ?? nil
+        perform(signCommit ? "Signing & committing…" : "Committing…") { try await $0.commit(message: message, amend: amend, sign: sign, skipHooks: skipHooks) }
         // Cleared optimistically; restored if the commit fails.
         Task {
             while isBusy { try? await Task.sleep(for: .milliseconds(50)) }
-            if errorMessage == nil { draftMessage = ""; self.amend = false }
+            if errorMessage == nil {
+                if case .hookFailure = sheet { return }
+                draftMessage = ""; self.amend = false
+            }
         }
     }
 
@@ -452,10 +694,52 @@ final class RepositoryStore: Identifiable {
     func deleteBranch(_ name: String, force: Bool = false) {
         perform("Deleting…") { try await $0.deleteBranch(name, force: force) }
     }
+    func renameBranch(_ old: String, to new: String) { perform("Renaming…") { try await $0.renameBranch(old, to: new) } }
+    func setUpstream(of branch: String, to upstream: String?) { perform("Updating tracking…") { try await $0.setUpstream(of: branch, to: upstream) } }
+
+    /// Deletes a branch on its remote after saying so.
+    func confirmDeleteRemoteBranch(_ branch: Branch) {
+        guard let remote = branch.remote else { return }
+        let name = branch.shortName
+        let alert = NSAlert()
+        alert.messageText = "Delete “\(name)” on \(remote)?"
+        alert.informativeText = "The branch is removed from the remote for everyone. Local copies are not affected."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete on Remote")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        perform("Deleting on \(remote)…") { try await $0.deleteRemoteBranch(remote: remote, branch: name) }
+    }
+
+    func deleteBranches(_ items: [BranchCleanupItem]) {
+        perform("Deleting branches…") { repo in
+            let failed = await repo.deleteBranches(items)
+            if !failed.isEmpty { throw GitError(command: "branch", exitCode: 1, stderr: "Couldn’t delete: \(failed.joined(separator: ", "))") }
+        }
+    }
+
     func merge(_ name: String) { perform("Merging…") { try await $0.merge(name) } }
     func cherryPick(_ hash: String) { perform("Cherry-picking…") { try await $0.cherryPick(hash) } }
     func revert(_ hash: String) { perform("Reverting…") { try await $0.revert(hash) } }
-    func createTag(_ name: String, at hash: String) { perform("Tagging…") { try await $0.createTag(name, at: hash) } }
+    func createTag(_ name: String, at hash: String, message: String = "", pushTo remote: String? = nil) {
+        perform("Tagging…") { repo in
+            try await repo.createTag(name, at: hash, message: message)
+            if let remote { try await repo.pushTag(name, remote: remote) }
+        }
+    }
+    func pushTag(_ name: String, to remote: String) { perform("Pushing tag…") { try await $0.pushTag(name, remote: remote) } }
+    func pushAllTags(to remote: String) { perform("Pushing tags…") { try await $0.pushAllTags(remote: remote) } }
+
+    func confirmDeleteRemoteTag(_ name: String, remote: String) {
+        let alert = NSAlert()
+        alert.messageText = "Delete tag “\(name)” on \(remote)?"
+        alert.informativeText = "The tag is removed from the remote for everyone. The local tag is kept."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete on Remote")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        perform("Deleting tag on \(remote)…") { try await $0.deleteRemoteTag(name, remote: remote) }
+    }
     func deleteTag(_ name: String) { perform("Deleting tag…") { try await $0.deleteTag(name) } }
     func stashPush(_ message: String) { perform("Stashing…") { try await $0.stashPush(message: message) } }
     func stashApply(_ ref: String) { perform("Applying stash…") { try await $0.stashApply(ref) } }

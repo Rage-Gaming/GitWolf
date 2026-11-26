@@ -45,6 +45,144 @@ and should follow each platform's native idioms.
   and non-UTF-8 diffs are read-only.
 - Commit box: multi-line message, Commit button, **amend** (pre-fills the HEAD message).
 - Selection follows a file between the unstaged and staged areas.
+- **In-progress operation banner** [core `OperationDetector`]: while a merge, rebase, cherry-pick or
+  revert is unfinished, a flat orange banner under the top bar shows the operation (with "step N of M"
+  for rebases and sequences), the number of conflicted files, **Show Conflicts**, **Skip** (not for
+  merges), **Abort** (confirmed) and **Continue** (disabled until conflicts are resolved). Detection
+  reads the git dir (`rebase-merge/`, `rebase-apply/`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`,
+  `REVERT_HEAD`, `sequencer/`), following a `gitdir:` pointer for worktrees/submodules; actions run
+  `git <op> --continue|--abort|--skip`. Also in the command palette.
+- **Conflict resolution** [core `ConflictDocument`]: selecting a file in the Conflicts group opens a
+  resolver in the detail pane. The file is parsed for `<<<<<<<` / `|||||||` (diff3 base) / `=======` /
+  `>>>>>>>` blocks (exactly 7 characters; unterminated blocks stay plain text). Each block gets
+  Ours, Theirs, Both and Both-Theirs-First, shown side by side with the branch labels. **Mark as
+  Resolved** is enabled once every block has a choice; it writes the file (CRLF and missing final
+  newline preserved) and runs `git add`. Files with no markers (deleted by us/them, added by both,
+  binary) offer Keep Ours / Keep Theirs / Delete via `git checkout --ours|--theirs` and `git rm`,
+  chosen from `git ls-files -u` stages. The row context menu has Resolve Using Ours / Theirs.
+
+## 3b. Reset, reflog and undo
+
+- **Reset Branch to Here** in the commit context menu: Soft (keep changes staged), Mixed (keep
+  changes unstaged), Hard (discard changes). `git reset --soft|--mixed|--hard <commit>`.
+- **Hard reset always asks first**, saying how many commits leave the branch and how many files
+  with uncommitted changes will be lost (`git rev-list --count target..HEAD` + status).
+- **Reflog…** (Repository menu, palette): `git reflog show HEAD`, newest first, with relative
+  dates; per entry Reset (soft/mixed/hard), Checkout (detached) and New Branch Here.
+- **Undo Last Change…** (⌥⌘Z): confirms with the last reflog message, then
+  `git reset --keep HEAD@{1}`, which keeps uncommitted work and refuses rather than overwrite it.
+
+## 3c. Rebase
+
+- **Interactive Rebase from Here…** (commit menu): lists that commit and everything after it on the
+  branch, oldest first. Drag to reorder; per commit Pick, Reword (inline message editor), Squash,
+  Fixup, Drop. Refused with an explanation for ranges containing merge commits (git would flatten
+  them) and while another operation is in progress. The plan is validated before it runs: the first
+  kept commit can't be squash/fixup, at least one commit is kept, rewords have a message.
+- Implementation [core `RebasePlan`]: writes the todo file and runs `git rebase -i --autostash
+  <parent>` (or `--root`) with `GIT_SEQUENCE_EDITOR="cp <todo>"`, so no editor opens. A reword is
+  `pick` plus `exec git commit --amend -F <file>` after any squash/fixup folded into it; messages
+  live in `<gitdir>/gitsync-rebase/`, removed when the rebase ends, and are never put on a command line.
+- **Rebase Current Branch onto This** (branch context menu): `git rebase --autostash <branch>`.
+- **Pull strategy** setting: Merge (default) or Rebase (`git pull --rebase --autostash`).
+- A conflict is not an error: the rebase stays in progress and the operation banner takes over.
+
+## 3d. Discard and stash safety
+
+- **Discard confirmations say what is lost** [core `DiscardSummary`]: for files, "Changes in N files
+  (+A lines added, −R removed) will be lost", binary files counted, untracked files listed with
+  their total size as "will be deleted". Hunk and line discards show "+A −R" for that selection.
+- **Stash this hunk**: a tray button on each unstaged hunk header. Builds the stash with plumbing
+  (temporary `GIT_INDEX_FILE`: `read-tree HEAD`, `apply --cached`, `write-tree`, `commit-tree` for
+  the index and stash commits, `git stash store`), then removes the hunk from the working tree with
+  `git apply --reverse`. If the reverse apply fails the stash entry is dropped again. Disabled for
+  files with staged changes (the stash is built on HEAD); a message can be given.
+- **Stash preview**: click a stash in the sidebar (or "Preview Changes") to see its files and
+  diffs in the main panes, with Apply / Pop / Drop; Drop asks first. Diffs use the stash commit
+  against its first parent. The view closes if the stash list changes under it.
+- Apply/Pop fall back to applying the stash as a patch when git refuses because a touched file has
+  other local changes (only for stashes without untracked files).
+
+## 3e. Commit signing
+
+- **Signature badge** in the commit detail pane [core `signature(of:)`]: green "Verified SSH/GPG
+  signature" with signer and key, orange when valid but untrusted, expired, or git can't check it
+  (no public key; for SSH, no `gpg.ssh.allowedSignersFile`), red for a bad or revoked signature.
+  The format comes from the commit's `gpgsig` header and the state from `git log --format=%G?`;
+  unsigned commits are never sent to gpg/ssh-keygen, so history stays fast, and the check runs
+  only for the selected commit.
+- **Sign checkbox** in the commit box, shown when signing is configured (`commit.gpgsign` or
+  `user.signingkey`; format from `gpg.format`). It starts from `commit.gpgsign`; an explicit choice
+  that differs from config is passed as `--gpg-sign` / `--no-gpg-sign`. GPG needs a pinentry that
+  works without a terminal (e.g. pinentry-mac); SSH keys need the agent or an unencrypted key.
+
+## 3f. Blame and file history
+
+- **History & Blame…** in the context menu of a changed file or a file inside a commit opens a sheet
+  with two tabs.
+- **History** [core `fileHistory`, `fileDiff`]: `git log --follow` for the file, newest first; select a
+  commit to see what it changed in that file. For commits before a rename the diff looks up the
+  file's older name (`--name-status` under `--follow`) so the diff isn't empty. Context menu: Show in History.
+- **Blame** [core `blame`]: `git blame --porcelain`. Author, date and a colour bar per commit run on
+  the first line of each run; uncommitted lines show "Not committed". Clicking the author jumps to
+  the commit in History. Untracked and binary files report git's error instead.
+
+## 3g. Compare refs
+
+- **Compare Refs…** (Repository menu ⌥⌘C, palette), **Compare with Current Branch** (branch and
+  commit context menus). A Compare panel replaces the main column: two ref fields (type anything,
+  or pick from branches, remotes and tags), swap, and **Only changes since the common ancestor**
+  (`git diff from...to`; off compares the two tips directly).
+- Shows "N ahead / M behind", the commits only in the compared ref (click one to open it in
+  History), and the changed files; selecting a file shows its diff in the detail pane.
+- Refs are resolved with `rev-parse --verify <ref>^{commit}` first; unknown refs and option-like
+  names (`-x`) give a plain message. Diffs use `DiffTarget.Source.compare(base:head:)` with the
+  resolved hashes.
+
+## 3h. Branch tools
+
+- **Rename** (local branch context menu): `git branch -m old new`, name validated with `git check-ref-format --branch`.
+- **Track Remote Branch / Stop Tracking**: `git branch --set-upstream-to=<remote/branch>` / `--unset-upstream`.
+- **Delete on Remote** (remote branch context menu): confirmation, then `git push <remote> --delete <branch>`.
+- **Clean Up Branches…** (Repository menu, palette): local branches in `git branch --merged <current>`, plus branches whose upstream is `gone` (`%(upstream:track)`). Never lists the current branch or main, master, develop, dev, trunk, release. Merged branches are pre-selected; an unmerged "gone" branch is tagged and warns that commits are lost. Merged branches use `branch -d`, unmerged `branch -D`.
+
+## 3i. Tags
+
+- **New Tag…** (commit context menu): name, optional message (non-empty → `git tag -a -m`, annotated; empty → lightweight), optional "Push to <remote>".
+- Tag rows: tooltip shows annotated message; context menu has **Push to <remote>**, **Delete on <remote>…** (confirmation, `git push <remote> --delete refs/tags/<tag>`) and **Delete Local Tag**. A "Push All Tags" link appears when there are several (`git push <remote> --tags`).
+- Tag list reads `for-each-ref` with the peeled object (`%(*objectname)`) so annotated tags point at their commit, plus `%(objecttype)` and `%(contents:subject)`.
+
+## 3j. History search
+
+The History search field filters loaded commits (message, author, hash prefix). The options button next to it widens the search; whenever a scope other than the default, a file/folder, or a date is set, git does the search over all refs (debounced 300 ms, max 500 results, graph hidden while searching):
+
+| Scope | Git flags |
+|---|---|
+| Message (all history) | `--grep=<text> --fixed-strings --regexp-ignore-case` |
+| Author | `--author=<text> --regexp-ignore-case` |
+| Code added or removed | `-S<text>` (pickaxe) |
+| Code matching regex | `-G<regex>` |
+| File or folder | `-- <path>` |
+| From / To dates | `--since=<date> 00:00:00` / `--until=<date> 23:59:59` |
+
+User text is always glued to its flag (`--grep=…`, `-S…`) so it can never be read as an option.
+
+## 3k. Hook output
+
+If `git commit` fails and an executable `pre-commit`, `prepare-commit-msg` or `commit-msg` hook exists (looked up with `git rev-parse --git-path hooks`, so `core.hooksPath` is honoured), the failure is treated as a hook failure unless git's own message explains it (nothing to commit, identity unknown, GPG failure, empty message, merge in progress…). The sheet shows the hook name and its full output with ANSI colour codes removed, **Copy Output**, and **Commit Without Hooks** (`git commit --no-verify`). The commit message draft is kept. Hook stdout is redirected to stderr by git, so stderr holds all output.
+
+## 3l. Ignore helper
+
+Context menu on a change row, **Ignore**: options are generated from the path (`/path/to/file`, `name`, `*.ext`, `/folder/`; special characters `* ? [ ] \` and a leading `#` or `!` are escaped). Rules are appended to `.gitignore`, or to `git rev-parse --git-path info/exclude` under **Only on This Machine**; duplicates are skipped. For a file that is already tracked the app also runs `git rm --cached -r` on the file (or, for a folder rule, the folder) so the rule takes effect; the file stays on disk.
+
+## 3m. Commit message helpers
+
+A menu button next to "Amend last commit":
+- **Type Prefix**: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert. Sets or replaces a `type(scope): ` prefix on the first line (regex `^[a-z]+(\([^)]*\))?!?:\s*`). Scope entries offer up to three top-level folders of the staged files.
+- **Reference Issue**: lists up to 15 open issues from the provider; appends `Closes #N` or `Refs #N` in a footer after a blank line, joining an existing reference block and never duplicating.
+- **Use Repository Template**: the file named by `commit.template` (`~/` and repo-relative paths supported, lines starting with `#` removed).
+- **Reuse Recent Message**: your last 10 distinct commit messages.
+- **Check Spelling While Typing**: the system spell checker on the message field (preference "spellCheckCommitMessages", default on).
 
 ## 4. Diff view
 
@@ -140,5 +278,4 @@ Full details in [PROVIDERS.md](PROVIDERS.md). Summary:
 
 ## 10. Not built yet
 
-See [ROADMAP.md](ROADMAP.md): interactive rebase, reset, conflict-resolution UI, signing status,
-submodules/worktrees, LFS, OAuth sign-in, pull-request/issue/CI lists, notarised releases.
+See [ROADMAP.md](ROADMAP.md): submodules/worktrees, LFS, notarised releases.
