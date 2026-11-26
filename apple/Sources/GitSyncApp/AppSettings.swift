@@ -40,6 +40,13 @@ enum AccentChoice: String, CaseIterable, Identifiable {
     }
 }
 
+enum DiffLayout: String, CaseIterable, Identifiable {
+    case unified, split
+    var id: String { rawValue }
+    var title: String { self == .unified ? "Unified" : "Side by Side" }
+    var icon: String { self == .unified ? "text.alignleft" : "rectangle.split.2x1" }
+}
+
 /// Keys shared between `@AppStorage` in the settings UI and `AppSettings` readers.
 enum SettingsKey {
     static let appearance = "settings.appearance"
@@ -48,6 +55,7 @@ enum SettingsKey {
     static let commitPageSize = "settings.commitPageSize"
     static let diffContext = "settings.diffContext"
     static let syntaxHighlighting = "settings.syntaxHighlighting"
+    static let diffLayout = "settings.diffLayout"
     static let gitPath = "settings.gitPath"
 }
 

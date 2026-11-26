@@ -19,7 +19,10 @@ struct DiffPane: View {
     var staging: DiffStaging?
 
     @AppStorage(SettingsKey.syntaxHighlighting) private var syntaxOn = true
+    @AppStorage(SettingsKey.diffLayout) private var layoutRaw = DiffLayout.unified.rawValue
     @State private var highlights: [Int: AttributedString] = [:]
+
+    private var layout: DiffLayout { DiffLayout(rawValue: layoutRaw) ?? .unified }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +34,7 @@ struct DiffPane: View {
                     Text((path as NSString).lastPathComponent).fontWeight(.semibold).lineLimit(1)
                     Spacer()
                     if let diff, !diff.isBinary {
+                        layoutToggle
                         Text("+\(diff.additions)").foregroundStyle(.green)
                             .padding(.horizontal, 7).padding(.vertical, 2).background(Color.green.opacity(0.12), in: Capsule())
                         Text("−\(diff.deletions)").foregroundStyle(.red)
@@ -46,15 +50,30 @@ struct DiffPane: View {
         .task(id: HighlightKey(path: path, enabled: syntaxOn, diff: diff)) { await computeHighlights() }
     }
 
+    private var layoutToggle: some View {
+        HStack(spacing: 2) {
+            ForEach(DiffLayout.allCases) { option in
+                let on = layout == option
+                Button { layoutRaw = option.rawValue } label: {
+                    Image(systemName: option.icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(on ? Color.primary : Color.secondary)
+                        .frame(width: 26, height: 20)
+                        .background(on ? Color(nsColor: .textBackgroundColor) : .clear,
+                                    in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .shadow(color: .black.opacity(on ? 0.12 : 0), radius: 1.5, y: 0.5)
+                }
+                .buttonStyle(.plain)
+                .help(option.title)
+            }
+        }
+        .padding(2)
+        .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .padding(.trailing, 4)
+    }
+
     private static let charWidth: CGFloat =
         NSFont.monospacedSystemFont(ofSize: 12, weight: .regular).maximumAdvancement.width
-
-    /// Gutters (selection, two line numbers, marker) plus the longest line, with some slack.
-    private static func contentWidth(of diff: FileDiff, staged hasSelectionGutter: Bool) -> CGFloat {
-        let longest = diff.lines.reduce(0) { max($0, $1.text.utf8.count) }
-        let gutters: CGFloat = (hasSelectionGutter ? 22 : 0) + 46 + 46 + 22
-        return gutters + CGFloat(longest) * charWidth + 32
-    }
 
     /// Re-run highlighting only when the diff, file or setting changes (not on selection changes).
     private struct HighlightKey: Hashable {
@@ -110,14 +129,35 @@ struct DiffPane: View {
                 GeometryReader { geo in
                     // Lazy stacks don't report the width of rows that aren't on screen yet, so give
                     // the content an explicit width; otherwise long lines can't be scrolled to.
-                    let width = max(geo.size.width, Self.contentWidth(of: diff, staged: staging != nil))
-                    ScrollView([.vertical, .horizontal]) {
+                    let longest = diff.lines.reduce(0) { max($0, $1.text.utf8.count) }
+                    let text = CGFloat(longest) * Self.charWidth + 32
+                    let select: CGFloat = staging != nil ? 22 : 0
+                    let unifiedWidth = max(geo.size.width, select + 46 + 46 + 22 + text)
+                    // Side by side wraps long lines so both halves always fit the panel.
+                    let half = geo.size.width / 2
+                    let width = layout == .split ? geo.size.width : unifiedWidth
+                    ScrollView(layout == .split ? [.vertical] : [.vertical, .horizontal]) {
                         LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(diff.lines) { line in
-                                if line.kind == .hunkHeader {
-                                    HunkHeaderRow(line: line, minWidth: width, staging: staging, confirmDiscard: confirmDiscard)
-                                } else {
-                                    DiffLineRow(line: line, minWidth: width, staging: staging, highlight: highlights[line.id])
+                            if layout == .split {
+                                ForEach(SideBySide.rows(for: diff)) { row in
+                                    if let header = row.header {
+                                        HunkHeaderRow(line: header, minWidth: width, staging: staging, confirmDiscard: confirmDiscard)
+                                    } else {
+                                        HStack(alignment: .top, spacing: 0) {
+                                            SplitHalf(line: row.left, side: .left, width: half, staging: staging,
+                                                      highlight: row.left.flatMap { highlights[$0.id] })
+                                            SplitHalf(line: row.right, side: .right, width: half, staging: staging,
+                                                      highlight: row.right.flatMap { highlights[$0.id] })
+                                        }
+                                    }
+                                }
+                            } else {
+                                ForEach(diff.lines) { line in
+                                    if line.kind == .hunkHeader {
+                                        HunkHeaderRow(line: line, minWidth: width, staging: staging, confirmDiscard: confirmDiscard)
+                                    } else {
+                                        DiffLineRow(line: line, minWidth: width, staging: staging, highlight: highlights[line.id])
+                                    }
                                 }
                             }
                             if diff.isTruncated {
@@ -216,6 +256,86 @@ private struct HunkHeaderRow: View {
         .padding(.leading, 70).padding(.trailing, 12).padding(.vertical, 5)
         .frame(minWidth: minWidth, alignment: .leading)
         .background(Color.accentColor.opacity(0.08))
+    }
+}
+
+/// One half (old or new) of a side-by-side row.
+private struct SplitHalf: View {
+    enum Side { case left, right }
+    let line: DiffLine?
+    let side: Side
+    let width: CGFloat
+    let staging: DiffStaging?
+    var highlight: AttributedString?
+    @State private var hovering = false
+
+    private var selected: Bool { line.map { staging?.selection.contains($0.id) ?? false } ?? false }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            if let line {
+                HStack(alignment: .top, spacing: 0) {
+                    if let staging {
+                        if line.isChange {
+                            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 12))
+                                .foregroundStyle(selected ? AnyShapeStyle(Theme.brand) : AnyShapeStyle(.tertiary))
+                                .opacity(selected || hovering ? 1 : 0.35)
+                                .frame(width: 20)
+                        } else {
+                            Color.clear.frame(width: 20)
+                        }
+                    }
+                    Text((side == .left ? line.oldNumber : line.newNumber).map(String.init) ?? "")
+                        .frame(width: 36, alignment: .trailing).foregroundStyle(.tertiary)
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard let staging, line.isChange else { return }
+                    staging.toggle(line.id, NSEvent.modifierFlags.contains(.shift))
+                }
+                Text(marker(line)).frame(width: 18).foregroundStyle(line.kind == .addition ? Color.green : Color.red)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                Group {
+                    if let highlight { Text(highlight) } else { Text(line.text.isEmpty ? " " : line.text) }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .padding(.trailing, 8)
+            }
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 12, design: .monospaced))
+        .padding(.vertical, 1)
+        .frame(width: width, alignment: .topLeading)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(background)
+        .overlay(alignment: .leading) {
+            if selected { Rectangle().fill(Theme.brand).frame(width: 3) }
+        }
+        .overlay(alignment: .trailing) {
+            if side == .left { Rectangle().fill(Color.primary.opacity(0.10)).frame(width: 1) }
+        }
+        .onHover { hovering = $0 }
+    }
+
+    private func marker(_ line: DiffLine) -> String {
+        switch line.kind {
+        case .addition: "+"
+        case .deletion: "−"
+        default: ""
+        }
+    }
+
+    private var background: Color {
+        guard let line else { return Color.primary.opacity(0.035) }
+        if selected { return Theme.brand.opacity(0.22) }
+        switch line.kind {
+        case .addition: return .green.opacity(0.13)
+        case .deletion: return .red.opacity(0.12)
+        default: return .clear
+        }
     }
 }
 

@@ -46,7 +46,7 @@ struct SettingsView: View {
             .panel()
             .padding(.trailing, 10).padding(.vertical, 10)
         }
-        .frame(width: 720, height: 560)
+        .frame(width: 720, height: 610)
         .containerBackground(for: .window) { WindowBackdrop() }
         .background(SettingsWindowConfigurator())
         .tint(Theme.brand)
@@ -189,6 +189,7 @@ private struct GeneralSettings: View {
     @AppStorage(SettingsKey.commitPageSize) private var pageSize = 1000
     @AppStorage(SettingsKey.diffContext) private var context = 4
     @AppStorage(SettingsKey.syntaxHighlighting) private var syntax = true
+    @AppStorage(SettingsKey.diffLayout) private var layout = DiffLayout.unified.rawValue
 
     var body: some View {
         Group(title: "Appearance") {
@@ -245,6 +246,10 @@ private struct GeneralSettings: View {
             Row(icon: "clock.arrow.circlepath", tint: .purple, title: "Commits per page",
                 detail: "How many commits to load at a time") {
                 PillPicker(selection: $pageSize, options: [("500", 500), ("1,000", 1000), ("2,000", 2000), ("5,000", 5000)])
+            }
+            Row(icon: "rectangle.split.2x1", tint: .teal, title: "Diff layout",
+                detail: "How changes are laid out") {
+                PillPicker(selection: $layout, options: DiffLayout.allCases.map { ($0.title, $0.rawValue) })
             }
             Row(icon: "chevron.left.forwardslash.chevron.right", tint: .pink, title: "Syntax highlighting",
                 detail: "Color keywords, strings and comments in diffs") {

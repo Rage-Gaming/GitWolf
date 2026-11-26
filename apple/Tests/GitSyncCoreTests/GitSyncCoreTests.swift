@@ -241,3 +241,24 @@ import Testing
         #expect(SyntaxHighlighter.Language.forPath("notes.xyz") == nil)
     }
 }
+
+@Suite struct SideBySideTests {
+    @Test func pairsDeletionsWithAdditions() {
+        let raw = "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,5 +1,6 @@\n keep\n-old1\n-old2\n+new1\n+new2\n+new3\n tail\n"
+        let diff = DiffParser.parse(Data(raw.utf8), maxLines: 100)
+        let rows = SideBySide.rows(for: diff)
+        #expect(rows.count == 6) // header, keep, 3 change rows, tail
+        #expect(rows[0].header != nil)
+        #expect(rows[1].left?.text == "keep" && rows[1].right?.text == "keep")
+        #expect(rows[2].left?.text == "old1" && rows[2].right?.text == "new1")
+        #expect(rows[3].left?.text == "old2" && rows[3].right?.text == "new2")
+        #expect(rows[4].left == nil && rows[4].right?.text == "new3")
+        #expect(rows[5].left?.text == "tail")
+    }
+
+    @Test func pureDeletionLeavesRightBlank() {
+        let raw = "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,2 +1,1 @@\n a\n-b\n"
+        let rows = SideBySide.rows(for: DiffParser.parse(Data(raw.utf8), maxLines: 100))
+        #expect(rows.last?.left?.text == "b" && rows.last?.right == nil)
+    }
+}
