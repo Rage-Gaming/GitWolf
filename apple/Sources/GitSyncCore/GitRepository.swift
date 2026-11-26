@@ -296,8 +296,32 @@ public struct GitRepository: Sendable {
         try await git.run(args)
     }
 
-    public func stashApply(_ ref: String) async throws { try await git.run(["stash", "apply", ref]) }
-    public func stashPop(_ ref: String) async throws { try await git.run(["stash", "pop", ref]) }
+    public func stashApply(_ ref: String) async throws {
+        do { try await git.run(["stash", "apply", ref]) }
+        catch let error as GitError {
+            if !(await applyStashAsPatch(ref, after: error)) { throw error }
+        }
+    }
+
+    public func stashPop(_ ref: String) async throws {
+        do { try await git.run(["stash", "pop", ref]) }
+        catch let error as GitError {
+            if !(await applyStashAsPatch(ref, after: error)) { throw error }
+            try await git.run(["stash", "drop", ref])
+        }
+    }
+
+    /// `git stash apply` refuses when a file the stash touches has other local changes. If the
+    /// stash is plain tracked changes (the case for a stashed hunk), applying its diff as a patch
+    /// still works whenever the changes don't overlap. Returns true when the patch was applied.
+    private func applyStashAsPatch(_ ref: String, after error: GitError) async -> Bool {
+        guard error.stderr.contains("would be overwritten") else { return false }
+        if (try? await git.run(["rev-parse", "--verify", "--quiet", "\(ref)^3"], readOnly: true)) != nil { return false }
+        guard let patch = try? await git.run(["diff", "--binary", "--no-color", "--no-ext-diff", "\(ref)^1", ref], readOnly: true),
+              (try? await git.run(["apply", "--recount", "--whitespace=nowarn", "-"], input: patch)) != nil
+        else { return false }
+        return true
+    }
     public func stashDrop(_ ref: String) async throws { try await git.run(["stash", "drop", ref]) }
 
     // MARK: Remotes

@@ -46,8 +46,9 @@ struct SidebarView: View {
                 SidebarSection(title: "Stashes", count: store.stashes.count, isOn: $showStashes) {
                     ForEach(store.stashes) { stash in
                         SidebarRow(icon: "tray.full", title: stash.message, tint: nil, trailing: nil, emphasized: false,
-                                   onTap: {}, onDoubleTap: { store.stashApply(stash.ref) })
+                                   onTap: { store.selectStash(stash) }, onDoubleTap: { store.stashApply(stash.ref) })
                             .contextMenu {
+                                Button("Preview Changes") { store.selectStash(stash) }
                                 Button("Apply") { store.stashApply(stash.ref) }
                                 Button("Pop") { store.stashPop(stash.ref) }
                                 Divider()

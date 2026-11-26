@@ -75,7 +75,7 @@ struct CommitDetailView: View {
     }
 }
 
-private struct CommitFileRow: View {
+struct CommitFileRow: View {
     let change: FileChange
     let selected: Bool
     let action: () -> Void

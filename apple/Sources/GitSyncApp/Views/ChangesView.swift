@@ -146,22 +146,11 @@ private struct ChangeRow: View {
                 Button("Unstage") { store.unstage([change.path]) }
             } else {
                 Button("Stage") { store.stage([change.path]) }
-                Button("Discard Changes…", role: .destructive) { confirmDiscard(untracked: source == .untracked) }
+                Button("Discard Changes…", role: .destructive) { store.confirmDiscard([change], untracked: source == .untracked) }
             }
             Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([store.repo.root.appendingPathComponent(change.path)])
             }
         }
-    }
-
-    private func confirmDiscard(untracked: Bool) {
-        let alert = NSAlert()
-        alert.messageText = "Discard changes to “\(change.fileName)”?"
-        alert.informativeText = untracked ? "This untracked file will be deleted. This can’t be undone."
-                                          : "Your modifications will be lost. This can’t be undone."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Discard")
-        alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn { store.discard([change], untracked: untracked) }
     }
 }

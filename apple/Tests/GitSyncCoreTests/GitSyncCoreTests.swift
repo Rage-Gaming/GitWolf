@@ -995,3 +995,66 @@ import Testing
         #expect(merges.trimmingCharacters(in: .whitespacesAndNewlines) == "0")
     }
 }
+
+@Suite struct StashSafetyTests {
+    private func twoHunks() async throws -> (TestRepo, FileDiff) {
+        let t = try await TestRepo.make()
+        let base = (1...30).map { "line \($0)" }.joined(separator: "\n") + "\n"
+        try await t.commit("base", text: base)
+        var lines = base.split(separator: "\n").map(String.init)
+        lines[1] = "TOP CHANGED"; lines[27] = "BOTTOM CHANGED"
+        try t.write(lines.joined(separator: "\n") + "\n")
+        let diff = try await t.repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt", originalPath: nil))
+        return (t, diff)
+    }
+
+    @Test func stashesOnlyTheChosenHunk() async throws {
+        let (t, diff) = try await twoHunks()
+        defer { t.cleanup() }
+        #expect(diff.hunks.count == 2)
+        let ids = diff.changedLineIDs(inHunk: 0)
+        let fwd = try #require(PatchBuilder.make(diff: diff, selecting: ids, action: .stage))
+        let back = try #require(PatchBuilder.make(diff: diff, selecting: ids, action: .discard))
+        try await t.repo.stashHunk(forwardPatch: fwd, discardPatch: back, path: "f.txt", message: "top only")
+
+        let now = try t.read()
+        #expect(now.contains("line 2\n") && !now.contains("TOP CHANGED") && now.contains("BOTTOM CHANGED"))
+        let stashes = try await t.repo.stashes()
+        #expect(stashes.count == 1 && stashes[0].message.contains("top only"))
+        let files = try await t.repo.stashFiles("stash@{0}")
+        #expect(files.map(\.path) == ["f.txt"])
+        let hash = try await t.repo.stashHash("stash@{0}")
+        let stashed = try await t.repo.diff(for: DiffTarget(source: .commit(hash), path: "f.txt", originalPath: nil))
+        #expect(stashed.hunks.count == 1 && stashed.additions == 1 && stashed.lines.contains { $0.raw == "TOP CHANGED" })
+        #expect(!stashed.lines.contains { $0.raw == "BOTTOM CHANGED" })
+
+        try await t.repo.stashPop("stash@{0}")
+        let restored = try t.read()
+        #expect(restored.contains("TOP CHANGED") && restored.contains("BOTTOM CHANGED"))
+        #expect(try await t.repo.stashes().isEmpty)
+    }
+
+    @Test func refusesWhenFileHasStagedChanges() async throws {
+        let (t, diff) = try await twoHunks()
+        defer { t.cleanup() }
+        try await t.repo.stage(["f.txt"])
+        let ids = diff.changedLineIDs(inHunk: 0)
+        let fwd = try #require(PatchBuilder.make(diff: diff, selecting: ids, action: .stage))
+        let back = try #require(PatchBuilder.make(diff: diff, selecting: ids, action: .discard))
+        await #expect(throws: (any Error).self) {
+            try await t.repo.stashHunk(forwardPatch: fwd, discardPatch: back, path: "f.txt", message: "")
+        }
+        #expect(try await t.repo.stashes().isEmpty)
+    }
+
+    @Test func discardSummaryCountsWhatWouldBeLost() async throws {
+        let (t, _) = try await twoHunks()
+        defer { t.cleanup() }
+        try t.write("12345", "new.txt")
+        let s = try await t.repo.discardSummary(tracked: ["f.txt"], untracked: ["new.txt"])
+        #expect(s.files == 1 && s.addedLines == 2 && s.removedLines == 2)
+        #expect(s.untrackedFiles == 1 && s.untrackedBytes == 5)
+        #expect(s.sentence.contains("2 lines added") && s.sentence.contains("1 untracked file"))
+        #expect(DiscardSummary().sentence == "Nothing will change.")
+    }
+}

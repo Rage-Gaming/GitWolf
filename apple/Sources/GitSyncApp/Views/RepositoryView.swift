@@ -53,6 +53,10 @@ struct RepositoryView: View {
                 }
             case .rebase(let plan):
                 RebaseSheet(store: store, plan: plan)
+            case .stashHunk(let index):
+                PromptSheet(title: "Stash Hunk", placeholder: "Message (optional)", confirm: "Stash", allowEmpty: true) { msg, _ in
+                    store.stashHunk(index, message: msg)
+                }
             case .reflog:
                 ReflogSheet(store: store)
             case .stash:
@@ -66,10 +70,16 @@ struct RepositoryView: View {
     @ViewBuilder private var mainColumn: some View {
         switch store.mode {
         case .history: HistoryView(store: store)
+        case .stash: StashView(store: store)
         case .changes: ChangesView(store: store)
         case .pullRequests: CollabListView(store: store, collab: store.pullRequests)
         case .issues: CollabListView(store: store, collab: store.issues)
         }
+    }
+
+    private var stashHunk: (@MainActor (Int) -> Void)? {
+        guard store.canStashHunk else { return nil }
+        return { store.sheet = .stashHunk($0) }
     }
 
     private var staging: DiffStaging? {
@@ -80,12 +90,16 @@ struct RepositoryView: View {
             toggle: { store.toggleLine($0, extend: $1) },
             clear: { store.clearLineSelection() },
             hunk: { store.applyHunk($0, action: $1) },
-            lines: { store.applySelectedLines(action: $0) })
+            lines: { store.applySelectedLines(action: $0) },
+            hunkSummary: { store.hunkSummary($0) },
+            lineSummary: { store.changeSummary(store.lineSelection) },
+            stashHunk: stashHunk)
     }
 
     @ViewBuilder private var detailColumn: some View {
         switch store.mode {
         case .history: CommitDetailView(store: store)
+        case .stash: DiffPane(diff: store.diff, path: store.selectedTarget?.path)
         case .changes:
             if let t = store.selectedTarget, t.source == .conflicted, store.status.conflicted.contains(where: { $0.path == t.path }) {
                 ConflictResolverView(store: store, path: t.path).id(t.path)

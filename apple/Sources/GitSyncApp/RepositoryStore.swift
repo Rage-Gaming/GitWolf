@@ -8,6 +8,7 @@ enum StoreSheet: Identifiable {
     case stash
     case reflog
     case rebase(RebasePlan)
+    case stashHunk(Int)
     var id: String {
         switch self {
         case .newBranch: "branch"
@@ -15,6 +16,7 @@ enum StoreSheet: Identifiable {
         case .stash: "stash"
         case .reflog: "reflog"
         case .rebase: "rebase"
+        case .stashHunk: "stashHunk"
         }
     }
 }
@@ -29,7 +31,7 @@ private final class TaskBag: @unchecked Sendable {
 /// always converges on the real repository state.
 @MainActor @Observable
 final class RepositoryStore: Identifiable {
-    enum Mode: Hashable { case history, changes, pullRequests, issues }
+    enum Mode: Hashable { case history, changes, pullRequests, issues, stash }
 
     private let baseRepo: GitRepository
     /// The repository with the user's current settings (git path, diff context) applied.
@@ -57,6 +59,9 @@ final class RepositoryStore: Identifiable {
     private(set) var selectedCommitID: String?
     private(set) var selectedTarget: DiffTarget?
     private(set) var commitFiles: [FileChange] = []
+    private(set) var selectedStash: Stash?
+    private(set) var stashFiles: [FileChange] = []
+    private(set) var stashCommit: String?
     private(set) var commitMessage = ""
     private(set) var diff: FileDiff?
     private(set) var lineSelection: Set<Int> = []
@@ -229,7 +234,11 @@ final class RepositoryStore: Identifiable {
         if localBranches != s.localBranches { localBranches = s.localBranches }
         if remoteBranches != s.remoteBranches { remoteBranches = s.remoteBranches }
         if tags != s.tags { tags = s.tags }
-        if stashes != s.stashes { stashes = s.stashes }
+        if stashes != s.stashes {
+            stashes = s.stashes
+            // Stash refs shift when entries come and go, so leave the preview rather than show the wrong one.
+            if mode == .stash, let sel = selectedStash, !s.stashes.contains(sel) { selectedStash = nil; mode = .changes }
+        }
         if remotes != s.remotes { remotes = s.remotes; refreshRemoteLocation() }
         if operation != s.operation { operation = s.operation }
         if !isLoaded {
@@ -237,6 +246,7 @@ final class RepositoryStore: Identifiable {
             if !s.status.isClean { mode = .changes }
             #if DEBUG
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "stash", let first = s.stashes.first { selectStash(first) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "rebase", s.commits.count > 4 { beginInteractiveRebase(from: s.commits[3].hash) }
             if ProcessInfo.processInfo.environment["GITSYNC_MODE"] == "history" {
                 mode = .history
@@ -295,7 +305,7 @@ final class RepositoryStore: Identifiable {
                     // Commits are immutable; nothing to reload.
                 } else { clearSelection() }
             }
-        case .pullRequests, .issues:
+        case .pullRequests, .issues, .stash:
             break
         }
     }
@@ -325,6 +335,20 @@ final class RepositoryStore: Identifiable {
     func reveal(hash: String) {
         mode = .history
         selectCommit(hash)
+    }
+
+    /// Shows what a stash contains (files and diffs) without applying it.
+    func selectStash(_ stash: Stash) {
+        mode = .stash
+        selectedStash = stash
+        stashFiles = []; stashCommit = nil
+        selectedTarget = nil; diff = nil; diffToken += 1
+        Task {
+            guard let hash = try? await repo.stashHash(stash.ref), let files = try? await repo.stashFiles(stash.ref),
+                  selectedStash == stash else { return }
+            stashCommit = hash; stashFiles = files
+            if let first = files.first { selectChange(first, source: .commit(hash)) }
+        }
     }
 
     func selectChange(_ change: FileChange, source: DiffTarget.Source) {
@@ -397,6 +421,45 @@ final class RepositoryStore: Identifiable {
     func applyHunk(_ index: Int, action: PatchAction) {
         guard let diff else { return }
         applyPatch(diff, ids: diff.changedLineIDs(inHunk: index), action: action)
+    }
+
+    /// "+3 −1" for the given changed lines of the current diff.
+    func changeSummary(_ ids: Set<Int>) -> String {
+        guard let diff else { return "" }
+        let lines = diff.lines.filter { ids.contains($0.id) }
+        return "+\(lines.filter { $0.kind == .addition }.count) −\(lines.filter { $0.kind == .deletion }.count)"
+    }
+    func hunkSummary(_ index: Int) -> String { changeSummary(diff?.changedLineIDs(inHunk: index) ?? []) }
+
+    /// A hunk can be stashed from the unstaged diff of a file that has nothing staged.
+    var canStashHunk: Bool {
+        guard canPatch, let t = selectedTarget, t.source == .unstaged else { return false }
+        return !status.staged.contains { $0.path == t.path }
+    }
+
+    func stashHunk(_ index: Int, message: String) {
+        guard let diff, let target = selectedTarget else { return }
+        let ids = diff.changedLineIDs(inHunk: index)
+        guard let forward = PatchBuilder.make(diff: diff, selecting: ids, action: .stage),
+              let back = PatchBuilder.make(diff: diff, selecting: ids, action: .discard) else { return }
+        perform("Stashing hunk…") {
+            try await $0.stashHunk(forwardPatch: forward, discardPatch: back, path: target.path, message: message)
+        }
+    }
+
+    /// Asks before discarding, saying exactly how many lines and files are lost.
+    func confirmDiscard(_ changes: [FileChange], untracked: Bool) {
+        let paths = changes.map(\.path)
+        Task {
+            let summary = try? await repo.discardSummary(tracked: untracked ? [] : paths, untracked: untracked ? paths : [])
+            let alert = NSAlert()
+            alert.messageText = changes.count == 1 ? "Discard changes to “\(changes[0].fileName)”?" : "Discard changes to \(changes.count) files?"
+            alert.informativeText = summary?.sentence ?? "This can’t be undone."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Discard")
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() == .alertFirstButtonReturn { discard(changes, untracked: untracked) }
+        }
     }
 
     func applySelectedLines(action: PatchAction) {

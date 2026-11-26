@@ -87,6 +87,22 @@ and should follow each platform's native idioms.
 - **Pull strategy** setting: Merge (default) or Rebase (`git pull --rebase --autostash`).
 - A conflict is not an error: the rebase stays in progress and the operation banner takes over.
 
+## 3d. Discard and stash safety
+
+- **Discard confirmations say what is lost** [core `DiscardSummary`]: for files, "Changes in N files
+  (+A lines added, −R removed) will be lost", binary files counted, untracked files listed with
+  their total size as "will be deleted". Hunk and line discards show "+A −R" for that selection.
+- **Stash this hunk**: a tray button on each unstaged hunk header. Builds the stash with plumbing
+  (temporary `GIT_INDEX_FILE`: `read-tree HEAD`, `apply --cached`, `write-tree`, `commit-tree` for
+  the index and stash commits, `git stash store`), then removes the hunk from the working tree with
+  `git apply --reverse`. If the reverse apply fails the stash entry is dropped again. Disabled for
+  files with staged changes (the stash is built on HEAD); a message can be given.
+- **Stash preview**: click a stash in the sidebar (or "Preview Changes") to see its files and
+  diffs in the main panes, with Apply / Pop / Drop; Drop asks first. Diffs use the stash commit
+  against its first parent. The view closes if the stash list changes under it.
+- Apply/Pop fall back to applying the stash as a patch when git refuses because a touched file has
+  other local changes (only for stashes without untracked files).
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is
