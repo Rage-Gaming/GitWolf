@@ -86,7 +86,7 @@ struct AppSettings: Sendable {
         var r = repo
         r.gitPath = gitPath
         r.contextLines = diffContext
-        r.credentials = { AccountStorage.credential(forHost: $0) }
+        r.credentials = { await AccountStorage.credential(forHost: $0) }
         r.askpassPath = AskPass.path
         return r
     }

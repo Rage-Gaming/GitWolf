@@ -87,8 +87,11 @@ public struct ProviderAccount: Codable, Identifiable, Hashable, Sendable {
     public var usesPassword: Bool?
     /// "http" for self-hosted servers without TLS; nil means https.
     public var scheme: String?
+    /// OAuth sign-in: the secret in the credential store is a JSON `OAuthTokens`, refreshed on demand.
+    public var oauthClientID: String?
 
-    public init(id: String = UUID().uuidString, kind: ProviderKind, host: String, username: String, usesPassword: Bool = false, scheme: String? = nil) {
+    public init(id: String = UUID().uuidString, kind: ProviderKind, host: String, username: String, usesPassword: Bool = false, scheme: String? = nil, oauthClientID: String? = nil) {
+        self.oauthClientID = oauthClientID
         self.scheme = scheme == "http" ? "http" : nil
         self.usesPassword = usesPassword ? true : nil
         self.id = id
@@ -104,7 +107,8 @@ public struct ProviderAccount: Codable, Identifiable, Hashable, Sendable {
         if let colon = h.firstIndex(of: ":") { h = String(h[..<colon]) }
         return h.lowercased()
     }
-    var origin: String { "\(scheme ?? "https")://\(host)" }
+    public var usesOAuth: Bool { oauthClientID != nil }
+    public var origin: String { "\(scheme ?? "https")://\(host)" }
 
     public var title: String { host == kind.defaultHost ? kind.title : "\(kind.title) · \(host)" }
 }

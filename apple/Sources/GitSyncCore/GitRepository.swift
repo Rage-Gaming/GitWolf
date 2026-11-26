@@ -11,7 +11,7 @@ public struct GitRepository: Sendable {
 
     /// Resolves a saved credential for a remote host, plus where the `GIT_ASKPASS` helper lives.
     /// Only consulted for network commands (fetch, pull, push, clone).
-    public var credentials: (@Sendable (String) -> GitCredential?)?
+    public var credentials: (@Sendable (String) async -> GitCredential?)?
     public var askpassPath: String?
 
     var git: GitRunner { GitRunner(workingDirectory: root, gitPath: gitPath) }
@@ -22,7 +22,7 @@ public struct GitRepository: Sendable {
               let names = try? await remotes(), let name = names.contains("origin") ? "origin" : names.first,
               let url = try? await git.runString(["remote", "get-url", name], readOnly: true),
               let location = RemoteLocation.parse(url),
-              let credential = credentials(location.host)
+              let credential = await credentials(location.host)
         else { return git }
         return GitRunner(workingDirectory: root, gitPath: gitPath,
                          extraEnvironment: credential.environment(askpassPath: askpassPath))

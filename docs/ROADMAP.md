@@ -10,6 +10,6 @@
 ## Later
 - Submodules and worktrees
 - Git LFS indicators
-- OAuth / device-flow sign-in for providers
+- Bundled OAuth client IDs for github.com, gitlab.com and codeberg.org; OAuth for Bitbucket and Azure DevOps
 - Pull-request, issue and CI status lists
 - Windows and Linux native clients (see [PORTING.md](PORTING.md))

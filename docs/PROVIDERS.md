@@ -37,6 +37,38 @@ Never put secrets in URLs, command lines or config files. Use `GIT_ASKPASS`:
 This was verified against a local HTTP server: git sends the first request unauthenticated, gets a
 401, then retries with `Authorization: Basic base64(user:token)`.
 
+## OAuth sign-in (browser)
+
+Reference: `apple/Sources/GitSyncCore/OAuth.swift` (portable; uses SHA-256 for PKCE) and
+`apple/Sources/GitSyncApp/OAuthSignIn.swift` (loopback listener, session driver).
+
+Only **public-client** flows are used, so GitSync never needs (or ships) a client secret:
+
+| Provider | Flow | Endpoints (`<origin>` = scheme + host) |
+|---|---|---|
+| GitHub (and Enterprise) | Device flow | `POST <origin>/login/device/code`, poll `POST <origin>/login/oauth/access_token` (`grant_type=urn:ietf:params:oauth:grant-type:device_code`); handle `authorization_pending`, `slow_down` (+5 s), `access_denied`, `expired_token` |
+| GitLab (and self-managed) | Authorization code + PKCE (S256), loopback redirect | `<origin>/oauth/authorize`, `<origin>/oauth/token` |
+| Gitea / Forgejo / Codeberg | Authorization code + PKCE, loopback redirect | `<origin>/login/oauth/authorize`, `<origin>/login/oauth/access_token` |
+| Bitbucket, Azure DevOps | not offered | Bitbucket Cloud needs a client secret; Azure needs Microsoft Entra. Use tokens. |
+
+- **Loopback redirect** is fixed: `http://127.0.0.1:53682/callback` (`OAuthLoopback`). GitLab and
+  Gitea require the exact redirect URI to be registered. Listen on the loopback interface only,
+  verify `state`, answer with a small "you can close this tab" page, time out after 5 minutes.
+- **Client IDs.** A client ID is public but belongs to an application registered on a host. GitSync
+  ships none by default (`OAuthClients.builtIn` is empty; maintainers add IDs for github.com,
+  gitlab.com, codeberg.org). Otherwise the user pastes their own client ID, remembered per host, with
+  an inline hint on how to register the app (public client, redirect URI, scopes: GitHub `repo`;
+  GitLab `read_api read_repository write_repository`).
+- **Storage.** The credential-store secret for an OAuth account is a JSON `OAuthTokens`
+  `{accessToken, refreshToken?, expiresAt?}`; the account carries `oauthClientID`.
+- **Refresh.** Before any network git command or API call, if the access token expires within a
+  minute, refresh it (`grant_type=refresh_token`), keep the old refresh token if none is returned,
+  and write the new tokens back. Serialise refreshes per account (rotating refresh tokens break if two
+  run at once). GitHub OAuth-app tokens do not expire; GitLab's last 2 hours.
+- **Using the token.** API: `Authorization: Bearer <access>` for every provider. Git: through
+  `GIT_ASKPASS` with username `oauth2` for GitLab, `x-access-token` for GitHub, the real username
+  otherwise.
+
 ## API usage (listing + verification)
 
 | Kind | API base | Auth header | List repos |

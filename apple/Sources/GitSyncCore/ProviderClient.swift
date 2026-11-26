@@ -75,6 +75,11 @@ public struct ProviderClient: Sendable {
         r.timeoutInterval = 30
         r.setValue("application/json", forHTTPHeaderField: "Accept")
         r.setValue("GitSync", forHTTPHeaderField: "User-Agent")
+        if account.usesOAuth {
+            r.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
+            if account.kind == .github { r.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version") }
+            return r
+        }
         if account.usesPassword == true {
             let basic = Data("\(account.username):\(secret)".utf8).base64EncodedString()
             r.setValue("Basic \(basic)", forHTTPHeaderField: "Authorization")

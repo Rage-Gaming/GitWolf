@@ -468,3 +468,95 @@ import Testing
         #expect(try ask("Password for 'https://octo@github.com': ") == "s3cret")
     }
 }
+
+@Suite struct OAuthTests {
+    private final class Script: @unchecked Sendable {
+        private let lock = NSLock()
+        private var bodies: [String]
+        private(set) var requests: [URLRequest] = []
+        private(set) var sleeps: [Int] = []
+        init(_ bodies: [String]) { self.bodies = bodies }
+        func next(_ r: URLRequest) -> String {
+            lock.withLock { requests.append(r); return bodies.count > 1 ? bodies.removeFirst() : bodies[0] }
+        }
+        func slept(_ s: Int) { lock.withLock { sleeps.append(s) } }
+    }
+
+    private func client(_ kind: ProviderKind, _ script: Script, origin: String = "https://github.com") -> OAuthClient {
+        OAuthClient(kind: kind, origin: origin, clientID: "cid", transport: { request in
+            (Data(script.next(request).utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }, sleep: { script.slept($0) })
+    }
+
+    @Test func pkceMatchesRFC7636Vector() {
+        #expect(PKCE.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk") == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+        let p = PKCE.generate()
+        #expect(p.verifier.count >= 43 && PKCE.challenge(for: p.verifier) == p.challenge)
+        #expect(!p.challenge.contains("=") && !p.challenge.contains("+") && !p.challenge.contains("/"))
+    }
+
+    @Test func buildsAuthorizationURLs() {
+        let gl = client(.gitlab, Script(["{}"]), origin: "https://gitlab.acme.com")
+        let url = gl.authorizationURL(redirectURI: OAuthLoopback.redirectURI, state: "s1", challenge: "ch")?.absoluteString ?? ""
+        #expect(url.hasPrefix("https://gitlab.acme.com/oauth/authorize?"))
+        #expect(url.contains("client_id=cid") && url.contains("code_challenge=ch") && url.contains("code_challenge_method=S256"))
+        #expect(url.contains("state=s1") && url.contains("response_type=code") && url.contains("scope=read_api"))
+        let gitea = client(.gitea, Script(["{}"]), origin: "https://codeberg.org")
+        #expect(gitea.authorizationURL(redirectURI: "r", state: "s", challenge: "c")?.absoluteString.hasPrefix("https://codeberg.org/login/oauth/authorize?") == true)
+    }
+
+    @Test func exchangesCodeAndRefreshes() async throws {
+        let script = Script([#"{"access_token":"a1","refresh_token":"r1","expires_in":7200}"#,
+                             #"{"access_token":"a2","expires_in":7200}"#])
+        let c = client(.gitlab, script, origin: "https://gitlab.com")
+        let tokens = try await c.exchange(code: "the code", verifier: "ver", redirectURI: OAuthLoopback.redirectURI)
+        #expect(tokens.accessToken == "a1" && tokens.refreshToken == "r1" && tokens.expiresAt != nil && !tokens.needsRefresh())
+        let body = String(decoding: script.requests[0].httpBody ?? Data(), as: UTF8.self)
+        #expect(body.contains("grant_type=authorization_code") && body.contains("code=the%20code") && body.contains("code_verifier=ver"))
+        #expect(script.requests[0].url?.absoluteString == "https://gitlab.com/oauth/token")
+
+        let fresh = try await c.refresh(OAuthTokens(accessToken: "a1", refreshToken: "r1", expiresAt: Date().addingTimeInterval(-5)))
+        #expect(fresh.accessToken == "a2" && fresh.refreshToken == "r1")  // refresh token kept when not rotated
+        #expect(OAuthTokens(accessToken: "x", expiresAt: Date().addingTimeInterval(-1)).needsRefresh())
+        #expect(!OAuthTokens(accessToken: "x").needsRefresh())
+    }
+
+    @Test func deviceFlowPollsUntilApproved() async throws {
+        let script = Script([
+            #"{"device_code":"dc","user_code":"ABCD-1234","verification_uri":"https://github.com/login/device","interval":5,"expires_in":900}"#,
+            #"{"error":"authorization_pending"}"#,
+            #"{"error":"slow_down"}"#,
+            #"{"access_token":"gho_x","token_type":"bearer"}"#,
+        ])
+        let c = client(.github, script)
+        let device = try await c.startDeviceFlow()
+        #expect(device.userCode == "ABCD-1234" && device.interval == 5)
+        let tokens = try await c.pollDeviceFlow(device)
+        #expect(tokens.accessToken == "gho_x" && tokens.expiresAt == nil)
+        #expect(script.sleeps == [5, 5, 10])  // slow_down adds 5 seconds
+        #expect(script.requests[1].url?.absoluteString == "https://github.com/login/oauth/access_token")
+    }
+
+    @Test func deviceFlowReportsDenialAndExpiry() async {
+        let denied = client(.github, Script([#"{"error":"access_denied"}"#]))
+        let device = DeviceCode(deviceCode: "d", userCode: "u", verificationURL: URL(string: "https://x")!, interval: 1, expiresIn: 30)
+        await #expect(throws: OAuthError.denied) { try await denied.pollDeviceFlow(device) }
+        let expired = client(.github, Script([#"{"error":"expired_token"}"#]))
+        await #expect(throws: OAuthError.expired) { try await expired.pollDeviceFlow(device) }
+    }
+
+    @Test func oauthAccountsUseBearerAndProviderFlows() async throws {
+        #expect(ProviderKind.github.oauthFlow == .device && ProviderKind.gitlab.oauthFlow == .pkce && ProviderKind.bitbucket.oauthFlow == nil)
+        #expect(GitCredential.oauthUsername(kind: .gitlab, fallback: "me") == "oauth2")
+        let account = ProviderAccount(kind: .gitlab, host: "gitlab.com", username: "me", oauthClientID: "cid")
+        #expect(account.usesOAuth)
+        let script = Script(["[]"])
+        let c = ProviderClient(account: account, token: "tok") { request in
+            _ = script.next(request)
+            return (Data("[]".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        _ = try await c.repositories()
+        #expect(script.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer tok")
+        #expect(script.requests[0].value(forHTTPHeaderField: "PRIVATE-TOKEN") == nil)
+    }
+}

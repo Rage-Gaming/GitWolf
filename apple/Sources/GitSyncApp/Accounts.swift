@@ -66,13 +66,21 @@ enum AccountStorage {
 
     static func token(for account: ProviderAccount) -> String? { Keychain.read(account.id) }
 
+    /// The secret to use right now: a token or password as stored, or, for OAuth accounts, a valid
+    /// access token (refreshed first when it is about to expire).
+    static func secret(for account: ProviderAccount) async -> String? {
+        guard let stored = token(for: account) else { return nil }
+        guard account.usesOAuth else { return stored }
+        return await OAuthRefresher.shared.accessToken(for: account, stored: stored)
+    }
+
     /// The credential git should use for a remote on `host`, if the user added an account for it.
-    static func credential(forHost host: String) -> GitCredential? {
-        let h = host.lowercased()
-        // Azure DevOps remotes may live on org.visualstudio.com; match on the provider's own hosts too.
-        guard let account = load().first(where: { $0.hostName == h }),
-              let token = token(for: account) else { return nil }
-        return GitCredential(host: account.hostName, username: account.username, token: token)
+    static func credential(forHost host: String) async -> GitCredential? {
+        guard let account = account(forHost: host), let secret = await secret(for: account) else { return nil }
+        let user = account.usesOAuth
+            ? GitCredential.oauthUsername(kind: account.kind, fallback: account.username)
+            : account.username
+        return GitCredential(host: account.hostName, username: user, token: secret)
     }
 
     static func account(forHost host: String) -> ProviderAccount? {
@@ -101,6 +109,32 @@ enum AskPass {
     }()
 }
 
+/// Refreshes OAuth tokens one at a time per account, so two git operations never race on a rotating
+/// refresh token.
+actor OAuthRefresher {
+    static let shared = OAuthRefresher()
+    private var inFlight: [String: Task<String?, Never>] = [:]
+
+    func accessToken(for account: ProviderAccount, stored: String) async -> String? {
+        guard let tokens = try? JSONDecoder().decode(OAuthTokens.self, from: Data(stored.utf8)) else { return nil }
+        guard tokens.needsRefresh() else { return tokens.accessToken }
+        if let running = inFlight[account.id] { return await running.value }
+        let task = Task<String?, Never> {
+            guard let clientID = account.oauthClientID else { return tokens.accessToken }
+            let client = OAuthClient(kind: account.kind, origin: account.origin, clientID: clientID)
+            guard let fresh = try? await client.refresh(tokens) else { return tokens.accessToken }
+            if let data = try? JSONEncoder().encode(fresh), let json = String(data: data, encoding: .utf8) {
+                try? Keychain.save(json, for: account.id)
+            }
+            return fresh.accessToken
+        }
+        inFlight[account.id] = task
+        let value = await task.value
+        inFlight[account.id] = nil
+        return value
+    }
+}
+
 @MainActor @Observable
 final class AccountStore {
     static let shared = AccountStore()
@@ -117,6 +151,11 @@ final class AccountStore {
         list.append(account)
         accounts = list
         AccountStorage.save(list)
+    }
+
+    func addOAuth(_ account: ProviderAccount, tokens: OAuthTokens) throws {
+        let data = try JSONEncoder().encode(tokens)
+        try add(account, token: String(decoding: data, as: UTF8.self))
     }
 
     func remove(_ account: ProviderAccount) {

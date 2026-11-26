@@ -103,7 +103,7 @@ Full details in [PROVIDERS.md](PROVIDERS.md). Summary:
 
 - Providers: GitHub, GitLab, Bitbucket (Cloud and Data Center), Gitea/Forgejo/Codeberg, Azure
   DevOps. Cloud and self-hosted/enterprise (custom host, port, http).
-- Sign in with an **access token** or a **username and password**; multiple accounts, even per host.
+- Sign in with the **browser (OAuth)**, an **access token**, or a **username and password**; multiple accounts, even per host. OAuth: GitHub device flow, GitLab/Gitea PKCE.
 - Secrets live in the OS credential store (macOS Keychain; Windows Credential Manager; Linux Secret
   Service). Never in preferences, URLs, command lines or git config.
 - Authenticated fetch/pull/push/clone through `GIT_ASKPASS`.

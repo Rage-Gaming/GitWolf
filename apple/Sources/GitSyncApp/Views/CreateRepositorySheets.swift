@@ -234,12 +234,13 @@ struct CloneSheet: View {
             repoError = "\(account.kind.title) doesn't support browsing yet. Paste the repository URL below."
             return
         }
-        guard let token = AccountStorage.token(for: account) else {
-            repoError = "The token for this account is missing from the Keychain."
-            return
-        }
         loadingRepos = true
         Task {
+            guard let token = await AccountStorage.secret(for: account) else {
+                repoError = "The token for this account is missing from the Keychain."
+                loadingRepos = false
+                return
+            }
             do {
                 let list = try await ProviderClient(account: account, token: token).repositories()
                 if source?.id == account.id { repos = list }
@@ -259,9 +260,11 @@ struct CloneSheet: View {
         let folder = name.trimmingCharacters(in: .whitespaces)
         let parent = URL(fileURLWithPath: location, isDirectory: true)
         let gitPath = AppSettings.shared.gitPath
-        let credential = RemoteLocation.parse(source).flatMap { AccountStorage.credential(forHost: $0.host) }
+        let host = RemoteLocation.parse(source)?.host
 
         task = Task {
+            var credential: GitCredential?
+            if let host { credential = await AccountStorage.credential(forHost: host) }
             do {
                 try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
                 let destination = try await GitRepository.clone(url: source, into: parent, name: folder, gitPath: gitPath,

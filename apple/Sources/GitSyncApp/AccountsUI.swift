@@ -97,14 +97,18 @@ struct AccountsSettings: View {
 // MARK: - Add account
 
 struct AddAccountSheet: View {
+    enum Method: Hashable { case browser, token, password }
+
     @Environment(\.dismiss) private var dismiss
     @State private var kind = ProviderKind.github
     @State private var host = ProviderKind.github.defaultHost
     @State private var username = ""
     @State private var token = ""
-    @State private var usePassword = false
+    @State private var method = Method.browser
+    @State private var clientID = ""
     @State private var working = false
     @State private var error: String?
+    @State private var session = OAuthSession()
 
     private var cleanHost: String {
         var h = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -116,9 +120,22 @@ struct AddAccountSheet: View {
     private var scheme: String? {
         host.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("http://") ? "http" : nil
     }
+    private var oauthAvailable: Bool { kind.oauthFlow != nil }
+    private var effectiveMethod: Method { method == .browser && !oauthAvailable ? .token : method }
+    private var needsClientID: Bool { effectiveMethod == .browser && !OAuthClients.hasBuiltIn(host: cleanHost) }
+    private var resolvedClientID: String {
+        let typed = clientID.trimmingCharacters(in: .whitespaces)
+        return typed.isEmpty ? (OAuthClients.clientID(host: cleanHost) ?? "") : typed
+    }
     private var canAdd: Bool {
-        !cleanHost.isEmpty && !token.trimmingCharacters(in: .whitespaces).isEmpty
-            && (!(kind.needsUsername || usePassword) || !username.trimmingCharacters(in: .whitespaces).isEmpty) && !working
+        guard !cleanHost.isEmpty, !working, !session.isActive else { return false }
+        switch effectiveMethod {
+        case .browser: return !resolvedClientID.isEmpty
+        case .token: return !token.trimmingCharacters(in: .whitespaces).isEmpty
+                && (!kind.needsUsername || !username.trimmingCharacters(in: .whitespaces).isEmpty)
+        case .password: return !token.trimmingCharacters(in: .whitespaces).isEmpty
+                && !username.trimmingCharacters(in: .whitespaces).isEmpty
+        }
     }
 
     var body: some View {
@@ -145,17 +162,20 @@ struct AddAccountSheet: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(session.isActive)
                 }
             }
 
-            Picker("", selection: $usePassword) {
-                Text(kind.secretName == "Access token" ? "Access token" : "Token / app password").tag(false)
-                Text("Username & password").tag(true)
+            Picker("", selection: Binding(get: { effectiveMethod }, set: { method = $0; error = nil })) {
+                if oauthAvailable { Text("Browser").tag(Method.browser) }
+                Text("Token").tag(Method.token)
+                Text("Password").tag(Method.password)
             }
-            .pickerStyle(.segmented).labelsHidden()
+            .pickerStyle(.segmented).labelsHidden().disabled(session.isActive)
 
             field("HOST") {
                 TextField(kind.defaultHost, text: $host).textFieldStyle(.plain)
+                    .disabled(session.isActive)
                     .onChange(of: host) { _, value in
                         // Enterprise / self-managed servers: pick the provider from the hostname.
                         var h = value.lowercased()
@@ -165,36 +185,98 @@ struct AddAccountSheet: View {
             }
             Text(verbatim: "For GitHub Enterprise, GitLab self-managed, Gitea or Bitbucket Data Center, enter your server, e.g. git.company.com or https://git.company.com:8443.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if kind.needsUsername || usePassword {
-                field("USERNAME") { TextField("username", text: $username).textFieldStyle(.plain) }
-            }
-            field(usePassword ? "PASSWORD" : kind.secretName.uppercased()) {
-                SecureField("Paste here", text: $token).textFieldStyle(.plain).onSubmit(add)
+
+            switch effectiveMethod {
+            case .browser: browserSection
+            case .token, .password: secretSection
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(usePassword ? "Many hosts (GitHub, GitLab) no longer accept passwords for Git over HTTPS; use a token there."
-                                 : kind.scopeHint).font(.caption).foregroundStyle(.secondary)
-                if !usePassword, let link = kind.tokenPageURL(host: cleanHost) {
-                    Button("Create a \(kind.secretName.lowercased()) on \(cleanHost) ↗") { NSWorkspace.shared.open(link) }
-                        .buttonStyle(.link).font(.caption)
-                }
+            if let reason = kind.oauthUnavailableReason, !oauthAvailable, method == .browser {
+                Text(reason).font(.caption).foregroundStyle(.secondary)
             }
-
             if let error { Text(error).font(.callout).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
 
             HStack {
                 if working { ProgressView().controlSize(.small); Text("Verifying…").font(.caption).foregroundStyle(.secondary) }
                 Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Add", action: add)
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!canAdd)
+                Button("Cancel", role: .cancel) { session.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
+                if effectiveMethod == .browser {
+                    Button(kind.oauthFlow == .device ? "Continue" : "Sign In", action: signIn)
+                        .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(!canAdd)
+                } else {
+                    Button("Add", action: add)
+                        .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(!canAdd)
+                }
             }
         }
         .padding(22)
         .frame(width: 460)
+        .onDisappear { session.cancel() }
+    }
+
+    // MARK: Sections
+
+    @ViewBuilder private var browserSection: some View {
+        switch session.phase {
+        case .device(let code, let url):
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Enter this code on \(url.host ?? cleanHost)")
+                    .font(.system(size: 11, weight: .semibold)).tracking(0.4).foregroundStyle(.secondary)
+                HStack {
+                    Text(code).font(.system(size: 26, weight: .semibold, design: .monospaced)).textSelection(.enabled)
+                    Spacer()
+                    Button("Copy") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(code, forType: .string)
+                    }.buttonStyle(.bordered)
+                    Button("Open Page") { NSWorkspace.shared.open(url) }.buttonStyle(.bordered)
+                }
+                .padding(12).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Waiting for you to approve in the browser… The code is already copied.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        case .browser, .finishing:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(session.phase == .finishing ? "Finishing sign-in…" : "Complete the sign-in in your browser…")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        case .idle:
+            VStack(alignment: .leading, spacing: 8) {
+                if needsClientID {
+                    field("OAUTH CLIENT ID") {
+                        TextField("Paste the application’s Client ID", text: $clientID).textFieldStyle(.plain)
+                            .font(.system(.body, design: .monospaced))
+                    }
+                    Text(OAuthClients.setupHint(kind, host: cleanHost))
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("You’ll approve GitSync in your browser. No token to copy.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var secretSection: some View {
+        let password = effectiveMethod == .password
+        if kind.needsUsername || password {
+            field("USERNAME") { TextField("username", text: $username).textFieldStyle(.plain) }
+        }
+        field(password ? "PASSWORD" : kind.secretName.uppercased()) {
+            SecureField("Paste here", text: $token).textFieldStyle(.plain).onSubmit(add)
+        }
+        VStack(alignment: .leading, spacing: 4) {
+            Text(password ? "Many hosts (GitHub, GitLab) no longer accept passwords for Git over HTTPS; use a token there."
+                          : kind.scopeHint).font(.caption).foregroundStyle(.secondary)
+            if !password, let link = kind.tokenPageURL(host: cleanHost) {
+                Button("Create a \(kind.secretName.lowercased()) on \(cleanHost) ↗") { NSWorkspace.shared.open(link) }
+                    .buttonStyle(.link).font(.caption)
+            }
+        }
     }
 
     private func field<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
@@ -206,14 +288,42 @@ struct AddAccountSheet: View {
         }
     }
 
-    private func add() {
+    // MARK: Actions
+
+    private func signIn() {
         guard canAdd else { return }
+        error = nil
+        let id = resolvedClientID
+        let account = ProviderAccount(kind: kind, host: cleanHost, username: "", scheme: scheme, oauthClientID: id)
+        session.start(account: account, clientID: id) { account, tokens in
+            Task { await finishOAuth(account, tokens) }
+        } failed: { message in
+            error = message
+        }
+    }
+
+    private func finishOAuth(_ account: ProviderAccount, _ tokens: OAuthTokens) async {
+        working = true
+        var account = account
+        do {
+            account.username = try await ProviderClient(account: account, token: tokens.accessToken).currentUser()
+            if needsClientID { OAuthClients.remember(account.oauthClientID ?? "", host: account.host) }
+            try AccountStore.shared.addOAuth(account, tokens: tokens)
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+            working = false
+        }
+    }
+
+    private func add() {
+        guard canAdd, effectiveMethod != .browser else { return }
         working = true
         error = nil
         let secret = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = effectiveMethod == .password
         var account = ProviderAccount(kind: kind, host: cleanHost, username: username.trimmingCharacters(in: .whitespaces),
-                                      usesPassword: usePassword, scheme: scheme)
-        let password = usePassword
+                                      usesPassword: password, scheme: scheme)
         Task {
             do {
                 if kind.supportsRepositoryListing {
