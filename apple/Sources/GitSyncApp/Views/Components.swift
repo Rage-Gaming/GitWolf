@@ -177,10 +177,11 @@ struct RefChip: View {
         .background(color.opacity(label.isCurrent ? 0.22 : 0.12), in: Capsule())
         .overlay(Capsule().strokeBorder(color.opacity(label.isCurrent ? 0.35 : 0.0)))
     }
-    /// Local and remote branches use the same icon as in the sidebar, chosen from the branch name.
+    /// Branches and tags use the same icons as in the sidebar, chosen from the name.
     private var branchLook: FileIcon? {
         switch label.kind {
         case .local: return FileIcons.branchIcon(named: label.name)
+        case .tag: return FileIcons.tagIcon(named: label.name)
         case .remote:
             // "origin/feature/x" → look at "feature/x".
             let name = label.name.split(separator: "/", maxSplits: 1).dropFirst().first.map(String.init) ?? label.name
