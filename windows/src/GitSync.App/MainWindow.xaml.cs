@@ -299,7 +299,9 @@ public sealed partial class MainWindow : Window
 
     private void ShowError(string? message)
     {
-        Error.Message = message ?? "";
+        ErrorText.Text = message ?? "";
+        // A new message starts from its first line.
+        ErrorScroller.ChangeView(null, 0, null, true);
         Error.IsOpen = message is not null;
     }
 
