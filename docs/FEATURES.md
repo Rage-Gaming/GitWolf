@@ -13,6 +13,10 @@ and should follow each platform's native idioms.
 - **Multiple repositories open at once** [ui + core]. A vertical *repo rail* lists them with a live
   badge of uncommitted changes. Every open repo keeps its own watcher and sync loop alive in the
   background, not only the visible one.
+- **Dock / taskbar integration** [ui; core `BadgeLabel`]. The app icon badge shows the total files with
+  uncommitted changes across open repositories (`BadgeLabel.text`: none for 0, `99+` above 99). The
+  Dock (taskbar jump list on Windows/Linux) menu lists up to 8 recent repositories, and File > Open
+  Recent lists the recents with *Clear Menu*.
 - Open set and selection are persisted and restored on launch.
 - Open a repository (folder picker; any folder inside a repo resolves to its root via
   `rev-parse --show-toplevel`), `--open=/path` launch flag.

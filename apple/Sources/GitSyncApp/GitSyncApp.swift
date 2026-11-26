@@ -44,6 +44,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
     }
+    /// Right-clicking the Dock icon lists recent repositories.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        for url in RecentRepositories.load().prefix(8) {
+            let item = NSMenuItem(title: url.lastPathComponent, action: #selector(openRecent(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = url
+            menu.addItem(item)
+        }
+        return menu.items.isEmpty ? nil : menu
+    }
+
+    @objc private func openRecent(_ item: NSMenuItem) {
+        if let url = item.representedObject as? URL { Task { @MainActor in Workspace.current?.open(url) } }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
@@ -145,6 +161,14 @@ struct AppCommands: Commands {
                 .keyboardShortcut("o", modifiers: [.command, .shift])
             Button("New Repository…") { workspace?.sheet = .create }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+            Menu("Open Recent") {
+                ForEach(workspace?.recents ?? [], id: \.self) { url in
+                    Button(url.lastPathComponent) { workspace?.open(url) }
+                }
+                Divider()
+                Button("Clear Menu") { workspace?.clearRecents() }
+                    .disabled(workspace?.recents.isEmpty ?? true)
+            }
             Button("Close Repository") { if let s = workspace?.selected { workspace?.close(s) } }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
                 .disabled(workspace?.selected == nil)

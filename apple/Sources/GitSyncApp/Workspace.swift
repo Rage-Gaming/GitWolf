@@ -12,6 +12,8 @@ enum RecentRepositories {
             .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
+    static func clear() { UserDefaults.standard.removeObject(forKey: key) }
+
     static func add(_ url: URL) {
         var paths = (UserDefaults.standard.stringArray(forKey: key) ?? []).filter { $0 != url.path }
         paths.insert(url.path, at: 0)
@@ -30,12 +32,37 @@ final class Workspace {
     var sheet: WorkspaceSheet?
     private(set) var recents: [URL] = RecentRepositories.load()
 
+    /// The window's workspace, for AppKit hooks (Dock menu) that live outside SwiftUI.
+    static weak var current: Workspace?
     private static var didBootstrap = false
     private static let openKey = "openRepositories"
     private static let selectedKey = "selectedRepository"
     private var isRestoring = false
 
     var selected: RepositoryStore? { repos.first { $0.id == selectedID } }
+
+    /// Files with uncommitted changes across every open repository.
+    var totalChanges: Int { repos.reduce(0) { $0 + $1.status.changeCount } }
+
+    init() {
+        Self.current = self
+        trackDockBadge()
+    }
+
+    /// Keeps the Dock icon's badge equal to `totalChanges`, re-arming after every change.
+    private func trackDockBadge() {
+        let count = withObservationTracking {
+            totalChanges
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.trackDockBadge() }
+        }
+        NSApp?.dockTile.badgeLabel = BadgeLabel.text(forChanges: count)
+    }
+
+    func clearRecents() {
+        RecentRepositories.clear()
+        recents = []
+    }
 
     // MARK: Opening & closing
 

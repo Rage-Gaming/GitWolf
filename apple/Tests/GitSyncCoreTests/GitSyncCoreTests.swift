@@ -2279,3 +2279,12 @@ struct AvatarTests {
         #expect(seen.urls.allSatisfy { !$0.contains("gravatar") })
     }
 }
+
+@Suite struct BadgeTests {
+    @Test func badgeText() {
+        #expect(BadgeLabel.text(forChanges: 0) == nil)
+        #expect(BadgeLabel.text(forChanges: 7) == "7")
+        #expect(BadgeLabel.text(forChanges: 99) == "99")
+        #expect(BadgeLabel.text(forChanges: 100) == "99+")
+    }
+}
