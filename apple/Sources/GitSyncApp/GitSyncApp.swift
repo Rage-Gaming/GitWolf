@@ -46,8 +46,14 @@ struct GitSyncApp: App {
 struct AppearanceModifier: ViewModifier {
     @AppStorage(SettingsKey.appearance) private var appearance = AppearanceChoice.system.rawValue
 
+    @AppStorage(SettingsKey.accent) private var accent = AccentChoice.indigo.rawValue
+
     func body(content: Content) -> some View {
-        content.preferredColorScheme(AppearanceChoice(rawValue: appearance)?.colorScheme)
+        content
+            .tint(Theme.brand)
+            // Theme colours are read from settings, so rebuild the tree when the accent changes.
+            .id(accent)
+            .preferredColorScheme(AppearanceChoice(rawValue: appearance)?.colorScheme)
     }
 }
 
@@ -69,7 +75,6 @@ struct RootView: View {
         .containerBackground(for: .window) { WindowBackdrop() }
         .overlay { if workspace.showPalette { CommandPalette(workspace: workspace) } }
         .focusedSceneValue(\.workspace, workspace)
-        .tint(Theme.brand)
         .modifier(AppearanceModifier())
         .task { await workspace.bootstrap() }
         .alert("Couldn’t Open Repository", isPresented: Binding(

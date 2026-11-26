@@ -182,6 +182,7 @@ private struct PillPicker<Value: Hashable>: View {
 
 private struct GeneralSettings: View {
     @AppStorage(SettingsKey.appearance) private var appearance = AppearanceChoice.system.rawValue
+    @AppStorage(SettingsKey.accent) private var accent = AccentChoice.indigo.rawValue
     @AppStorage(SettingsKey.autoFetchMinutes) private var autoFetch = 5
     @AppStorage(SettingsKey.commitPageSize) private var pageSize = 1000
     @AppStorage(SettingsKey.diffContext) private var context = 4
@@ -194,6 +195,31 @@ private struct GeneralSettings: View {
                         withAnimation(.snappy(duration: 0.2)) { appearance = choice.rawValue }
                     }
                 }
+            }
+            .padding(12)
+        }
+
+        Group(title: "Accent Color") {
+            HStack(spacing: 10) {
+                ForEach(AccentChoice.allCases) { choice in
+                    let selected = accent == choice.rawValue
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) { accent = choice.rawValue }
+                    } label: {
+                        Circle()
+                            .fill(LinearGradient(colors: [choice.primary, choice.secondary],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 26, height: 26)
+                            .overlay {
+                                if selected { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white) }
+                            }
+                            .padding(3)
+                            .overlay(Circle().strokeBorder(selected ? choice.primary : .clear, lineWidth: 2))
+                    }
+                    .buttonStyle(.plain)
+                    .help(choice.title)
+                }
+                Spacer(minLength: 0)
             }
             .padding(12)
         }

@@ -4,8 +4,9 @@ import SwiftUI
 // MARK: - Design tokens
 
 enum Theme {
-    static let brand = Color(red: 0.42, green: 0.38, blue: 0.98)
-    static let brand2 = Color(red: 0.20, green: 0.56, blue: 1.0)
+    /// User-selectable accent (Settings). Views re-render when it changes via `AppearanceModifier`.
+    static var brand: Color { AccentChoice.current.primary }
+    static var brand2: Color { AccentChoice.current.secondary }
     static var brandGradient: LinearGradient {
         LinearGradient(colors: [brand, brand2], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
