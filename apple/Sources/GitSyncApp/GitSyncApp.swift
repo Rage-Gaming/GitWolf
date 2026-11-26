@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         Task { @MainActor in UpdateManager.checkInBackground() }
         StatusItemController.shared.sync()
+        NSWindow.allowsAutomaticWindowTabbing = false
         MainMenuTidier.start()
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in StatusItemController.shared.sync() }
@@ -15,7 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         // GITSYNC_DUMP_MENU=/path.txt writes the main menu's structure, then quits.
         if let path = ProcessInfo.processInfo.environment["GITSYNC_DUMP_MENU"] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + (Double(ProcessInfo.processInfo.environment["GITSYNC_DUMP_DELAY"] ?? "") ?? 4)) {
                 func dump(_ menu: NSMenu, _ depth: Int) -> String {
                     menu.items.map { item in
                         let line = String(repeating: "  ", count: depth) + (item.isSeparatorItem ? "---" : item.title)
@@ -84,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
-/// SwiftUI leaves empty View and Format menus behind, and the Edit and Window menus aren't wanted. Remove them,
+/// SwiftUI leaves empty View and Format menus behind, and the Edit, View, Format and Window menus aren't wanted (AppKit re-adds View with Full Screen and tab items once a window is focused). Remove them,
 /// and again whenever SwiftUI rebuilds the menu.
 @MainActor
 enum MainMenuTidier {
@@ -144,7 +145,7 @@ enum MainMenuTidier {
             guard let sub = item.submenu else { continue }
             let hasContent = sub.items.contains { !$0.isSeparatorItem }
             if !hasContent && item.title != "GitSync" { main.removeItem(item); continue }
-            if item.title == "Edit" || item.title == "Window" { main.removeItem(item); continue }
+            if ["Edit", "View", "Format", "Window"].contains(item.title) { main.removeItem(item); continue }
             collapseSeparators(in: sub)
         }
     }

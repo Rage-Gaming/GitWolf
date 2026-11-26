@@ -7,7 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Changed
-- Menu bar: removed Services, Hide, Hide Others and Show All from the app menu, and the Edit and Window menus (⌘C/V/X/A/Z are still handled for text fields) and merged the Repositories menu into Repository as *Switch Repository*, which lists open repositories by name with ⌘1…9.
+- Menu bar: removed Services, Hide, Hide Others and Show All from the app menu, and the Edit, View, Format and Window menus (⌘C/V/X/A/Z are still handled for text fields) and merged the Repositories menu into Repository as *Switch Repository*, which lists open repositories by name with ⌘1…9.
 - Redesigned the repository rail: narrower, uniform 40 pt tiles, flat tinted tiles that turn solid when selected with an edge marker, a smaller corner badge, no hover scaling or shadows.
 - Removed the empty View and Format menus and Edit's AutoFill, Dictation and Emoji items, and grouped the Repository menu with dividers.
 - Removed menu items that don't apply: File > New Window, the View menu's toolbar and sidebar toggles, the Format menu, and the empty Help book (replaced by links to the documentation and issue tracker).
