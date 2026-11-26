@@ -46,7 +46,8 @@ struct HistoryView: View {
     @State private var since = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
     @State private var until = Date()
     @State private var showFilters = false
-    @State private var found: [Commit] = []
+    /// Results of the last git search; nil until one arrives, so the list never blanks while a search runs.
+    @State private var found: [Commit]?
     @State private var searching = false
     @State private var searchError: String?
 
@@ -60,7 +61,8 @@ struct HistoryView: View {
     }
 
     private var items: [HistoryItem] {
-        if gitSearch { return found.map { HistoryItem(commit: $0, graph: nil) } }
+        if gitSearch, let found { return found.map { HistoryItem(commit: $0, graph: nil) } }
+        if gitSearch { return store.commits.map { HistoryItem(commit: $0, graph: nil) } }
         if query.isEmpty {
             return zip(store.commits, store.graph).map { HistoryItem(commit: $0, graph: $1) }
         }
@@ -133,17 +135,17 @@ struct HistoryView: View {
     }
 
     private func runSearch() async {
-        guard gitSearch else { found = []; searchError = nil; searching = false; return }
+        guard gitSearch else { found = nil; searchError = nil; searching = false; return }
         // A short pause so typing doesn't start a search per keystroke.
         try? await Task.sleep(for: .milliseconds(300))
         if Task.isCancelled { return }
         let text = query.trimmingCharacters(in: .whitespaces)
-        if text.isEmpty && scope != .loaded && path.isEmpty && !useSince && !useUntil { found = []; return }
+        if text.isEmpty && scope != .loaded && path.isEmpty && !useSince && !useUntil { found = nil; return }
         searching = true
         defer { searching = false }
         do {
             let result = try await store.repo.search(gitQuery, remotes: Set(store.remotes))
-            if !Task.isCancelled { found = result; searchError = nil }
+            if !Task.isCancelled { withAnimation(.easeOut(duration: 0.15)) { found = result }; searchError = nil }
         } catch {
             if !Task.isCancelled { found = []; searchError = error.localizedDescription }
         }
@@ -177,6 +179,8 @@ struct HistoryView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .opacity(searching ? 0.6 : 1)
+                    .animation(.easeOut(duration: 0.15), value: searching)
                     .focusable()
                     .focusEffectDisabled()
                     .onKeyPress(.downArrow) { move(1, items); return .handled }

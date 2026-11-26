@@ -499,9 +499,15 @@ final class RepositoryStore: Identifiable {
             do {
                 let result = try await repo.compare(from: from, to: to, sinceAncestor: since, remotes: remotes)
                 guard token == compareToken else { return }
-                comparison = result
-                selectedTarget = nil; diff = nil; diffToken += 1
-                if let first = result.files.first { selectChange(first, source: .compare(base: result.base, head: result.head)) }
+                withAnimation(.easeOut(duration: 0.18)) {
+                    comparison = result
+                    diffToken += 1
+                    if let first = result.files.first {
+                        selectChange(first, source: .compare(base: result.base, head: result.head))
+                    } else {
+                        selectedTarget = nil; diff = nil
+                    }
+                }
             } catch {
                 guard token == compareToken else { return }
                 comparison = nil
@@ -520,13 +526,14 @@ final class RepositoryStore: Identifiable {
     func selectStash(_ stash: Stash) {
         mode = .stash
         selectedStash = stash
-        stashFiles = []; stashCommit = nil
-        selectedTarget = nil; diff = nil; diffToken += 1
+        diffToken += 1
         Task {
             guard let hash = try? await repo.stashHash(stash.ref), let files = try? await repo.stashFiles(stash.ref),
                   selectedStash == stash else { return }
-            stashCommit = hash; stashFiles = files
-            if let first = files.first { selectChange(first, source: .commit(hash)) }
+            withAnimation(.easeOut(duration: 0.18)) {
+                stashCommit = hash; stashFiles = files
+                if let first = files.first { selectChange(first, source: .commit(hash)) } else { selectedTarget = nil; diff = nil }
+            }
         }
     }
 
@@ -558,9 +565,10 @@ final class RepositoryStore: Identifiable {
             let result = (try? await repo.diff(for: target)) ?? .empty
             guard token == diffToken else { return }
             if diff != result {
-                if case .commit = target.source {
+                switch target.source {
+                case .commit, .compare:
                     withAnimation(.easeOut(duration: 0.18)) { diff = result }
-                } else {
+                default:
                     diff = result
                 }
                 clearLineSelection()

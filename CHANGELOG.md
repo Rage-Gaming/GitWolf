@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Changed
+- Smoother transitions: turning on a history filter (dates, file, author…) keeps the current list, dims it while git searches and then fades the results in instead of flashing an empty state; stash and compare selections fade in the same way.
 - Every pane in the repository window is now resizable and remembers its size: the sidebar and list column (wider ranges), the file list above the diff in a commit, and the commit message box in Changes (drag the divider; the pointer changes to a resize cursor).
 - Notifications sheet redesigned: a header with icon and subtitle, a compact empty state, a labelled reload button and a footer bar with Mark All as Read and Close.
 - Menu bar: removed Services, Hide, Hide Others and Show All from the app menu, and the Edit, View, Format and Window menus (⌘C/V/X/A/Z are still handled for text fields) and merged the Repositories menu into Repository as *Switch Repository*, which lists open repositories by name with ⌘1…9.
