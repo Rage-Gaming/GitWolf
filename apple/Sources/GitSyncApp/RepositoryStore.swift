@@ -456,15 +456,19 @@ final class RepositoryStore: Identifiable {
         // Keep the previous file list and diff on screen until the new ones arrive, then swap them in
         // together, so selecting a commit doesn't blank and re-layout the pane.
         commitMessage = commit.subject
+        selectedSignature = nil
         let token = commitToken
+        // Signature checking can be slow (gpg, ssh-keygen), so it must never hold up the files and diff.
         Task {
-            async let signature = try? await repo.signature(of: commit.hash)
+            let signature = try? await repo.signature(of: commit.hash)
+            if token == commitToken { withAnimation(.easeOut(duration: 0.18)) { selectedSignature = signature } }
+        }
+        Task {
             async let files = try? repo.files(in: commit)
             async let message = try? repo.message(of: commit.hash)
-            let (sig, f, m) = (await signature, await files ?? [], await message ?? commit.subject)
+            let (f, m) = (await files ?? [], await message ?? commit.subject)
             guard token == commitToken else { return }
             withAnimation(.easeOut(duration: 0.18)) {
-                selectedSignature = sig
                 commitFiles = f
                 commitMessage = m
                 if let first = f.first {
