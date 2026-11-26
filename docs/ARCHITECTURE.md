@@ -17,6 +17,16 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `GraphLayout` | Turns topologically ordered commits into per-row lane edges for drawing the branch graph. |
 | `GitRepository` | Stateless, `Sendable` façade for every read and write operation. |
 | `SyntaxHighlighter`, `SideBySide` | Pure helpers for diff presentation: token ranges per line, split-view row pairing. |
+| `Bisect` | `BisectState` (from `BISECT_LOG`), start/mark/reset. |
+| `Patches` | format-patch, working diff, apply/check, `am`. |
+| `Worktrees`, `Submodules` | list/add/remove worktrees; submodule status, update, add. |
+| `LFS`, `CloneOptions`, `Performance` | LFS paths and pointers; shallow/partial clone arguments; commit-graph cache. |
+| `FileIcons` | Path → icon (glyph, brand colour). Drawn by `FileIconView` in the app. |
+| `Sync` | `PullStrategy`, `PushOptions`, `GitError.isPushRejected/isDivergedPull`, `RemoteInfo`, remote add/rename/set-url/remove. |
+| `Fork` | `ProviderClient.fork`, `GitRepository.adoptFork` (rename/add remotes, fetch), `ForkRemoteMode`. |
+| `Notifications` | `ProviderNotification`, `ProviderClient.notifications()`, `markRead`, `markAllRead`. App side: `NotificationsStore` polls every account. |
+| `CIStatus` | `CICheck`, `CIStatus` (overall state, summary), `ProviderClient.ciStatus(repoPath:sha:)`. `CollabItem.headSHA` is the pull request tip. |
+| `CollabActions` | Write calls on `ProviderClient` (create PR/issue, comments, merge, close/reopen, labels) with a shared `send` that reports the server's error text. |
 | `Providers`, `ProviderClient` | Hosting provider kinds, remote URL parsing, web links, askpass credential environment, REST clients for listing/verifying. See [PROVIDERS.md](PROVIDERS.md). |
 | `Operations` | Detects an in-progress merge/rebase/cherry-pick/revert from files in the git dir and runs `--continue`, `--abort`, `--skip`. The snapshot carries it so the UI banner follows the refresh loop. |
 | `Reset` | `reset(to:mode:)`, `reflog()` and `resetImpact(to:)` (commits dropped, files modified) so the UI can warn before a hard reset. |

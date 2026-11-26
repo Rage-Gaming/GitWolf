@@ -6,8 +6,7 @@
 - App icon, notarised releases, auto-update
 
 ## Later
-- Submodules and worktrees
-- Git LFS indicators
+- Git LFS download/lock actions (needs git-lfs), a bisect run script
 - Bundled OAuth client IDs for github.com, gitlab.com, codeberg.org and Azure DevOps (Bitbucket Cloud can't ship one: it needs a secret)
-- Create/comment/review pull requests and issues in-app; CI status; issues for Bitbucket and Azure DevOps
+- Formal reviews and assignees on pull requests; issues for Bitbucket and Azure DevOps
 - Windows and Linux native clients (see [PORTING.md](PORTING.md))

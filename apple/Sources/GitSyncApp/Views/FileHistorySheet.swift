@@ -23,7 +23,7 @@ struct FileHistorySheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: "doc.text").foregroundStyle(.secondary)
+                FileIconView(path: path)
                 Text(path).font(.system(.callout, design: .monospaced).weight(.semibold)).lineLimit(1).truncationMode(.head)
                 Spacer()
                 Picker("", selection: $tab) {

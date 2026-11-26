@@ -109,6 +109,51 @@ comment count, created/updated, web URL, body, source/target branch.
 
 With no account for the host, send the request without an `Authorization` header (public data).
 
+### Fork
+
+| Provider | Call |
+|---|---|
+| GitHub | `POST /repos/{o}/{r}/forks` (202; asynchronous) |
+| GitLab | `POST /projects/:id/fork` |
+| Gitea | `POST /repos/{o}/{r}/forks` |
+| Bitbucket Cloud | `POST /repositories/{w}/{r}/forks` |
+
+The response is the new repository; read its clone URLs with the same parsers as the repository list.
+
+### Notifications
+
+| Provider | List | Mark read | Mark all |
+|---|---|---|---|
+| GitHub | `GET /notifications?participating=true` (needs the `notifications` or `repo` scope; `reason`: `review_requested`, `mention`/`team_mention`, `assign`, other → Activity). `subject.url` is an API URL: `…/repos/o/r/pulls/12` → `/o/r/pull/12`, `issues/7` → `/o/r/issues/7`, `commits/<sha>` → `/o/r/commit/<sha>` | `PATCH /notifications/threads/{id}` | `PUT /notifications` |
+| GitLab | `GET /todos?state=pending` (`action_name`: `review_requested`, `mentioned`/`directly_addressed`, `assigned`; `target_url` is the web URL) | `POST /todos/{id}/mark_as_done` | `POST /todos/mark_as_done` |
+| Gitea | `GET /notifications?status-types=unread` (`subject.html_url`; no reason, shown as Activity) | `PATCH /notifications/threads/{id}` | `PUT /notifications` |
+
+### CI checks
+
+`GET` per commit SHA (only hex SHAs are sent):
+
+| Provider | Endpoint | State mapping |
+|---|---|---|
+| GitHub | `/repos/{o}/{r}/commits/{sha}/check-runs` plus the legacy `/commits/{sha}/status` | `status != completed` → pending; `success` → success; `skipped`/`neutral` → neutral; `failure`, `cancelled`, `timed_out`, `action_required`… → failure |
+| GitLab | `/projects/:id/repository/commits/{sha}/statuses` | `success`; `failed`/`canceled` → failure; `running`/`pending`/`created`/`manual` → pending |
+| Gitea | `/repos/{o}/{r}/commits/{sha}/status` (`statuses[]`) | same words as GitHub statuses |
+| Bitbucket Cloud | `/repositories/{w}/{r}/commit/{sha}/statuses` | `SUCCESSFUL`, `FAILED`/`STOPPED`, `INPROGRESS` |
+
+The same name reported twice (re-runs) keeps the first entry. Azure DevOps and Bitbucket Server are not supported.
+
+### Write calls
+
+All send JSON with the same auth headers; non-2xx replies surface the body's `message` / `error` (plus GitHub's `errors[].message`) so users see why (e.g. "A pull request already exists").
+
+| Action | GitHub | GitLab (`:id` = url-encoded path) | Gitea | Bitbucket Cloud |
+|---|---|---|---|---|
+| Create PR | `POST /repos/{o}/{r}/pulls` `{title, body, head, base, draft}` | `POST /projects/:id/merge_requests` `{title ("Draft: " prefix), description, source_branch, target_branch}` | `POST /repos/{o}/{r}/pulls` (draft = `WIP:` prefix) | `POST /repositories/{w}/{r}/pullrequests` `{title, description, source.branch.name, destination.branch.name}` |
+| Create issue | `POST /repos/{o}/{r}/issues` | `POST /projects/:id/issues` | `POST /repos/{o}/{r}/issues` | n/a |
+| Comments | `GET/POST /repos/{o}/{r}/issues/{n}/comments` | `GET/POST …/{merge_requests\|issues}/{n}/notes` (skip `system`) | same as GitHub | `GET/POST …/pullrequests/{n}/comments` `{content:{raw}}` |
+| Merge | `PUT …/pulls/{n}/merge` `{merge_method}` | `PUT …/merge_requests/{n}/merge` `{squash}` | `POST …/pulls/{n}/merge` `{Do}` | `POST …/pullrequests/{n}/merge` `{merge_strategy}` |
+| Close / reopen | `PATCH …/{pulls\|issues}/{n}` `{state}` | `PUT …` `{state_event: close\|reopen}` | `PATCH …` `{state}` | `POST …/decline` (no reopen) |
+| Labels | `PUT …/issues/{n}/labels` | `PUT …` `{labels: "a,b"}` | not supported (ids) | n/a |
+
 ## Remote URL parsing and web links
 
 `RemoteLocation.parse` handles `https://`, `http://`, `ssh://`, `git://`, scp-style

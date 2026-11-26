@@ -7,7 +7,7 @@ enum WorkspaceSheet: String, Identifiable {
     var id: String { rawValue }
 }
 
-private extension View {
+extension View {
     func sheetField() -> some View {
         self.textFieldStyle(.plain)
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -84,6 +84,18 @@ struct CloneSheet: View {
     @State private var loadingRepos = false
     @State private var repoError: String?
     @State private var query = ""
+    @State private var showAdvanced = false
+    @State private var shallow = false
+    @State private var depth = 1
+    @State private var filter = CloneOptions.Filter.full
+    @State private var singleBranch = false
+    @State private var branch = ""
+    @State private var recurse = false
+
+    private var options: CloneOptions {
+        CloneOptions(depth: shallow ? max(1, depth) : nil, filter: filter, singleBranch: singleBranch,
+                     branch: branch, recurseSubmodules: recurse)
+    }
 
     private var filteredRepos: [RemoteRepository] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -131,6 +143,28 @@ struct CloneSheet: View {
                     .sheetField()
                     .disabled(isCloning)
             }
+
+            DisclosureGroup("Advanced", isExpanded: $showAdvanced) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Toggle("Only the latest", isOn: $shallow)
+                        Stepper(value: $depth, in: 1...100_000) { Text("\(depth) commit\(depth == 1 ? "" : "s")").monospacedDigit() }
+                            .disabled(!shallow)
+                    }
+                    Picker("Download", selection: $filter) {
+                        Text("Everything").tag(CloneOptions.Filter.full)
+                        Text("No file contents until needed (blobless)").tag(CloneOptions.Filter.blobless)
+                        Text("Commits only (treeless)").tag(CloneOptions.Filter.treeless)
+                    }
+                    HStack {
+                        Toggle("Only one branch", isOn: $singleBranch)
+                        TextField("branch (default)", text: $branch).sheetField()
+                    }
+                    Toggle("Also clone submodules", isOn: $recurse)
+                }
+                .padding(.top, 8)
+            }
+            .disabled(isCloning)
 
             if isCloning {
                 VStack(alignment: .leading, spacing: 6) {
@@ -268,7 +302,7 @@ struct CloneSheet: View {
             do {
                 try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
                 let destination = try await GitRepository.clone(url: source, into: parent, name: folder, gitPath: gitPath,
-                                                                  credential: credential, askpassPath: AskPass.path) { chunk in
+                                                                  credential: credential, askpassPath: AskPass.path, options: options) { chunk in
                     // git separates live updates with carriage returns.
                     guard let last = chunk.split(whereSeparator: { $0 == "\r" || $0 == "\n" }).last else { return }
                     let line = String(last)

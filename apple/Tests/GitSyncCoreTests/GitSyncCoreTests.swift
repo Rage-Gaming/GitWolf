@@ -1480,3 +1480,720 @@ import Testing
         #expect(await t.repo.recentMessages() == ["second", "first\n\nwith body"])
     }
 }
+
+@Suite struct CollabActionTests {
+    final class Recorder: @unchecked Sendable {
+        var requests: [(method: String, url: String, body: [String: Any])] = []
+    }
+
+    private func client(_ kind: ProviderKind, host: String? = nil, status: Int = 200, reply: String = "{}", _ rec: Recorder) -> ProviderClient {
+        let account = ProviderAccount(kind: kind, host: host ?? kind.defaultHost, username: "me")
+        return ProviderClient(account: account, token: "tok", transport: { r in
+            let body = (r.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
+            rec.requests.append((r.httpMethod ?? "GET", r.url!.absoluteString, body))
+            return (Data(reply.utf8), HTTPURLResponse(url: r.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+        })
+    }
+
+    @Test func githubCreateMergeCloseComment() async throws {
+        let rec = Recorder()
+        let pr = #"{"number":7,"title":"Add x","state":"open","user":{"login":"me"},"html_url":"https://github.com/o/r/pull/7","head":{"ref":"feat"},"base":{"ref":"main"},"draft":true}"#
+        let c = client(.github, reply: pr, rec)
+        let item = try await c.createPullRequest(repoPath: "o/r", title: "Add x", body: "why", head: "feat", base: "main", draft: true)
+        #expect(item.number == 7 && item.isDraft && item.sourceBranch == "feat")
+        #expect(rec.requests[0].method == "POST" && rec.requests[0].url == "https://api.github.com/repos/o/r/pulls")
+        #expect(rec.requests[0].body["head"] as? String == "feat" && rec.requests[0].body["draft"] as? Bool == true)
+        try await c.merge(repoPath: "o/r", number: 7, method: .squash)
+        #expect(rec.requests[1].method == "PUT" && rec.requests[1].url.hasSuffix("/pulls/7/merge") && rec.requests[1].body["merge_method"] as? String == "squash")
+        try await c.setOpen(false, kind: .pullRequest, repoPath: "o/r", number: 7)
+        #expect(rec.requests[2].method == "PATCH" && rec.requests[2].body["state"] as? String == "closed")
+        try await c.addComment(.issue, repoPath: "o/r", number: 3, body: "hi")
+        #expect(rec.requests[3].url.hasSuffix("/issues/3/comments") && rec.requests[3].body["body"] as? String == "hi")
+        try await c.setLabels(["bug"], kind: .issue, repoPath: "o/r", number: 3)
+        #expect(rec.requests[4].method == "PUT" && rec.requests[4].url.hasSuffix("/issues/3/labels"))
+    }
+
+    @Test func gitlabUsesNotesAndStateEvents() async throws {
+        let rec = Recorder()
+        let mr = #"{"iid":4,"title":"Draft: t","state":"opened","web_url":"https://gitlab.com/g/p/-/merge_requests/4","source_branch":"a","target_branch":"main"}"#
+        let c = client(.gitlab, reply: mr, rec)
+        let item = try await c.createPullRequest(repoPath: "g/p", title: "t", body: "", head: "a", base: "main", draft: true)
+        #expect(item.number == 4)
+        #expect(rec.requests[0].url == "https://gitlab.com/api/v4/projects/g%2Fp/merge_requests")
+        #expect(rec.requests[0].body["title"] as? String == "Draft: t")
+        try await c.addComment(.pullRequest, repoPath: "g/p", number: 4, body: "x")
+        #expect(rec.requests[1].url.hasSuffix("/merge_requests/4/notes"))
+        try await c.setOpen(false, kind: .issue, repoPath: "g/p", number: 9)
+        #expect(rec.requests[2].method == "PUT" && rec.requests[2].body["state_event"] as? String == "close" && rec.requests[2].url.hasSuffix("/issues/9"))
+        try await c.merge(repoPath: "g/p", number: 4, method: .merge)
+        #expect(rec.requests[3].body["squash"] as? Bool == false)
+        await #expect(throws: ProviderError.self) { try await c.merge(repoPath: "g/p", number: 4, method: .rebase) }
+    }
+
+    @Test func bitbucketAndGiteaShapes() async throws {
+        let rec = Recorder()
+        let bb = client(.bitbucket, reply: #"{"id":2,"title":"t","state":"OPEN","source":{"branch":{"name":"a"}},"destination":{"branch":{"name":"main"}}}"#, rec)
+        let item = try await bb.createPullRequest(repoPath: "w/r", title: "t", body: "d", head: "a", base: "main", draft: false)
+        #expect(item.number == 2 && item.targetBranch == "main")
+        #expect(rec.requests[0].url == "https://api.bitbucket.org/2.0/repositories/w/r/pullrequests")
+        try await bb.merge(repoPath: "w/r", number: 2, method: .rebase)
+        #expect(rec.requests[1].body["merge_strategy"] as? String == "fast_forward")
+        try await bb.setOpen(false, kind: .pullRequest, repoPath: "w/r", number: 2)
+        #expect(rec.requests[2].url.hasSuffix("/pullrequests/2/decline"))
+        await #expect(throws: ProviderError.self) { try await bb.setOpen(true, kind: .pullRequest, repoPath: "w/r", number: 2) }
+        await #expect(throws: ProviderError.self) { _ = try await bb.createIssue(repoPath: "w/r", title: "x", body: "") }
+
+        let gt = client(.gitea, host: "git.corp.io", reply: #"{"number":1,"title":"t","state":"open"}"#, rec)
+        try await gt.merge(repoPath: "o/r", number: 1, method: .squash)
+        #expect(rec.requests.last?.method == "POST" && rec.requests.last?.body["Do"] as? String == "squash")
+    }
+
+    @Test func serverReasonIsReportedForRejectedWrites() async throws {
+        let rec = Recorder()
+        let c = client(.github, status: 422, reply: #"{"message":"Validation Failed","errors":[{"message":"A pull request already exists for o:feat."}]}"#, rec)
+        do {
+            _ = try await c.createPullRequest(repoPath: "o/r", title: "t", body: "", head: "feat", base: "main", draft: false)
+            Issue.record("should fail")
+        } catch let ProviderError.api(code, message) {
+            #expect(code == 422 && message.contains("already exists"))
+        }
+    }
+
+    @Test func parsesComments() async throws {
+        let rec = Recorder()
+        let gh = client(.github, reply: #"[{"id":1,"user":{"login":"ann"},"body":"first","created_at":"2026-01-02T03:04:05Z"}]"#, rec)
+        let list = try await gh.comments(.issue, repoPath: "o/r", number: 1)
+        #expect(list.count == 1 && list[0].author == "ann" && list[0].body == "first" && list[0].created != nil)
+        let gl = client(.gitlab, reply: #"[{"id":5,"author":{"username":"bo"},"body":"real","system":false},{"id":6,"author":{"username":"bo"},"body":"added 1 commit","system":true}]"#, rec)
+        #expect(try await gl.comments(.pullRequest, repoPath: "g/p", number: 1).map(\.body) == ["real"])
+    }
+}
+
+@Suite struct CIStatusTests {
+    private func client(_ kind: ProviderKind, replies: [String: String]) -> ProviderClient {
+        ProviderClient(account: ProviderAccount(kind: kind, host: kind.defaultHost, username: "me"), token: "t", transport: { r in
+            let url = r.url!.absoluteString
+            let body = replies.first { url.contains($0.key) }?.value ?? "{}"
+            return (Data(body.utf8), HTTPURLResponse(url: r.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+    }
+
+    @Test func githubCombinesCheckRunsAndStatuses() async throws {
+        let c = client(.github, replies: [
+            "check-runs": #"{"check_runs":[{"name":"build","status":"completed","conclusion":"success","html_url":"https://x/1"},{"name":"test","status":"completed","conclusion":"failure"},{"name":"lint","status":"in_progress"},{"name":"docs","status":"completed","conclusion":"skipped"}]}"#,
+            "/status": #"{"statuses":[{"context":"legacy/ci","state":"success","target_url":"https://ci"}]}"#,
+        ])
+        let s = try await c.ciStatus(repoPath: "o/r", sha: "abc123")
+        #expect(s.checks.count == 5)
+        #expect(s.overall == .failure)
+        #expect(s.summary == "1 of 5 checks failed")
+        #expect(s.checks.first?.name == "test")
+        #expect(s.checks.first { $0.name == "build" }?.url?.absoluteString == "https://x/1")
+        #expect(s.checks.first { $0.name == "docs" }?.state == .neutral)
+    }
+
+    @Test func otherProvidersMapStates() async throws {
+        let gl = client(.gitlab, replies: ["statuses": #"[{"name":"unit","status":"success"},{"name":"unit","status":"failed"},{"name":"e2e","status":"running"},{"name":"x","status":"canceled"}]"#])
+        let s = try await gl.ciStatus(repoPath: "g/p", sha: "deadbeef")
+        // The second "unit" is a duplicate name and is dropped.
+        #expect(s.checks.count == 3)
+        #expect(s.overall == .pending || s.overall == .failure)
+        let gt = client(.gitea, replies: ["status": #"{"statuses":[{"context":"ci","status":"pending"}]}"#])
+        #expect(try await gt.ciStatus(repoPath: "o/r", sha: "abc").overall == .pending)
+        let bb = client(.bitbucket, replies: ["statuses": #"{"values":[{"name":"pipe","state":"SUCCESSFUL","url":"https://bb"}]}"#])
+        let st = try await bb.ciStatus(repoPath: "w/r", sha: "abc")
+        #expect(st.overall == .success && st.summary == "All 1 checks passed")
+        #expect(CIStatus(checks: []).overall == nil)
+    }
+
+    @Test func rejectsNonHexShas() async throws {
+        let c = client(.github, replies: [:])
+        #expect(try await c.ciStatus(repoPath: "o/r", sha: "../../x").isEmpty)
+    }
+
+    @Test func pullRequestsCarryTheirHeadCommit() throws {
+        let gh = try ProviderClient.parseGitHubCollab(Data(#"[{"number":1,"title":"t","state":"open","head":{"ref":"a","sha":"abc"},"base":{"ref":"main"}}]"#.utf8), kind: .pullRequest)
+        #expect(gh[0].headSHA == "abc")
+        let gl = try ProviderClient.parseGitLabCollab(Data(#"[{"iid":2,"title":"t","state":"opened","sha":"def"}]"#.utf8), kind: .pullRequest)
+        #expect(gl[0].headSHA == "def")
+        let bb = try ProviderClient.parseBitbucketCollab(Data(#"{"values":[{"id":3,"title":"t","state":"OPEN","source":{"branch":{"name":"a"},"commit":{"hash":"123"}}}]}"#.utf8))
+        #expect(bb[0].headSHA == "123")
+    }
+}
+
+@Suite struct NotificationTests {
+    @Test func githubThreadsBecomeWebLinks() throws {
+        let json = #"[{"id":"42","unread":true,"reason":"review_requested","updated_at":"2026-05-01T10:00:00Z","subject":{"title":"Fix login","url":"https://api.github.com/repos/o/r/pulls/12","type":"PullRequest"},"repository":{"full_name":"o/r"}},{"id":"43","reason":"mention","subject":{"title":"Question","url":"https://api.github.com/repos/o/r/issues/7","type":"Issue"},"repository":{"full_name":"o/r"}},{"id":"44","reason":"ci_activity","subject":{"title":"Run failed","url":"https://api.github.com/repos/o/r/commits/abc123","type":"CheckSuite"},"repository":{"full_name":"o/r"}}]"#
+        let list = try ProviderClient.parseGitHubNotifications(Data(json.utf8), webBase: "https://github.com")
+        #expect(list.count == 3)
+        #expect(list[0].reason == .reviewRequested && list[0].isPullRequest)
+        #expect(list[0].url?.absoluteString == "https://github.com/o/r/pull/12")
+        #expect(list[1].reason == .mention && list[1].url?.absoluteString == "https://github.com/o/r/issues/7")
+        #expect(list[2].reason == .other && list[2].url?.absoluteString == "https://github.com/o/r/commit/abc123")
+    }
+
+    @Test func gitlabTodosAndGitea() throws {
+        let todos = #"[{"id":9,"action_name":"review_requested","target_type":"MergeRequest","target":{"title":"Add thing"},"target_url":"https://gitlab.com/g/p/-/merge_requests/3","project":{"path_with_namespace":"g/p"}},{"id":10,"action_name":"directly_addressed","target_type":"Issue","body":"@me look","target_url":"https://gitlab.com/g/p/-/issues/4","project":{"path_with_namespace":"g/p"}}]"#
+        let gl = try ProviderClient.parseGitLabTodos(Data(todos.utf8))
+        #expect(gl.map(\.reason) == [.reviewRequested, .mention])
+        #expect(gl[0].isPullRequest && !gl[1].isPullRequest && gl[1].title == "@me look")
+        let gitea = #"[{"id":5,"unread":true,"subject":{"title":"Bug","type":"Issue","html_url":"https://git.x/o/r/issues/1"},"repository":{"full_name":"o/r"}}]"#
+        let gt = try ProviderClient.parseGiteaNotifications(Data(gitea.utf8))
+        #expect(gt[0].repository == "o/r" && gt[0].url?.host == "git.x")
+    }
+
+    @Test func markReadCallsTheRightEndpoints() async throws {
+        final class Log: @unchecked Sendable { var calls: [String] = [] }
+        let log = Log()
+        func client(_ kind: ProviderKind) -> ProviderClient {
+            ProviderClient(account: ProviderAccount(kind: kind, host: kind.defaultHost, username: "me"), token: "t", transport: { r in
+                log.calls.append("\(r.httpMethod ?? "GET") \(r.url!.path)")
+                return (Data("{}".utf8), HTTPURLResponse(url: r.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            })
+        }
+        let n = ProviderNotification(id: "7", title: "t", repository: "o/r", reason: .mention, isPullRequest: false, updated: nil, url: nil)
+        try await client(.github).markRead(n)
+        try await client(.gitlab).markRead(n)
+        try await client(.github).markAllRead()
+        #expect(log.calls == ["PATCH /notifications/threads/7", "POST /api/v4/todos/7/mark_as_done", "PUT /notifications"])
+    }
+}
+
+@Suite struct ForkTests {
+    @Test func forkParsesCloneURLs() async throws {
+        final class Log: @unchecked Sendable { var calls: [String] = [] }
+        let log = Log()
+        func client(_ kind: ProviderKind, _ reply: String) -> ProviderClient {
+            ProviderClient(account: ProviderAccount(kind: kind, host: kind.defaultHost, username: "me"), token: "t", transport: { r in
+                log.calls.append("\(r.httpMethod ?? "GET") \(r.url!.absoluteString)")
+                return (Data(reply.utf8), HTTPURLResponse(url: r.url!, statusCode: 202, httpVersion: nil, headerFields: nil)!)
+            })
+        }
+        let gh = try await client(.github, #"{"full_name":"me/r","clone_url":"https://github.com/me/r.git","ssh_url":"git@github.com:me/r.git"}"#).fork(repoPath: "o/r")
+        #expect(gh.fullName == "me/r" && gh.sshURL == "git@github.com:me/r.git")
+        let gl = try await client(.gitlab, #"{"path_with_namespace":"me/p","http_url_to_repo":"https://gitlab.com/me/p.git","ssh_url_to_repo":"git@gitlab.com:me/p.git"}"#).fork(repoPath: "g/p")
+        #expect(gl.httpsURL == "https://gitlab.com/me/p.git")
+        let bb = try await client(.bitbucket, #"{"full_name":"me/r","links":{"clone":[{"name":"https","href":"https://me@bitbucket.org/me/r.git"},{"name":"ssh","href":"git@bitbucket.org:me/r.git"}]}}"#).fork(repoPath: "w/r")
+        #expect(bb.httpsURL == "https://bitbucket.org/me/r.git")
+        #expect(log.calls == ["POST https://api.github.com/repos/o/r/forks", "POST https://gitlab.com/api/v4/projects/g%2Fp/fork",
+                              "POST https://api.bitbucket.org/2.0/repositories/w/r/forks"])
+        await #expect(throws: ProviderError.self) { _ = try await client(.azure, "{}").fork(repoPath: "x") }
+    }
+
+    @Test func adoptForkRewiresRemotes() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("one", file: "a.txt", text: "a")
+        func bare(_ name: String) async throws -> URL {
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("\(name)-\(UUID().uuidString).git")
+            _ = try await GitRunner(workingDirectory: dir.deletingLastPathComponent()).run(["init", "--bare", "-q", dir.path])
+            return dir
+        }
+        let original = try await bare("orig"), fork = try await bare("fork")
+        defer { try? FileManager.default.removeItem(at: original); try? FileManager.default.removeItem(at: fork) }
+        try await t.git.run(["remote", "add", "origin", original.path])
+        try await t.git.run(["push", "-q", "origin", "HEAD:refs/heads/main"])
+        try await t.git.run(["push", "-q", fork.path, "HEAD:refs/heads/main"])
+        let info = RemoteRepository(fullName: "me/r", description: "", isPrivate: false, httpsURL: fork.path, sshURL: "", updated: nil)
+
+        try await t.repo.adoptFork(info, mode: .addRemote("fork"))
+        #expect(try await t.repo.remotes().sorted() == ["fork", "origin"])
+        #expect(await t.repo.remoteURL("fork") == fork.path)
+
+        try await t.git.run(["remote", "remove", "fork"])
+        try await t.repo.adoptFork(info, mode: .useAsOrigin)
+        #expect(await t.repo.remoteURL("origin") == fork.path)
+        #expect(await t.repo.remoteURL("upstream") == original.path)
+        await #expect(throws: GitError.self) { try await t.repo.adoptFork(info, mode: .useAsOrigin) }
+        await #expect(throws: GitError.self) { try await t.repo.adoptFork(info, mode: .addRemote("--bad")) }
+    }
+}
+
+@Suite struct SyncTests {
+    private func bare() async throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sync-\(UUID().uuidString).git")
+        _ = try await GitRunner(workingDirectory: dir.deletingLastPathComponent()).run(["init", "--bare", "-q", "-b", "main", dir.path])
+        return dir
+    }
+
+    @Test func manageRemotes() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try await t.repo.addRemote("origin", url: "https://example.com/a.git")
+        try await t.repo.addRemote("backup", url: "git@example.com:a.git")
+        var list = try await t.repo.remoteInfos()
+        #expect(list.map(\.name).sorted() == ["backup", "origin"])
+        #expect(list.first { $0.name == "backup" }?.fetchURL == "git@example.com:a.git")
+        try await t.repo.renameRemote("backup", to: "mirror")
+        try await t.repo.setRemoteURL("origin", url: "https://example.com/b.git")
+        list = try await t.repo.remoteInfos()
+        #expect(list.map(\.name).sorted() == ["mirror", "origin"])
+        #expect(list.first { $0.name == "origin" }?.fetchURL == "https://example.com/b.git")
+        try await t.repo.removeRemote("mirror")
+        #expect(try await t.repo.remoteInfos().count == 1)
+        await #expect(throws: GitError.self) { try await t.repo.addRemote("x y", url: "https://e.com/a") }
+        await #expect(throws: GitError.self) { try await t.repo.addRemote("-bad", url: "https://e.com/a") }
+        await #expect(throws: GitError.self) { try await t.repo.addRemote("ok", url: "https://me:secret@e.com/a") }
+        await #expect(throws: GitError.self) { try await t.repo.setRemoteURL("origin", url: "--upload-pack=evil") }
+        #expect(GitRepository.redact("https://me:pw@e.com/a") == "https://me@e.com/a")
+    }
+
+    @Test func pushVariantsAndRejection() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        let remote = try await bare()
+        defer { try? FileManager.default.removeItem(at: remote) }
+        _ = try await t.commit("one", file: "a.txt", text: "1")
+        try await t.git.run(["branch", "-M", "main"])
+        try await t.git.run(["remote", "add", "origin", remote.path])
+        try await t.git.run(["remote", "add", "second", remote.path])
+        var status = try await t.repo.status()
+        try await t.repo.push(status: status, remotes: ["origin", "second"])
+        status = try await t.repo.status()
+        #expect(status.upstream == "origin/main")
+
+        // Someone else pushes first.
+        let other = FileManager.default.temporaryDirectory.appendingPathComponent("other-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: other) }
+        let g = GitRunner(workingDirectory: FileManager.default.temporaryDirectory)
+        _ = try await g.run(["clone", "-q", remote.path, other.path])
+        let og = GitRunner(workingDirectory: other)
+        _ = try await og.run(["-c", "user.name=o", "-c", "user.email=o@e.c", "commit", "-q", "--allow-empty", "-m", "theirs"])
+        _ = try await og.run(["push", "-q"])
+
+        _ = try await t.commit("two", file: "a.txt", text: "2")
+        status = try await t.repo.status()
+        do {
+            try await t.repo.push(status: status, remotes: ["origin"])
+            Issue.record("push should be rejected")
+        } catch let e as GitError {
+            #expect(e.isPushRejected)
+        }
+        // A stale lease is also refused: our remote-tracking ref doesn't know about their commit... until we fetch.
+        try await t.repo.fetch()
+        do {
+            try await t.repo.pull(strategy: .fastForwardOnly)
+            Issue.record("diverged pull should fail with ff-only")
+        } catch let e as GitError {
+            #expect(e.isDivergedPull)
+        }
+        try await t.repo.push(status: try await t.repo.status(), remotes: ["origin"], options: PushOptions(forceWithLease: true))
+        let log = try await og.runString(["fetch", "-q"]) + (try await og.runString(["log", "--format=%s", "origin/main"]))
+        #expect(log.contains("two") && !log.contains("theirs"))
+
+        try await t.git.run(["tag", "v1"])
+        try await t.repo.push(status: try await t.repo.status(), remotes: ["origin"], options: PushOptions(includeTags: true))
+        #expect(String(decoding: try await t.git.run(["ls-remote", "--tags", "origin"], readOnly: true), as: UTF8.self).contains("v1"))
+
+        // Publish to another remote and start tracking it.
+        try await t.repo.push(status: try await t.repo.status(), remotes: ["origin"], options: PushOptions(remote: "second", setUpstream: true))
+        #expect(try await t.repo.status().upstream == "second/main")
+    }
+}
+
+// MARK: - Scale and power features
+
+@Suite("Scale")
+struct ScaleTests {
+    @Test func bisectFindsTheBadCommit() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        var hashes: [String] = []
+        for i in 1...8 { hashes.append(try await t.commit("c\(i)", file: "n.txt", text: (i >= 5 ? "bad" : "ok") + "\n\(i)\n")) }
+        #expect(!t.repo.bisectState().isActive)
+        var state = try await t.repo.bisectStart(bad: hashes[7], good: hashes[0])
+        #expect(state.isActive)
+        #expect(state.progress != nil)
+        var steps = 0
+        while state.firstBad == nil, steps < 10 {
+            let isBad = try t.read("n.txt").hasPrefix("bad")
+            state = try await t.repo.bisectMark(isBad ? .bad : .good)
+            steps += 1
+        }
+        #expect(state.firstBad == hashes[4])
+        #expect(state.marks.count >= 3)
+        try await t.repo.bisectReset()
+        #expect(!t.repo.bisectState().isActive)
+        let branch = try await t.git.runString(["branch", "--show-current"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(branch == "main")
+    }
+
+    @Test func patchesRoundTrip() async throws {
+        let src = try await TestRepo.make()
+        let dst = try await TestRepo.make()
+        defer { src.cleanup(); dst.cleanup() }
+        let base = try await src.commit("base", text: "one\n")
+        try await dst.git.run(["fetch", src.dir.path, "main"])
+        try await dst.git.run(["reset", "--hard", base])
+        let c2 = try await src.commit("second change", text: "one\ntwo\n")
+        let out = src.dir.appendingPathComponent("out")
+        let files = try await src.repo.formatPatches(commits: [c2], into: out)
+        #expect(files.count == 1)
+        #expect(files[0].lastPathComponent.hasSuffix("second-change.patch"))
+        #expect(await dst.repo.checkPatch(files[0]) == nil)
+        try await dst.repo.applyMailbox(files)
+        #expect(try dst.read() == "one\ntwo\n")
+        let log = try await dst.git.runString(["log", "-1", "--format=%s"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(log == "second change")
+
+        // Plain diff apply, staged and not.
+        try dst.write("one\ntwo\nthree\n")
+        let diff = try await dst.repo.workingPatch(stagedOnly: false)
+        let file = dst.dir.appendingPathComponent("w.diff")
+        try diff.write(to: file, atomically: true, encoding: .utf8)
+        try await dst.git.run(["checkout", "--", "f.txt"])
+        #expect(await dst.repo.checkPatch(file) == nil)
+        try await dst.repo.applyPatchFile(file, stage: true)
+        #expect(try await dst.repo.status().staged.count == 1)
+        // A patch that no longer applies explains why.
+        try await dst.git.run(["reset", "--hard"])
+        try dst.write("different\n")
+        #expect(await dst.repo.checkPatch(file) != nil)
+    }
+
+    @Test func amConflictIsAnOperation() async throws {
+        let a = try await TestRepo.make()
+        defer { a.cleanup() }
+        let base = try await a.commit("base", text: "one\n")
+        let c2 = try await a.commit("change", text: "ONE\n")
+        let files = try await a.repo.formatPatches(commits: [c2], into: a.dir.appendingPathComponent("p"))
+        try await a.git.run(["reset", "--hard", base])
+        try await a.commit("conflicting", text: "uno\n")
+        _ = try? await a.repo.applyMailbox(files)
+        let op = a.repo.inProgressOperation()
+        #expect(op?.kind == .am)
+        try await a.repo.abortOperation(try #require(op))
+        #expect(a.repo.inProgressOperation() == nil)
+    }
+
+    @Test func worktrees() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try await t.commit("base", text: "x\n")
+        let path = t.dir.deletingLastPathComponent().appendingPathComponent("wt-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: path) }
+        try await t.repo.addWorktree(at: path, branch: "side", newBranch: true)
+        var list = try await t.repo.worktrees()
+        #expect(list.count == 2)
+        #expect(list[0].isMain && list[0].branch == "main")
+        #expect(list[1].branch == "side")
+        try await t.repo.removeWorktree(list[1].path, force: false)
+        list = try await t.repo.worktrees()
+        #expect(list.count == 1)
+    }
+
+    @Test func submodules() async throws {
+        let lib = try await TestRepo.make()
+        let app = try await TestRepo.make()
+        defer { lib.cleanup(); app.cleanup() }
+        try await lib.commit("lib", file: "lib.txt", text: "lib\n")
+        try await app.commit("app", text: "app\n")
+        #expect(try await app.repo.submodules().isEmpty)
+        try await app.git.run(["-c", "protocol.file.allow=always", "submodule", "add", "--", lib.dir.path, "vendor/lib"])
+        var subs = try await app.repo.submodules()
+        #expect(subs.count == 1)
+        #expect(subs[0].path == "vendor/lib")
+        #expect(subs[0].url == lib.dir.path)
+        #expect(subs[0].state == .upToDate)
+        try await app.git.run(["commit", "-m", "add lib"])
+        // A fresh clone has it uninitialised until updated.
+        let clone = FileManager.default.temporaryDirectory.appendingPathComponent("sub-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: clone) }
+        try await GitRunner(workingDirectory: app.dir).run(["clone", app.dir.path, clone.path])
+        let repo = GitRepository(root: clone)
+        subs = try await repo.submodules()
+        #expect(subs.first?.state == .notInitialized)
+        try await GitRunner(workingDirectory: clone).run(["-c", "protocol.file.allow=always", "submodule", "update", "--init"])
+        #expect(try await repo.submodules().first?.state == .upToDate)
+        #expect(FileManager.default.fileExists(atPath: clone.appendingPathComponent("vendor/lib/lib.txt").path))
+        await #expect(throws: GitError.self) { try await repo.addSubmodule(url: "--evil", path: "x") }
+    }
+
+    @Test func lfsDetection() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try t.write("*.psd filter=lfs diff=lfs merge=lfs -text\n", ".gitattributes")
+        let found = await t.repo.lfsPaths(among: ["a.psd", "b.txt", "dir/c.psd"])
+        #expect(found == ["a.psd", "dir/c.psd"])
+        #expect(await t.repo.lfsPaths(among: []).isEmpty)
+        let pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:abc123\nsize 2048\n"
+        let parsed = try #require(LFSPointer.parse(pointer))
+        #expect(parsed.oid == "abc123" && parsed.size == 2048)
+        #expect(LFSPointer.parse("just text") == nil)
+        // git-lfs may not be installed, so commit the pointer without the filter attribute active.
+        try FileManager.default.removeItem(at: t.dir.appendingPathComponent(".gitattributes"))
+        try await t.commit("pointer", file: "a.psd", text: pointer)
+        try await t.commit("other", file: "o.txt", text: "plain\n")
+        #expect(await t.repo.lfsPointer(path: "a.psd")?.size == 2048)
+        #expect(await t.repo.lfsPointer(path: "o.txt") == nil)
+    }
+
+    @Test func commitGraphCache() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        for i in 1...5 { try await t.commit("c\(i)", text: "\(i)\n") }
+        let before = try await t.repo.log(limit: 100, remotes: []).map(\.hash)
+        #expect(!(await t.repo.hasCommitGraph()))
+        try await t.repo.writeCommitGraph()
+        #expect(await t.repo.hasCommitGraph())
+        #expect(try await t.repo.log(limit: 100, remotes: []).map(\.hash) == before)
+    }
+
+    @Test func shallowAndFilteredClones() async throws {
+        let origin = try await TestRepo.make()
+        defer { origin.cleanup() }
+        for i in 1...4 { try await origin.commit("c\(i)", text: "\(i)\n") }
+        #expect(CloneOptions(depth: 1, filter: .blobless, singleBranch: true, branch: "main").arguments
+                == ["--depth", "1", "--filter=blob:none", "--single-branch", "--branch", "main"])
+        #expect(CloneOptions(branch: "--upload-pack=x").arguments.isEmpty)
+        let parent = FileManager.default.temporaryDirectory.appendingPathComponent("cl-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        // file:// so --depth is honoured for a local path.
+        let dest = try await GitRepository.clone(url: "file://" + origin.dir.path, into: parent, name: "shallow",
+                                                 options: CloneOptions(depth: 1))
+        let repo = GitRepository(root: dest)
+        #expect(await repo.isShallow())
+        #expect(try await repo.log(limit: 100, remotes: []).count == 1)
+        try await repo.unshallow()
+        #expect(!(await repo.isShallow()))
+        #expect(try await repo.log(limit: 100, remotes: []).count == 4)
+    }
+}
+
+// MARK: - End-to-end scenarios (two people, a server, a backup remote)
+
+@Suite("Scenarios")
+struct ScenarioTests {
+    struct World {
+        let root: URL, alice: GitRepository, bob: GitRepository
+        let aliceRunner: GitRunner, bobRunner: GitRunner, origin: URL, backup: URL
+    }
+
+    func world() async throws -> World {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("world-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let r = GitRunner(workingDirectory: root)
+        for bare in ["origin.git", "backup.git"] { try await r.run(["init", "-q", "--bare", "-b", "main", bare]) }
+        for who in ["alice", "bob"] {
+            try await r.run(["clone", "-q", "origin.git", who])
+            let g = GitRunner(workingDirectory: root.appendingPathComponent(who))
+            try await g.run(["config", "user.name", who]); try await g.run(["config", "user.email", "\(who)@e.com"])
+            try await g.run(["config", "commit.gpgsign", "false"])
+        }
+        let a = GitRunner(workingDirectory: root.appendingPathComponent("alice"))
+        let b = GitRunner(workingDirectory: root.appendingPathComponent("bob"))
+        try await a.run(["checkout", "-q", "-b", "main"])
+        for i in 1...3 {
+            try "line \(i)\n".appending(i > 1 ? "" : "").write(to: root.appendingPathComponent("alice/app\(i).txt"), atomically: true, encoding: .utf8)
+            try await a.run(["add", "-A"]); try await a.run(["commit", "-qm", "base \(i)"])
+        }
+        try await a.run(["push", "-q", "-u", "origin", "main"])
+        try await b.run(["pull", "-q", "origin", "main"])
+        try await b.run(["checkout", "-q", "main"])
+        return World(root: root, alice: GitRepository(root: root.appendingPathComponent("alice")),
+                     bob: GitRepository(root: root.appendingPathComponent("bob")),
+                     aliceRunner: a, bobRunner: b, origin: root.appendingPathComponent("origin.git"),
+                     backup: root.appendingPathComponent("backup.git"))
+    }
+
+    func commit(_ g: GitRunner, _ file: String, _ text: String, _ msg: String) async throws {
+        try text.write(to: g.workingDirectory.appendingPathComponent(file), atomically: true, encoding: .utf8)
+        try await g.run(["add", "-A"]); try await g.run(["commit", "-qm", msg])
+    }
+
+    func status(_ repo: GitRepository) async throws -> WorkingStatus { try await repo.status() }
+
+    @Test func divergedPullStrategies() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await commit(w.bobRunner, "bob.txt", "b\n", "bob work")
+        try await w.bobRunner.run(["push", "-q", "origin", "main"])
+        try await commit(w.aliceRunner, "alice.txt", "a\n", "alice work")
+        try await w.alice.fetch()
+        var st = try await status(w.alice)
+        #expect(st.ahead == 1 && st.behind == 1)
+
+        // Fast-forward only refuses, and says why.
+        do { try await w.alice.pull(strategy: .fastForwardOnly); Issue.record("expected failure") }
+        catch let e as GitError { #expect(e.isDivergedPull) }
+
+        // Rebase with a dirty tree: local change is kept (autostash), history stays linear.
+        try "dirty\n".write(to: w.alice.root.appendingPathComponent("app1.txt"), atomically: true, encoding: .utf8)
+        try await w.alice.pull(strategy: .rebase)
+        st = try await status(w.alice)
+        #expect(st.behind == 0 && st.ahead == 1)
+        #expect(st.unstaged.count == 1)
+        let merges = try await w.aliceRunner.runString(["rev-list", "--merges", "--count", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(merges == "0")
+    }
+
+    @Test func divergedPullMerge() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await commit(w.bobRunner, "bob.txt", "b\n", "bob work")
+        try await w.bobRunner.run(["push", "-q", "origin", "main"])
+        try await commit(w.aliceRunner, "alice.txt", "a\n", "alice work")
+        try await w.alice.pull(strategy: .merge)
+        let merges = try await w.aliceRunner.runString(["rev-list", "--merges", "--count", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(merges == "1")
+        #expect(try await status(w.alice).behind == 0)
+    }
+
+    @Test func rejectedPushThenPullThenPush() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await commit(w.bobRunner, "bob.txt", "b\n", "bob work")
+        try await w.bobRunner.run(["push", "-q", "origin", "main"])
+        try await commit(w.aliceRunner, "alice.txt", "a\n", "alice work")
+        var st = try await status(w.alice)
+        let remotes = try await w.alice.remotes()
+        do { try await w.alice.push(status: st, remotes: remotes); Issue.record("expected rejection") }
+        catch let e as GitError { #expect(e.isPushRejected) }
+        // A lease push right after is rejected too (alice hasn't fetched bob's commit).
+        do { try await w.alice.push(status: st, remotes: remotes, options: PushOptions(forceWithLease: true)); Issue.record("lease should refuse") }
+        catch let e as GitError { #expect(e.isPushRejected) }
+        try await w.alice.pull(strategy: .rebase)
+        st = try await status(w.alice)
+        try await w.alice.push(status: st, remotes: remotes)
+        #expect(try await status(w.alice).ahead == 0)
+    }
+
+    @Test func forcePushAfterRewrite() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await w.aliceRunner.run(["commit", "--amend", "-qm", "rewritten base 3"])
+        let st = try await status(w.alice)
+        let remotes = try await w.alice.remotes()
+        do { try await w.alice.push(status: st, remotes: remotes); Issue.record("plain push must be rejected") }
+        catch let e as GitError { #expect(e.isPushRejected) }
+        try await w.alice.push(status: st, remotes: remotes, options: PushOptions(forceWithLease: true))
+        let remoteHead = try await GitRunner(workingDirectory: w.origin).runString(["log", "-1", "--format=%s", "main"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(remoteHead == "rewritten base 3")
+    }
+
+    @Test func tagsAndSecondRemote() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await w.alice.addRemote("backup", url: w.backup.path)
+        #expect(Set(try await w.alice.remoteInfos().map(\.name)) == ["origin", "backup"])
+        try await w.aliceRunner.run(["tag", "v1.0"])
+        let st = try await status(w.alice)
+        let remotes = try await w.alice.remotes()
+        try await w.alice.push(status: st, remotes: remotes, options: PushOptions(remote: "backup", includeTags: true))
+        let tags = try await GitRunner(workingDirectory: w.backup).runString(["tag"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(tags == "v1.0")
+        try await w.alice.setRemoteURL("backup", url: w.origin.path)
+        #expect(try await w.alice.remoteInfos().first { $0.name == "backup" }?.fetchURL == w.origin.path)
+        try await w.alice.renameRemote("backup", to: "mirror")
+        try await w.alice.removeRemote("mirror")
+        #expect(try await w.alice.remoteInfos().map(\.name) == ["origin"])
+        await #expect(throws: GitError.self) { try await w.alice.addRemote("x", url: "https://u:secret@host/x.git") }
+    }
+
+    @Test func bisectWithSkipAndExplicitHash() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        var h: [String] = []
+        for i in 1...10 { h.append(try await t.commit("c\(i)", file: "n.txt", text: (i >= 7 ? "bad" : "ok") + "\n\(i)\n")) }
+        var s = try await t.repo.bisectStart(bad: h[9], good: h[0])
+        s = try await t.repo.bisectMark(.skip)           // can't test this one
+        #expect(s.marks.last?.mark == .skip)
+        s = try await t.repo.bisectMark(.good, hash: h[5])  // mark an explicit commit
+        #expect(s.marks.contains { $0.hash == h[5] && $0.mark == .good })
+        var guardCount = 0
+        while s.firstBad == nil, guardCount < 10 {
+            s = try await t.repo.bisectMark(try t.read("n.txt").hasPrefix("bad") ? .bad : .good); guardCount += 1
+        }
+        #expect(s.firstBad == h[6])
+        try await t.repo.bisectReset()
+    }
+
+    @Test func patchSeriesBetweenPeople() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        try await commit(w.bobRunner, "one.txt", "1\n", "feature part 1")
+        try await commit(w.bobRunner, "two.txt", "2\n", "feature part 2")
+        let hashes = try await w.bobRunner.runString(["rev-list", "--reverse", "-2", "HEAD"]).split(separator: "\n").map(String.init)
+        let out = w.root.appendingPathComponent("patches")
+        let files = try await w.bob.formatPatches(commits: hashes, into: out)
+        #expect(files.count == 2)
+        #expect(files[0].lastPathComponent.hasPrefix("0001-") && files[1].lastPathComponent.hasPrefix("0002-"))
+        try await w.alice.applyMailbox(files)
+        let log = try await w.aliceRunner.runString(["log", "-2", "--format=%an: %s"]).split(separator: "\n").map(String.init)
+        #expect(log == ["bob: feature part 2", "bob: feature part 1"])
+    }
+
+    @Test func worktreeWithDirtyChangesRefusesRemoval() async throws {
+        let w = try await world()
+        defer { try? FileManager.default.removeItem(at: w.root) }
+        let path = w.root.appendingPathComponent("alice-wt")
+        try await w.alice.addWorktree(at: path, branch: "topic", newBranch: true)
+        try "dirty\n".write(to: path.appendingPathComponent("app1.txt"), atomically: true, encoding: .utf8)
+        await #expect(throws: GitError.self) { try await w.alice.removeWorktree(path.path, force: false) }
+        #expect(try await w.alice.worktrees().count == 2)
+        try FileManager.default.removeItem(at: path)         // folder deleted behind git's back
+        #expect(try await w.alice.worktrees().last?.isPrunable == true)
+        try await w.alice.pruneWorktrees()
+        #expect(try await w.alice.worktrees().count == 1)
+    }
+}
+
+@Suite("FileIcons")
+struct FileIconTests {
+    @Test func mapsByExtensionAndName() {
+        #expect(FileIcons.icon(forPath: "src/App.tsx").glyph == .react)
+        #expect(FileIcons.icon(forPath: "a/b/Button.JSX").glyph == .react)
+        #expect(FileIcons.icon(forPath: "x.ts").glyph == .letters("TS"))
+        #expect(FileIcons.icon(forPath: "types/index.d.ts").name == "TypeScript declarations")
+        #expect(FileIcons.icon(forPath: "main.swift").glyph == .symbol("swift"))
+        #expect(FileIcons.icon(forPath: "package.json").name == "npm")
+        #expect(FileIcons.icon(forPath: "data.json").glyph == .letters("{}"))
+        #expect(FileIcons.icon(forPath: "Dockerfile").name == "Docker")
+        #expect(FileIcons.icon(forPath: "Dockerfile.dev").name == "Docker")
+        #expect(FileIcons.icon(forPath: ".env.local").name == "Environment")
+        #expect(FileIcons.icon(forPath: "LICENSE").name == "License")
+        #expect(FileIcons.icon(forPath: "docs/README.md").name == "Readme")
+        #expect(FileIcons.icon(forPath: "vendor/app.min.js").name == "Minified")
+        #expect(FileIcons.icon(forPath: "logo.PNG").name == "Image")
+        #expect(FileIcons.icon(forPath: "weird.zzz").name == "File")
+        #expect(FileIcons.icon(forPath: "noextension").name == "File")
+        #expect(FileIcons.icon(forPath: ".gitignore").name == "Git")
+    }
+
+    @Test func branchesByName() {
+        #expect(FileIcons.branchIcon(named: "main").name == "Main branch")
+        #expect(FileIcons.branchIcon(named: "Master").name == "Main branch")
+        #expect(FileIcons.branchIcon(named: "develop").name == "Development")
+        #expect(FileIcons.branchIcon(named: "feature/login-form").name == "Feature")
+        #expect(FileIcons.branchIcon(named: "feat-login").name == "Feature")
+        #expect(FileIcons.branchIcon(named: "fix/crash-on-start").name == "Bug fix")
+        #expect(FileIcons.branchIcon(named: "hotfix/1.2.1").name == "Hotfix")
+        #expect(FileIcons.branchIcon(named: "release/2.0").name == "Release")
+        #expect(FileIcons.branchIcon(named: "dependabot/npm_and_yarn/x").name == "Dependencies")
+        #expect(FileIcons.branchIcon(named: "123-fix-login").name == "Issue")
+        #expect(FileIcons.branchIcon(named: "dhanush/experiment").name == "Branch")
+        #expect(FileIcons.branchIcon(named: "some-random").name == "Branch")
+        #expect(FileIcons.branchIcon(named: "").name == "Branch")
+    }
+
+    @Test func foldersByName() {
+        #expect(FileIcons.folderIcon(named: "src").name == "Source")
+        #expect(FileIcons.folderIcon(named: "Docs").name == "Docs")
+        #expect(FileIcons.folderIcon(named: "node_modules").name == "Dependencies")
+        #expect(FileIcons.folderIcon(named: ".github").name == "CI")
+        #expect(FileIcons.folderIcon(named: "randomthing").glyph == .folder(nil))
+        #expect(FileIcons.folderIcon(containing: "src/components/Button.tsx")?.name == "Components")
+        #expect(FileIcons.folderIcon(containing: "README.md") == nil)
+        #expect(FileIcons.folderIcon(containing: "node_modules/react/lib/x.js")?.name == "Library")
+        #expect(FileIcons.folderIcon(containing: "node_modules/react/x.js")?.name == "Dependencies")
+        #expect(FileIcons.folderIcon(containing: ".github/workflows/ci.yml")?.name == "CI")
+        #expect(FileIcons.folderIcon(containing: "src/random/x.ts")?.name == "Folder")
+    }
+
+    @Test func everyIconHasAFlatBrandColour() {
+        for icon in Array(FileIcons.extensions.values) + Array(FileIcons.names.values) + Array(FileIcons.folders.values) {
+            #expect(icon.color <= 0xFFFFFF)
+        }
+    }
+}

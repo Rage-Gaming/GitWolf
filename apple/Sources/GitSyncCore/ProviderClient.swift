@@ -18,6 +18,8 @@ public struct RemoteRepository: Identifiable, Hashable, Sendable {
 public enum ProviderError: Error, LocalizedError, Sendable {
     case unauthorized
     case http(Int)
+    /// A rejected request with the server's own explanation (for example "a pull request already exists").
+    case api(Int, String)
     case invalidResponse
     case unsupported(String)
 
@@ -25,6 +27,7 @@ public enum ProviderError: Error, LocalizedError, Sendable {
         switch self {
         case .unauthorized: "The server rejected this token. Check that it is valid and has repository access."
         case .http(let code): "The server returned an error (HTTP \(code))."
+        case .api(_, let message): message
         case .invalidResponse: "The server sent a response GitSync couldn’t understand."
         case .unsupported(let what): what
         }
@@ -53,7 +56,7 @@ public struct ProviderClient: Sendable {
 
     // MARK: Endpoints
 
-    private var apiBase: String {
+    var apiBase: String {
         let h = account.host
         let o = account.origin
         switch account.kind {
@@ -69,7 +72,7 @@ public struct ProviderClient: Sendable {
         }
     }
 
-    private func request(_ url: String) throws -> URLRequest {
+    func request(_ url: String) throws -> URLRequest {
         guard let u = URL(string: url) else { throw ProviderError.invalidResponse }
         var r = URLRequest(url: u)
         r.timeoutInterval = 30
@@ -104,13 +107,49 @@ public struct ProviderClient: Sendable {
         return r
     }
 
-    private func fetch(_ url: String) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await transport(try request(url))
+    func fetch(_ url: String) async throws -> (Data, HTTPURLResponse) {
+        try await send(request(url))
+    }
+
+    /// Sends a request that changes something (POST, PUT, PATCH, DELETE) with a JSON body.
+    func send(_ method: String, _ url: String, json: [String: Any]? = nil) async throws -> (Data, HTTPURLResponse) {
+        var r = try request(url)
+        r.httpMethod = method
+        if let json {
+            r.httpBody = try JSONSerialization.data(withJSONObject: json)
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        return try await send(r)
+    }
+
+    private func send(_ r: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await transport(r)
+        let isRead = r.httpMethod == nil || r.httpMethod == "GET"
         switch response.statusCode {
         case 200..<300: return (data, response)
-        case 401, 403: throw ProviderError.unauthorized
-        default: throw ProviderError.http(response.statusCode)
+        case 401: throw ProviderError.unauthorized
+        case 403 where isRead: throw ProviderError.unauthorized
+        default:
+            // Writes report the server's own reason; reads keep plain codes so callers can react to 404.
+            if !isRead, let message = Self.errorMessage(data) { throw ProviderError.api(response.statusCode, message) }
+            if response.statusCode == 403 { throw ProviderError.unauthorized }
+            throw ProviderError.http(response.statusCode)
         }
+    }
+
+    /// The human-readable reason in a provider's JSON error body.
+    static func errorMessage(_ data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        var parts: [String] = []
+        if let m = json["message"] as? String { parts.append(m) }
+        else if let m = json["error"] as? String { parts.append(m) }
+        else if let m = (json["error"] as? [String: Any])?["message"] as? String { parts.append(m) }
+        // GitHub adds details such as "A pull request already exists for owner:branch".
+        if let errors = json["errors"] as? [[String: Any]] {
+            parts += errors.compactMap { $0["message"] as? String }
+        }
+        let text = parts.joined(separator: ": ")
+        return text.isEmpty ? nil : text
     }
 
     // MARK: Verify
@@ -317,13 +356,16 @@ public struct CollabItem: Identifiable, Hashable, Sendable {
     public var body: String
     public var sourceBranch: String
     public var targetBranch: String
+    /// Commit at the tip of the pull request branch, used to look up CI checks.
+    public var headSHA: String = ""
 
     public init(number: Int, title: String, author: String = "", state: CollabState = .open, isDraft: Bool = false,
                 labels: [String] = [], comments: Int = 0, created: Date? = nil, updated: Date? = nil, url: URL? = nil,
-                body: String = "", sourceBranch: String = "", targetBranch: String = "") {
+                body: String = "", sourceBranch: String = "", targetBranch: String = "", headSHA: String = "") {
         self.number = number; self.title = title; self.author = author; self.state = state; self.isDraft = isDraft
         self.labels = labels; self.comments = comments; self.created = created; self.updated = updated
         self.url = url; self.body = body; self.sourceBranch = sourceBranch; self.targetBranch = targetBranch
+        self.headSHA = headSHA
     }
 }
 
@@ -424,7 +466,8 @@ public extension ProviderClient {
                 comments: r["comments"] as? Int ?? 0, created: date(r["created_at"]), updated: date(r["updated_at"]),
                 url: link(r["html_url"]), body: r["body"] as? String ?? "",
                 sourceBranch: (r["head"] as? [String: Any])?["ref"] as? String ?? "",
-                targetBranch: (r["base"] as? [String: Any])?["ref"] as? String ?? "")
+                targetBranch: (r["base"] as? [String: Any])?["ref"] as? String ?? "",
+                headSHA: (r["head"] as? [String: Any])?["sha"] as? String ?? "")
         }
     }
 
@@ -442,7 +485,8 @@ public extension ProviderClient {
                 labels: r["labels"] as? [String] ?? [], comments: r["user_notes_count"] as? Int ?? 0,
                 created: date(r["created_at"]), updated: date(r["updated_at"]), url: link(r["web_url"]),
                 body: r["description"] as? String ?? "",
-                sourceBranch: r["source_branch"] as? String ?? "", targetBranch: r["target_branch"] as? String ?? "")
+                sourceBranch: r["source_branch"] as? String ?? "", targetBranch: r["target_branch"] as? String ?? "",
+                headSHA: r["sha"] as? String ?? "")
         }
     }
 
@@ -460,7 +504,8 @@ public extension ProviderClient {
                 comments: r["comments"] as? Int ?? 0, created: date(r["created_at"]), updated: date(r["updated_at"]),
                 url: link(r["html_url"]), body: r["body"] as? String ?? "",
                 sourceBranch: (r["head"] as? [String: Any])?["ref"] as? String ?? "",
-                targetBranch: (r["base"] as? [String: Any])?["ref"] as? String ?? "")
+                targetBranch: (r["base"] as? [String: Any])?["ref"] as? String ?? "",
+                headSHA: (r["head"] as? [String: Any])?["sha"] as? String ?? "")
         }
     }
 
@@ -483,7 +528,8 @@ public extension ProviderClient {
                 number: number, title: title, author: author?["display_name"] as? String ?? author?["nickname"] as? String ?? "",
                 state: state, comments: r["comment_count"] as? Int ?? 0,
                 created: date(r["created_on"]), updated: date(r["updated_on"]), url: link(html),
-                body: r["description"] as? String ?? "", sourceBranch: branch("source"), targetBranch: branch("destination"))
+                body: r["description"] as? String ?? "", sourceBranch: branch("source"), targetBranch: branch("destination"),
+                headSHA: ((r["source"] as? [String: Any])?["commit"] as? [String: Any])?["hash"] as? String ?? "")
         }
     }
 }

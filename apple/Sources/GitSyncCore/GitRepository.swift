@@ -17,7 +17,7 @@ public struct GitRepository: Sendable {
     var git: GitRunner { GitRunner(workingDirectory: root, gitPath: gitPath) }
 
     /// A runner for network operations, carrying the account credential for this repo's remote.
-    private func networkGit() async -> GitRunner {
+    func networkGit() async -> GitRunner {
         guard let credentials, let askpassPath,
               let names = try? await remotes(), let name = names.contains("origin") ? "origin" : names.first,
               let url = try? await git.runString(["remote", "get-url", name], readOnly: true),
@@ -77,6 +77,7 @@ public struct GitRepository: Sendable {
         gitPath: String = "/usr/bin/git",
         credential: GitCredential? = nil,
         askpassPath: String? = nil,
+        options: CloneOptions = CloneOptions(),
         onProgress: (@Sendable (String) -> Void)? = nil
     ) async throws -> URL {
         let destination = parent.appendingPathComponent(name, isDirectory: true)
@@ -87,7 +88,7 @@ public struct GitRepository: Sendable {
         var env: [String: String] = [:]
         if let credential, let askpassPath { env = credential.environment(askpassPath: askpassPath) }
         let runner = GitRunner(workingDirectory: parent, gitPath: gitPath, extraEnvironment: env)
-        try await runner.run(["clone", "--progress", "--", url, name], onProgress: onProgress)
+        try await runner.run(["clone", "--progress"] + options.arguments + ["--", url, name], onProgress: onProgress)
         return destination
     }
 
@@ -358,14 +359,27 @@ public struct GitRepository: Sendable {
 
     // MARK: Remotes
 
+    /// Fetches one remote (used right after adding it).
+    public func fetch(remote: String) async throws {
+        try await networkGit().run(["fetch", remote])
+    }
+
     public func fetch() async throws {
         try await networkGit().run(["fetch", "--all", "--prune"])
     }
 
     /// Fetches and integrates the upstream branch, by merging or (with `rebase`) rebasing.
     public func pull(rebase: Bool = false) async throws {
+        try await pull(strategy: rebase ? .rebase : .merge)
+    }
+
+    public func pull(strategy: PullStrategy) async throws {
         let net = await networkGit()
-        if rebase {
+        if strategy == .fastForwardOnly {
+            try await net.run(["pull", "--ff-only", "--no-edit"])
+            return
+        }
+        if strategy == .rebase {
             do { try await net.run(["pull", "--rebase", "--autostash", "--no-edit"]) }
             catch let error as GitError { if inProgressOperation() == nil { throw error } }
             return
@@ -382,12 +396,19 @@ public struct GitRepository: Sendable {
         try await networkGit().run(["push", remote, "--delete", branch])
     }
 
-    public func push(status: WorkingStatus, remotes: [String]) async throws {
-        if status.upstream == nil, let branch = status.branch {
-            let remote = remotes.contains("origin") ? "origin" : (remotes.first ?? "origin")
-            try await networkGit().run(["push", "--set-upstream", remote, branch])
-        } else {
-            try await networkGit().run(["push"])
+    public func push(status: WorkingStatus, remotes: [String], options: PushOptions = PushOptions()) async throws {
+        var args = ["push"]
+        if options.forceWithLease { args.append("--force-with-lease") }
+        if options.includeTags { args.append("--tags") }
+        let defaultRemote = remotes.contains("origin") ? "origin" : (remotes.first ?? "origin")
+        if let branch = status.branch, options.remote != nil || status.upstream == nil {
+            let remote = options.remote ?? defaultRemote
+            // Publishing to a remote the branch doesn't track yet also starts tracking it.
+            if status.upstream == nil || options.setUpstream { args.append("--set-upstream") }
+            args += [remote, branch]
+        } else if options.includeTags, let remote = options.remote {
+            args.append(remote)
         }
+        try await networkGit().run(args)
     }
 }

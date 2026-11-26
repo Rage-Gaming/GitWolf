@@ -237,6 +237,17 @@ private struct CommitRow: View {
             Button("Revert") { store.revert(c.hash) }
             Button("Compare with Current Branch") { store.openCompare(from: c.hash, to: store.status.branch ?? "HEAD") }
             Button("Interactive Rebase from Here…") { store.beginInteractiveRebase(from: c.hash) }
+            Menu("Bisect") {
+                if store.bisect.isActive {
+                    Button("This Commit Is Good") { store.bisectMarkCommit(.good, hash: c.hash) }
+                    Button("This Commit Is Bad") { store.bisectMarkCommit(.bad, hash: c.hash) }
+                    Button("Skip This Commit") { store.bisectMarkCommit(.skip, hash: c.hash) }
+                } else {
+                    Button("Bisect: This Is Bad") { store.bisectMarkCommit(.bad, hash: c.hash) }
+                    Button("Bisect: This Is Good") { store.bisectMarkCommit(.good, hash: c.hash) }
+                }
+            }
+            Button("Export as Patch…") { store.exportPatch(of: [c.hash]) }
             Menu("Reset Branch to Here") {
                 Button("Soft: keep changes staged") { store.reset(to: c.hash, label: c.shortHash, mode: .soft) }
                 Button("Mixed: keep changes unstaged") { store.reset(to: c.hash, label: c.shortHash, mode: .mixed) }

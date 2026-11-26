@@ -15,6 +15,15 @@ struct RepositoryView: View {
                     .padding(.horizontal, 10).padding(.bottom, 8)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
+            if store.bisect.isActive || store.bisectBad != nil || store.bisectGood != nil {
+                BisectBanner(store: store)
+                    .padding(.horizontal, 10).padding(.bottom, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if store.isShallow {
+                ShallowBanner(store: store)
+                    .padding(.horizontal, 10).padding(.bottom, 8)
+            }
             GeometryReader { geo in
                 let sidebar = CGFloat(sidebarWidth)
                 let content = min(CGFloat(contentWidth), max(320, geo.size.width - sidebar - 380 - 24))
@@ -28,7 +37,9 @@ struct RepositoryView: View {
                 .padding(.trailing, 10).padding(.bottom, 10)
             }
         }
-        .task { store.start() }
+        .environment(\.lfsPaths, store.lfsPaths)
+        .animation(.snappy, value: store.bisect.isActive)
+        .task { store.start(); NotificationsStore.shared.startPolling() }
         .overlay(alignment: .bottom) { if let label = store.busyLabel { BusyPill(label: label) } }
         .animation(.snappy, value: store.busyLabel)
         .animation(.snappy, value: store.operation)
@@ -63,6 +74,16 @@ struct RepositoryView: View {
                 }
             case .hookFailure(let failure):
                 HookOutputSheet(failure: failure) { store.commit(skipHooks: true) }
+            case .newCollab(let kind):
+                NewCollabSheet(store: store, kind: kind)
+            case .notifications:
+                NotificationsSheet()
+            case .fork:
+                ForkSheet(store: store)
+            case .remotes:
+                RemotesSheet(store: store)
+            case .worktrees:
+                WorktreesSheet(store: store, workspace: workspace)
             case .cleanup:
                 BranchCleanupSheet(store: store)
             case .reflog:
@@ -134,6 +155,7 @@ struct TopBar: View {
             modeTabs
             Spacer(minLength: 12)
             syncCluster
+            if NotificationsStore.shared.hasAccounts { bell }
             Button { workspace.showPalette = true } label: {
                 HStack(spacing: 7) {
                     Image(systemName: "magnifyingglass")
@@ -151,20 +173,32 @@ struct TopBar: View {
         .background { Color.clear.contentShape(Rectangle()).gesture(WindowDragGesture()) }
     }
 
+    static func symbol(for branch: String) -> String {
+        if case .symbol(let name) = FileIcons.branchIcon(named: branch).glyph { return name }
+        return "arrow.triangle.branch"
+    }
+
+    /// The current branch's icon and colour (the plain brand branch symbol when detached or unborn).
+    private var currentIcon: (symbol: String, color: Color) {
+        guard let name = store.status.branch else { return ("arrow.triangle.branch", Theme.brand) }
+        return (Self.symbol(for: name), Color(hex: FileIcons.branchIcon(named: name).color))
+    }
+
     private var branchMenu: some View {
         Menu {
             ForEach(store.localBranches) { branch in
                 Button {
                     store.checkout(branch)
                 } label: {
-                    if branch.isCurrent { Label(branch.name, systemImage: "checkmark") } else { Text(branch.name) }
+                    if branch.isCurrent { Label(branch.name, systemImage: "checkmark") }
+                    else { Label(branch.name, systemImage: Self.symbol(for: branch.name)) }
                 }
             }
             Divider()
             Button("New Branch…", systemImage: "plus") { store.sheet = .newBranch(from: nil) }
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: "arrow.triangle.branch").foregroundStyle(Theme.brand)
+                Image(systemName: currentIcon.symbol).foregroundStyle(currentIcon.color)
                 Text(store.status.branchDisplay).fontWeight(.semibold).lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
             }
@@ -218,13 +252,43 @@ struct TopBar: View {
         .buttonStyle(.plain)
     }
 
+    private var bell: some View {
+        let count = NotificationsStore.shared.unreadCount
+        return Button { store.sheet = .notifications } label: {
+            Image(systemName: count > 0 ? "bell.badge.fill" : "bell")
+                .symbolRenderingMode(count > 0 ? .multicolor : .monochrome)
+                .font(.callout)
+                .pill()
+        }
+        .buttonStyle(.plain)
+        .help(count > 0 ? "\(count) notification\(count == 1 ? "" : "s")" : "Notifications")
+    }
+
     private var syncCluster: some View {
         HStack(spacing: 0) {
             SyncButton(icon: "arrow.triangle.2.circlepath", count: 0, help: "Fetch (⇧⌘F)") { store.fetch() }
             Divider().frame(height: 16)
-            SyncButton(icon: "arrow.down", count: store.status.behind, help: "Pull (⇧⌘L)") { store.pull() }
+            SyncButton(icon: "arrow.down", count: store.status.behind, help: "Pull (⇧⌘L). Right-click for more") { store.pull() }
+                .contextMenu {
+                    ForEach(PullStrategy.allCases, id: \.self) { strategy in
+                        Button(strategy.title) { store.pull(strategy: strategy) }
+                    }
+                }
             Divider().frame(height: 16)
-            SyncButton(icon: "arrow.up", count: store.status.ahead, help: "Push (⇧⌘P)") { store.push() }
+            SyncButton(icon: "arrow.up", count: store.status.ahead, help: "Push (⇧⌘P). Right-click for more") { store.push() }
+                .contextMenu {
+                    Button("Push") { store.push() }
+                    Button("Push with Tags") { store.push(options: PushOptions(includeTags: true)) }
+                    Button("Force Push (with Lease)…") { store.confirmForcePush() }
+                    if store.remotes.count > 1 {
+                        Divider()
+                        ForEach(store.remotes, id: \.self) { remote in
+                            Button("Push to \(remote)") { store.push(options: PushOptions(remote: remote)) }
+                        }
+                    }
+                    Divider()
+                    Button("Manage Remotes…") { store.sheet = .remotes }
+                }
             Divider().frame(height: 16)
             SyncButton(icon: "tray.and.arrow.down", count: 0, help: "Stash changes") { store.sheet = .stash }
                 .disabled(store.status.isClean)

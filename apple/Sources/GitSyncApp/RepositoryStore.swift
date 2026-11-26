@@ -12,6 +12,11 @@ enum StoreSheet: Identifiable {
     case fileHistory(String)
     case renameBranch(String)
     case cleanup
+    case remotes
+    case worktrees
+    case fork
+    case notifications
+    case newCollab(CollabKind)
     case hookFailure(HookFailedError)
     var id: String {
         switch self {
@@ -24,6 +29,11 @@ enum StoreSheet: Identifiable {
         case .fileHistory: "fileHistory"
         case .renameBranch: "renameBranch"
         case .cleanup: "cleanup"
+        case .remotes: "remotes"
+        case .worktrees: "worktrees"
+        case .fork: "fork"
+        case .notifications: "notifications"
+        case .newCollab(let kind): "newCollab-\(kind.rawValue)"
         case .hookFailure: "hookFailure"
         }
     }
@@ -58,6 +68,16 @@ final class RepositoryStore: Identifiable {
     private(set) var remotes: [String] = []
     /// A merge / rebase / cherry-pick / revert that is waiting for the user.
     private(set) var operation: InProgressOperation?
+    /// Bisect session state, plus the commits picked before one has started.
+    var bisect = BisectState()
+    var bisectProgress: String?
+    var bisectBad: String?
+    var bisectGood: String?
+    /// Changed files stored with Git LFS (shown with a badge).
+    var lfsPaths: Set<String> = []
+    var isShallow = false
+    var shallowChecked = false
+    private var commitGraphTried = false
     /// Where `origin` (or the first remote) lives, for web links.
     private(set) var remoteLocation: RemoteLocation?
     private(set) var isLoaded = false
@@ -133,6 +153,38 @@ final class RepositoryStore: Identifiable {
         return (account, location.path)
     }
 
+    /// A client for this repository's hosting provider (with the saved account's token, if any) and the `owner/repo` path.
+    func providerClient() async -> (ProviderClient, String)? {
+        guard let (account, path) = collabContext(), account.kind.supportsChecks else { return nil }
+        var secret = ""
+        if AccountStorage.account(forHost: account.hostName) != nil { secret = await AccountStorage.secret(for: account) ?? "" }
+        return (ProviderClient(account: account, token: secret), path)
+    }
+
+    /// Whether this repository's host lets GitSync fork it (needs a recognised provider).
+    var canFork: Bool {
+        guard let kind = providerKind, let host = remoteLocation?.host else { return false }
+        return kind.supportsForking && !(kind == .bitbucket && host != "bitbucket.org")
+    }
+
+    // MARK: CI checks
+
+    /// CI results by commit, fetched from the hosting provider. Commits the server doesn't know stay absent.
+    private(set) var checksBySHA: [String: CIStatus] = [:]
+    private var checksRequested: [String: Date] = [:]
+
+    func loadChecks(sha: String) {
+        guard !sha.isEmpty else { return }
+        // Pending runs change, so a result is reused for a minute at most.
+        if let at = checksRequested[sha], Date().timeIntervalSince(at) < 60 { return }
+        guard providerKind != nil, remoteLocation != nil else { return }
+        checksRequested[sha] = Date()
+        Task {
+            guard let (client, path) = await providerClient() else { return }
+            if let status = try? await client.ciStatus(repoPath: path, sha: sha), !status.isEmpty { checksBySHA[sha] = status }
+        }
+    }
+
     func start() {
         guard !started else { return }
         started = true
@@ -195,7 +247,11 @@ final class RepositoryStore: Identifiable {
         Task { [weak self] in
             guard let self else { return }
             let location = await self.repo.remoteLocation()
-            if location != self.remoteLocation { self.remoteLocation = location }
+            if location != self.remoteLocation {
+                self.remoteLocation = location
+                // Commits selected before the provider was known can be looked up now.
+                if let id = self.selectedCommitID { self.loadChecks(sha: id) }
+            }
         }
     }
 
@@ -245,8 +301,11 @@ final class RepositoryStore: Identifiable {
 
     private func performRefresh() async {
         do {
+            let started = Date()
             let snap = try await repo.snapshot(commitLimit: commitLimit)
             apply(snap)
+            await speedUpIfSlow(took: Date().timeIntervalSince(started))
+            await refreshExtras(snap.status)
         } catch {
             if !isLoaded { errorMessage = error.localizedDescription }
         }
@@ -272,6 +331,11 @@ final class RepositoryStore: Identifiable {
             #if DEBUG
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "cleanup" { sheet = .cleanup }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "fork" { sheet = .fork }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "remotes" { sheet = .remotes }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "worktrees" { sheet = .worktrees }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "notes" { NotificationsStore.shared.loadSamples(); sheet = .notifications }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "newpr" { sheet = .newCollab(.pullRequest) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "hook" { sheet = .hookFailure(HookFailedError(hook: "pre-commit", output: "eslint: src/app.ts\n  12:5  error  Unexpected console statement  no-console\n\n1 problem (1 error, 0 warnings)")) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "tag", let h = s.commits.first?.hash { sheet = .newTag(hash: h) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "compare" { openCompare(from: "main", to: "feature") }
@@ -289,6 +353,32 @@ final class RepositoryStore: Identifiable {
             #endif
         }
         reconcileSelection()
+    }
+
+    /// Cheap checks that are not part of the snapshot: bisect state and Git LFS files.
+    private func refreshExtras(_ status: WorkingStatus) async {
+        let state = repo.bisectState()
+        if state != bisect { bisect = state }
+        let attributes = (try? String(contentsOf: repo.root.appendingPathComponent(".gitattributes"), encoding: .utf8)) ?? ""
+        var found: Set<String> = []
+        if attributes.contains("filter=lfs") {
+            let paths = (status.staged + status.unstaged + status.untracked + status.conflicted).map(\.path)
+            found = await repo.lfsPaths(among: paths)
+        }
+        if found != lfsPaths { lfsPaths = found }
+        if !shallowChecked { shallowChecked = true; await refreshShallow() }
+    }
+
+    /// Loading history this slowly means a big repository without git's commit-graph cache. Write it once
+    /// (in the background); afterwards every refresh is fast.
+    private func speedUpIfSlow(took seconds: TimeInterval) async {
+        guard seconds > 0.5, !commitGraphTried else { return }
+        commitGraphTried = true
+        let repo = self.repo
+        Task.detached(priority: .utility) {
+            guard await !repo.hasCommitGraph() else { return }
+            try? await repo.writeCommitGraph()
+        }
     }
 
     func loadMoreCommits() {
@@ -344,6 +434,7 @@ final class RepositoryStore: Identifiable {
     func selectCommit(_ id: String?) {
         guard id != selectedCommitID else { return }
         selectedCommitID = id
+        if let id { loadChecks(sha: id) }
         selectedTarget = nil
         diff = nil
         commitFiles = []
@@ -546,17 +637,22 @@ final class RepositoryStore: Identifiable {
 
     // MARK: Operations
 
-    private func perform(_ label: String, _ op: @escaping @Sendable (GitRepository) async throws -> Void) {
+    func perform(_ label: String, pushOptions: PushOptions? = nil, _ op: @escaping @Sendable (GitRepository) async throws -> Void) {
         guard !isBusy else { return }
         isBusy = true
         busyLabel = label
         Task {
+            var rejectedPush = false
             do { try await op(repo) } catch let failure as HookFailedError {
                 sheet = .hookFailure(failure)
+            } catch let failure as GitError where pushOptions != nil && failure.isPushRejected {
+                rejectedPush = true
             } catch { errorMessage = error.localizedDescription }
             isBusy = false
             busyLabel = nil
             requestRefresh()
+            // After the busy state is cleared, so the follow-up (pull or force push) can start.
+            if rejectedPush, let pushOptions { offerAfterRejectedPush(pushOptions) }
         }
     }
 
@@ -619,10 +715,12 @@ final class RepositoryStore: Identifiable {
     }
 
     func fetch() { perform("Fetching…") { try await $0.fetch() } }
-    func pull() {
-        let rebase = AppSettings.shared.pullRebase
-        perform(rebase ? "Pulling (rebase)…" : "Pulling…") { try await $0.pull(rebase: rebase) }
+    func pull(strategy: PullStrategy? = nil) {
+        let chosen = strategy ?? (AppSettings.shared.pullRebase ? .rebase : .merge)
+        perform(chosen == .rebase ? "Pulling (rebase)…" : "Pulling…") { try await $0.pull(strategy: chosen) }
     }
+
+    func fetch(remote: String) { perform("Fetching \(remote)…") { try await $0.fetch(remote: remote) } }
 
     /// Opens the interactive rebase editor for `commit` and everything after it on this branch.
     func beginInteractiveRebase(from commit: String) {
@@ -642,9 +740,44 @@ final class RepositoryStore: Identifiable {
 
     func startRebase(_ plan: RebasePlan) { perform("Rebasing…") { try await $0.startInteractiveRebase(plan) } }
     func rebase(onto target: String) { perform("Rebasing…") { try await $0.rebase(onto: target) } }
-    func push() {
+    func push(options: PushOptions = PushOptions()) {
         let (s, r) = (status, remotes)
-        perform("Pushing…") { try await $0.push(status: s, remotes: r) }
+        perform(options.forceWithLease ? "Force pushing…" : "Pushing…", pushOptions: options) {
+            try await $0.push(status: s, remotes: r, options: options)
+        }
+    }
+
+    /// Force push with a lease, after saying what it does.
+    func confirmForcePush(remote: String? = nil) {
+        guard let branch = status.branch else { return }
+        let alert = NSAlert()
+        alert.messageText = "Force push “\(branch)”?"
+        alert.informativeText = "This replaces “\(branch)” on \(remote ?? status.upstream ?? "the remote") with your local version. Commits that exist only there are lost. It is refused if someone pushed since your last fetch (--force-with-lease)."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Force Push")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        push(options: PushOptions(remote: remote, forceWithLease: true))
+    }
+
+    /// The remote refused the push: explain and offer the two ways forward.
+    private func offerAfterRejectedPush(_ options: PushOptions) {
+        if options.forceWithLease {
+            errorMessage = "The remote branch changed since your last fetch, so the force push was refused. Fetch, look at what is new, then try again."
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "The remote has commits you don’t have"
+        alert.informativeText = "Pull them first, then push again. Or force push to overwrite the remote branch with yours (commits that exist only there are lost)."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Pull")
+        alert.addButton(withTitle: "Force Push…")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: pull()
+        case .alertSecondButtonReturn: confirmForcePush(remote: options.remote)
+        default: break
+        }
     }
 
     /// Adds an ignore rule to `.gitignore` (or `.git/info/exclude` when `local`), optionally untracking the file so it takes effect.

@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let wantSettings = target == "settings"
             let wantSheet = target?.hasPrefix("sheet:") == true
             if wantSettings || wantSheet {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + (Double(ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT_DELAY"] ?? "") ?? 3)) {
                     // `settings` opens the first menu's Settings item; `sheet:<Title>` any menu item by title.
                     let title = wantSheet ? String(target!.dropFirst(6)) : "Settings"
                     let menus = wantSheet ? (NSApp.mainMenu?.items.compactMap(\.submenu) ?? []) : [NSApp.mainMenu?.items.first?.submenu].compactMap { $0 }
@@ -173,6 +173,20 @@ struct AppCommands: Commands {
                 .keyboardShortcut("z", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
             Button("Compare Refs…") { workspace?.selected?.openCompare() }
                 .keyboardShortcut("c", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Button("Pull (Fast-forward Only)") { workspace?.selected?.pull(strategy: .fastForwardOnly) }.disabled(workspace?.selected == nil)
+            Button("Pull (Rebase)") { workspace?.selected?.pull(strategy: .rebase) }.disabled(workspace?.selected == nil)
+            Button("Force Push (with Lease)…") { workspace?.selected?.confirmForcePush() }.disabled(workspace?.selected == nil)
+            Button("Worktrees & Submodules…") { workspace?.selected?.sheet = .worktrees }.disabled(workspace?.selected == nil)
+            Button("Create Patch from Changes…") { workspace?.selected?.createPatchFromChanges() }.disabled(workspace?.selected == nil)
+            Button("Apply Patch…") { workspace?.selected?.applyPatches() }.disabled(workspace?.selected == nil)
+            Button("Stop Bisect") { workspace?.selected?.stopBisect() }.disabled(workspace?.selected?.bisect.isActive != true)
+            Button("Manage Remotes…") { workspace?.selected?.sheet = .remotes }.disabled(workspace?.selected == nil)
+            Button("Fork Repository…") { workspace?.selected?.sheet = .fork }.disabled(workspace?.selected?.canFork != true)
+            Button("Notifications…") { workspace?.selected?.sheet = .notifications }.disabled(workspace?.selected == nil)
+            Button("New Pull Request…") { workspace?.selected?.sheet = .newCollab(.pullRequest) }
+                .disabled(workspace?.selected?.providerTitle == nil)
+            Button("New Issue…") { workspace?.selected?.sheet = .newCollab(.issue) }
+                .disabled(workspace?.selected?.providerTitle == nil)
             Button("Clean Up Branches…") { workspace?.selected?.sheet = .cleanup }.disabled(workspace?.selected == nil)
             Button("Reflog…") { workspace?.selected?.sheet = .reflog }.disabled(workspace?.selected == nil)
             Divider()

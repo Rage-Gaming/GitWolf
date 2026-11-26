@@ -14,9 +14,8 @@ struct SidebarView: View {
                 header
                 SidebarSection(title: "Branches", count: store.localBranches.count, isOn: $showLocal) {
                     ForEach(store.localBranches) { branch in
-                        SidebarRow(icon: branch.isCurrent ? "checkmark.circle.fill" : "arrow.triangle.branch",
-                                   title: branch.name, tint: branch.isCurrent ? .green : nil,
-                                   trailing: syncText(branch), emphasized: branch.isCurrent,
+                        SidebarRow(icon: branchSymbol(branch.name), title: branch.name, tint: branchColor(branch.name),
+                                   trailing: syncText(branch), current: branch.isCurrent, emphasized: branch.isCurrent,
                                    onTap: { store.reveal(hash: branch.hash) },
                                    onDoubleTap: { store.checkout(branch) })
                             .contextMenu {
@@ -151,7 +150,7 @@ private struct RemoteGroup: View {
             .buttonStyle(.plain)
             if open {
                 ForEach(store.remoteBranches.filter { $0.remote == remote }) { branch in
-                    SidebarRow(icon: "arrow.triangle.branch", title: branch.shortName, tint: nil, trailing: nil,
+                    SidebarRow(icon: branchSymbol(branch.shortName), title: branch.shortName, tint: branchColor(branch.shortName), trailing: nil,
                                emphasized: false, onTap: { store.reveal(hash: branch.hash) },
                                onDoubleTap: { store.checkout(branch) })
                         .padding(.leading, 14)
@@ -168,6 +167,12 @@ private struct RemoteGroup: View {
         }
     }
 }
+
+private func branchSymbol(_ name: String) -> String {
+    if case .symbol(let symbol) = FileIcons.branchIcon(named: name).glyph { return symbol }
+    return "arrow.triangle.branch"
+}
+private func branchColor(_ name: String) -> Color { Color(hex: FileIcons.branchIcon(named: name).color) }
 
 private struct SidebarSection<Content: View>: View {
     let title: String
@@ -200,6 +205,7 @@ private struct SidebarRow: View {
     let title: String
     let tint: Color?
     let trailing: String?
+    var current = false
     let emphasized: Bool
     let onTap: () -> Void
     let onDoubleTap: () -> Void
@@ -208,6 +214,12 @@ private struct SidebarRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: icon).foregroundStyle(tint ?? .secondary).frame(width: 16)
+                .overlay(alignment: .bottomTrailing) {
+                    if current {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 9))
+                            .foregroundStyle(.white, .green).offset(x: 4, y: 3)
+                    }
+                }
             Text(title).fontWeight(emphasized ? .semibold : .regular).lineLimit(1)
             Spacer(minLength: 4)
             if let trailing { Text(trailing).font(.caption.weight(.medium)).foregroundStyle(Theme.brand) }

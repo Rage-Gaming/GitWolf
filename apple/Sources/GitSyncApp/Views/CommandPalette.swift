@@ -33,6 +33,19 @@ struct CommandPalette: View {
             ]
             all.append(Item(id: "undo", title: "Undo Last Change…", subtitle: "Repository action", icon: "arrow.uturn.backward") { s.undoLastChange() })
             all.append(Item(id: "compare", title: "Compare Refs…", subtitle: "Repository action", icon: "arrow.left.arrow.right") { s.openCompare() })
+            if s.providerTitle != nil {
+                all.append(Item(id: "new-pr", title: "New \(s.webLinks?.pullRequestsWord ?? "Pull Request")…", subtitle: "Hosting", icon: "arrow.triangle.pull") { s.sheet = .newCollab(.pullRequest) })
+                all.append(Item(id: "new-issue", title: "New Issue…", subtitle: "Hosting", icon: "smallcircle.filled.circle") { s.sheet = .newCollab(.issue) })
+            }
+            if s.canFork { all.append(Item(id: "fork", title: "Fork on \(s.providerTitle ?? "provider")…", subtitle: "Hosting", icon: "arrow.triangle.branch") { s.sheet = .fork }) }
+            all.append(Item(id: "worktrees", title: "Worktrees & Submodules…", subtitle: "Repository action", icon: "square.stack.3d.up") { s.sheet = .worktrees })
+            all.append(Item(id: "apply-patch", title: "Apply Patch…", subtitle: "Repository action", icon: "doc.badge.gearshape") { s.applyPatches() })
+            all.append(Item(id: "make-patch", title: "Create Patch from Changes…", subtitle: "Repository action", icon: "doc.badge.plus") { s.createPatchFromChanges() })
+            if s.bisect.isActive { all.append(Item(id: "stop-bisect", title: "Stop Bisect", subtitle: "Repository action", icon: "scope") { s.stopBisect() }) }
+            if s.isShallow { all.append(Item(id: "unshallow", title: "Fetch Full History", subtitle: "Sync", icon: "arrow.down.to.line") { s.fetchFullHistory() }) }
+            all.append(Item(id: "remotes", title: "Manage Remotes…", subtitle: "Sync", icon: "network") { s.sheet = .remotes })
+            all.append(Item(id: "force-push", title: "Force Push (with Lease)…", subtitle: "Sync", icon: "arrow.up.circle") { s.confirmForcePush() })
+            all.append(Item(id: "notifications", title: "Notifications…", subtitle: "Hosting", icon: "bell") { s.sheet = .notifications })
             all.append(Item(id: "cleanup", title: "Clean Up Branches…", subtitle: "Repository action", icon: "trash.slash") { s.sheet = .cleanup })
             all.append(Item(id: "reflog", title: "Open Reflog…", subtitle: "Repository action", icon: "clock.arrow.circlepath") { s.sheet = .reflog })
             if let op = s.operation {

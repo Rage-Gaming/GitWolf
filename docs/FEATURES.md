@@ -213,10 +213,66 @@ A menu button next to "Amend last commit":
 
 - Fetch (`fetch --all --prune`), pull (fast-forward/merge, no editor), push (sets upstream on first
   push). Ahead/behind badges in the toolbar.
+- **Pull strategy** (context menu on Pull, Repository menu, palette): merge, rebase (`--autostash`), or
+  fast-forward only (`--ff-only`; a diverged branch fails with a clear message). The default comes from
+  the Settings toggle.
+- **Push options** (context menu on Push): plain; with tags (`--tags`); force with lease
+  (`--force-with-lease`, never plain `--force`, always behind a confirmation); push to a chosen remote
+  (sets upstream when the branch has none).
+- **Rejected push**: detect `[rejected]`, `non-fast-forward`, `fetch first`, `stale info` in stderr and
+  offer Pull / Force Push… / Cancel. If a lease push is rejected, tell the user to fetch first.
+- **Remotes sheet**: list (`git remote -v`, redact any `user:password@`), add, rename, set URL, remove
+  (confirm), fetch one remote, push to one remote. Names: non-empty, no whitespace, no leading `-`.
+  Reject URLs with an embedded password or a leading `-`.
 - **Always live** [core `FileWatcher`]: watch the working tree and `.git`, ignore `.git/objects` and
   `*.lock`, coalesce events (≈250 ms), refresh one snapshot. Also refresh on app activation and after
   any mutation. Background fetch on a timer (setting; default 5 min, 0 = off).
 - Busy indicator for long operations; cancellation via task cancellation killing the process.
+
+## 6a. File type icons
+
+[core `FileIcons.swift`] `FileIcons.icon(forPath:)` maps a path to `{name, glyph, color, darkText}`. Look up by
+exact lowercase file name first (`package.json`, `dockerfile`, `.gitignore`, `makefile`), then prefixes
+(`.env*`, `readme*`, `license*`, `dockerfile*`), then `.d.ts`/`.min.js`, then the last extension, else a grey
+generic file. Glyphs are `letters` (short text on a rounded square in the brand colour, dark text on light
+colours like JS yellow), `symbol` (SF Symbol name; use the nearest icon on other platforms) or `react` (three
+ellipses at 0°, 60° and 120° plus a centre dot, stroked in #61DAFB). Flat colours only, no gradients. Folders use the glyph
+`folder(innerSymbol?)`: `FileIcons.folderIcon(named:)` looks the name up (case-insensitive: `src`, `docs`,
+`tests`, `assets`, `components`, `scripts`, `config`, `.github`, `node_modules`, `dist`…), and
+`folderIcon(containing: path)` uses the nearest folder, falling back to a container folder (`node_modules`,
+`vendor`, `.github`, `dist`, `build`…) higher up. Draw a folder in the brand colour with the inner symbol small and
+white on it, before the directory text of a file row. Draw it at
+the start of every file row (after the status badge), in the diff header and file history.
+
+Branches [`FileIcons.branchIcon(named:)`]: exact names first (`main`/`master`/`trunk` star, `develop`/`dev`
+hammer, `staging` flag, `production` shield), then the first word split on `/`, `-` or `_` (`feature`, `feat`,
+`fix`, `bugfix`, `hotfix`, `release`, `chore`, `docs`, `test`, `refactor`, `perf`, `style`, `wip`, `revert`,
+`dependabot`, `pr`, `issue`), a leading number means an issue branch, anything else is the plain branch symbol.
+In the sidebar draw the symbol in its colour; mark the current branch with a small green check badge on the icon
+(and a semibold name) rather than replacing the icon.
+
+## 6b. Scale and power
+
+- **Bisect** [core `Bisect.swift`]: state comes from `BISECT_LOG` (marks, and the
+  `# first bad commit:` line). Start with a bad and good commit (`bisect start <bad> <good> --`), mark HEAD or
+  a given hash with `bisect good|bad|skip`, parse `Bisecting: N revisions left…` for progress, `bisect reset`
+  to end. UI: context-menu picks, a banner with Skip/Bad/Good/Stop, then "Show Commit"/"Finish".
+- **Patches** [`Patches.swift`]: `format-patch -1 <hash> -o dir`; `diff --binary HEAD`; `apply --check` before
+  `apply [--index]`; `am --3way`. An `am` in progress is detected by `rebase-apply/applying` and shown as the
+  operation "Applying patches" (continue/skip/abort use `git am`).
+- **Worktrees** [`Worktrees.swift`]: `worktree list --porcelain` (first entry is the main one; `locked`,
+  `prunable`), `add [-b]`, `remove` (never forced), `prune`. Open one as another repository.
+- **Submodules** [`Submodules.swift`]: `submodule status` (flags ` `, `-`, `+`, `U`) joined with URLs from
+  `.gitmodules`; `update --init --recursive [-- path]`, `update --remote`, `add -- url path` (refuse `-`
+  prefixes). Network calls use the account credential like fetch.
+- **LFS** [`LFS.swift`]: `check-attr -z --stdin filter` marks paths whose filter is `lfs`; shown as a badge. Only
+  run when `.gitattributes` mentions `filter=lfs`. `LFSPointer.parse` reads pointer files.
+- **Clone options** [`CloneOptions.swift`]: `--depth`, `--filter=blob:none|tree:0`, `--single-branch`,
+  `--branch` (not accepted with a leading `-`), `--recurse-submodules`. `rev-parse --is-shallow-repository`
+  drives a banner; `fetch --unshallow` fetches the rest.
+- **Large repositories** [`Performance.swift`]: history is paged. `git log --topo-order` walks all of
+  history without a commit-graph, so if a refresh takes over 0.5s write it once with
+  `commit-graph write --reachable --changed-paths` in the background.
 
 ## 7. Settings
 
@@ -263,6 +319,31 @@ Full details in [PROVIDERS.md](PROVIDERS.md). Summary:
   when the tab opens.
 - API details in [PROVIDERS.md](PROVIDERS.md#pull-requests-and-issues).
 
+### Fork
+
+Repository menu and palette: **Fork Repository…** (needs a connected account on GitHub, GitLab, Gitea or Bitbucket Cloud). Calls the provider's fork API (returns the existing fork if you already have one), then wires the checkout: **Use the fork as origin** (`git remote rename origin upstream`, `git remote add origin <fork>`; refused if `upstream` already exists) or **Add as another remote** (default name `fork`). The fork URL is SSH when the current origin uses SSH, HTTPS otherwise. It then fetches the new remote; GitHub copies in the background so the fetch is retried once after 4 s. Endpoints in [PROVIDERS.md](PROVIDERS.md#fork).
+
+### Notifications
+
+Bell button in the repository toolbar (only when a GitHub, GitLab or Gitea account exists), Repository menu and palette. Loads from every connected account at start and every 5 minutes; the badge counts unread items. The sheet lists title, `owner/repo`, age and a reason chip (Review requested, Mentioned, Assigned, Activity). Clicking a row opens it on the web and marks it read; **Mark All as Read** clears everything. A GitHub token without the `notifications` scope shows a warning instead of an empty list. Bitbucket and Azure DevOps have no notifications API. Endpoints in [PROVIDERS.md](PROVIDERS.md#notifications).
+
+### CI checks
+
+Selecting a pushed commit (History) or a pull request shows a pill with the overall result (worst state wins: failure, then pending, then success) that expands to each check with a **Details** link. Looked up by commit SHA (a pull request uses its head commit), cached for 60 s, hidden when the server has no checks or doesn't know the commit. Works without an account on public repositories. Endpoints in [PROVIDERS.md](PROVIDERS.md#ci-checks).
+
+### Actions (need a connected account)
+
+- **New Pull Request…** / **New Issue…**: "+" in the list header, Repository menu, palette. The PR form
+  shows `current branch → base` (base defaults to main/master/develop/trunk), title (the branch's only
+  commit subject, otherwise the humanised branch name), Markdown description, "Open as draft". If the
+  branch has no upstream or unpushed commits it is pushed first. A rejected request shows the
+  server's reason (for example "a pull request already exists"). The new item is selected.
+- Detail pane: **Merge** menu (merge commit / squash / rebase) with a confirmation, disabled for drafts;
+  **Close** / **Reopen**; **Labels** menu with checkmarks (GitHub, GitLab); a **Conversation** with the
+  comments (Markdown, GitLab system notes hidden) and a comment box (⌘↩).
+- Not supported: reopening a declined Bitbucket PR, labels on Gitea (they need ids), rebase on GitLab,
+  anything for Azure DevOps, assignees and formal reviews.
+
 ## 9. Keyboard shortcuts (macOS; map ⌘ to Ctrl on Windows/Linux)
 
 | Action | Keys |
@@ -278,4 +359,4 @@ Full details in [PROVIDERS.md](PROVIDERS.md). Summary:
 
 ## 10. Not built yet
 
-See [ROADMAP.md](ROADMAP.md): submodules/worktrees, LFS, notarised releases.
+See [ROADMAP.md](ROADMAP.md): LFS actions, notarised releases.
