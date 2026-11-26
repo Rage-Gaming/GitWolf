@@ -109,6 +109,7 @@ struct AddAccountSheet: View {
     @State private var working = false
     @State private var error: String?
     @State private var session = OAuthSession()
+    @State private var copiedRedirect = false
 
     private var cleanHost: String {
         var h = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -253,6 +254,20 @@ struct AddAccountSheet: View {
                     }
                     Text(OAuthClients.setupHint(kind, host: cleanHost))
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if kind.oauthFlow == .pkce {
+                        field("REDIRECT URI") {
+                            HStack {
+                                Text(OAuthLoopback.redirectURI)
+                                    .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                                Spacer(minLength: 8)
+                                Button { copyRedirect() } label: {
+                                    Label(copiedRedirect ? "Copied" : "Copy", systemImage: copiedRedirect ? "checkmark" : "doc.on.doc")
+                                        .labelStyle(.titleAndIcon).font(.caption.weight(.medium))
+                                }
+                                .buttonStyle(.plain).foregroundStyle(Theme.brand)
+                            }
+                        }
+                    }
                 } else {
                     Text("You’ll approve GitSync in your browser. No token to copy.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -289,6 +304,16 @@ struct AddAccountSheet: View {
     }
 
     // MARK: Actions
+
+    private func copyRedirect() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(OAuthLoopback.redirectURI, forType: .string)
+        copiedRedirect = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            copiedRedirect = false
+        }
+    }
 
     private func signIn() {
         guard canAdd else { return }
