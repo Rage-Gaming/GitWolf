@@ -647,6 +647,16 @@ final class RepositoryStore: Identifiable {
         perform("Pushing…") { try await $0.push(status: s, remotes: r) }
     }
 
+    /// Adds an ignore rule to `.gitignore` (or `.git/info/exclude` when `local`), optionally untracking the file so it takes effect.
+    func ignore(_ option: IgnoreOption, local: Bool, untrack path: String? = nil) {
+        // A folder rule untracks the whole folder; the others only the chosen file.
+        let target = option.kind == .folder ? path.map { ($0 as NSString).deletingLastPathComponent } : path
+        perform("Updating ignore rules…") { repo in
+            try await repo.addIgnoreRule(option.pattern, local: local)
+            if let target { try await repo.stopTracking(target) }
+        }
+    }
+
     func stage(_ paths: [String]) { perform("Staging…") { try await $0.stage(paths) } }
     func unstage(_ paths: [String]) { perform("Unstaging…") { try await $0.unstage(paths) } }
     func stageAll() { perform("Staging…") { try await $0.stageAll() } }

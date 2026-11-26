@@ -1404,3 +1404,43 @@ import Testing
         #expect(HookDiagnosis.diagnose(stderr: "boom", activeHooks: []) == nil)
     }
 }
+
+@Suite struct IgnoreTests {
+    @Test func optionsForNestedFile() {
+        let o = IgnoreRules.options(for: "build/out/app.log")
+        #expect(o.map(\.pattern) == ["/build/out/app.log", "app.log", "*.log", "/build/out/"])
+        #expect(IgnoreRules.options(for: "README").map(\.pattern) == ["/README", "README"])
+        #expect(IgnoreRules.options(for: "#odd[1].txt").first?.pattern == "/\\#odd\\[1\\].txt")
+    }
+
+    @Test func rulesTakeEffectAndAreNotDuplicated() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("base", file: "keep.txt", text: "k")
+        try t.write("x", "debug.log")
+        try t.write("y", "cache.tmp")
+        #expect(try await t.repo.status().untracked.map(\.path).sorted() == ["cache.tmp", "debug.log"])
+        #expect(try await t.repo.addIgnoreRule("*.log"))
+        #expect(try await t.repo.addIgnoreRule("*.log") == false)
+        #expect(try await t.repo.addIgnoreRule("cache.tmp", local: true))
+        let untracked = try await t.repo.status().untracked.map(\.path)
+        #expect(!untracked.contains("debug.log") && !untracked.contains("cache.tmp"))
+        #expect(try t.read(".gitignore") == "*.log\n")
+        let exclude = try String(contentsOf: t.dir.appendingPathComponent(".git/info/exclude"), encoding: .utf8)
+        #expect(exclude.contains("cache.tmp"))
+    }
+
+    @Test func ignoredTrackedFileNeedsStopTracking() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("base", file: "secret.env", text: "S=1")
+        try await t.repo.addIgnoreRule("secret.env")
+        try t.write("S=2", "secret.env")
+        #expect(try await t.repo.status().unstaged.map(\.path) == ["secret.env"])
+        try await t.repo.stopTracking("secret.env")
+        try await t.git.run(["add", ".gitignore"])
+        let status = try await t.repo.status()
+        #expect(status.unstaged.isEmpty && status.untracked.isEmpty)
+        #expect(try t.read("secret.env") == "S=2")
+    }
+}

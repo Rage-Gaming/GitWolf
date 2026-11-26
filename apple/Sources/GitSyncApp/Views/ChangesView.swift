@@ -158,6 +158,17 @@ private struct ChangeRow: View {
             if source != .untracked {
                 Button("History & Blame…") { store.sheet = .fileHistory(change.path) }
             }
+            Menu("Ignore") {
+                ForEach(IgnoreRules.options(for: change.path)) { option in
+                    Button(option.title) { store.ignore(option, local: false, untrack: source == .untracked ? nil : change.path) }
+                }
+                Divider()
+                Menu("Only on This Machine") {
+                    ForEach(IgnoreRules.options(for: change.path)) { option in
+                        Button(option.title) { store.ignore(option, local: true, untrack: source == .untracked ? nil : change.path) }
+                    }
+                }
+            }
             Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([store.repo.root.appendingPathComponent(change.path)])
             }

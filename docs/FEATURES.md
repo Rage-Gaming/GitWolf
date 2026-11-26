@@ -171,6 +171,10 @@ User text is always glued to its flag (`--grep=…`, `-S…`) so it can never be
 
 If `git commit` fails and an executable `pre-commit`, `prepare-commit-msg` or `commit-msg` hook exists (looked up with `git rev-parse --git-path hooks`, so `core.hooksPath` is honoured), the failure is treated as a hook failure unless git's own message explains it (nothing to commit, identity unknown, GPG failure, empty message, merge in progress…). The sheet shows the hook name and its full output with ANSI colour codes removed, **Copy Output**, and **Commit Without Hooks** (`git commit --no-verify`). The commit message draft is kept. Hook stdout is redirected to stderr by git, so stderr holds all output.
 
+## 3l. Ignore helper
+
+Context menu on a change row, **Ignore**: options are generated from the path (`/path/to/file`, `name`, `*.ext`, `/folder/`; special characters `* ? [ ] \` and a leading `#` or `!` are escaped). Rules are appended to `.gitignore`, or to `git rev-parse --git-path info/exclude` under **Only on This Machine**; duplicates are skipped. For a file that is already tracked the app also runs `git rm --cached -r` on the file (or, for a folder rule, the folder) so the rule takes effect; the file stays on disk.
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is
