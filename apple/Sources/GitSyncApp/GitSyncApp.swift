@@ -39,7 +39,7 @@ struct GitSyncApp: App {
         .defaultSize(width: 1440, height: 880)
         .commands { AppCommands() }
 
-        Settings { SettingsView().modifier(AppearanceModifier()) }
+        Settings { SettingsView() }
     }
 }
 
