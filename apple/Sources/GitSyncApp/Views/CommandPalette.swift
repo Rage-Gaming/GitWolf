@@ -38,6 +38,8 @@ struct CommandPalette: View {
                 all.append(Item(id: "new-issue", title: "New Issue…", subtitle: "Hosting", icon: "smallcircle.filled.circle") { s.sheet = .newCollab(.issue) })
             }
             if s.canFork { all.append(Item(id: "fork", title: "Fork on \(s.providerTitle ?? "provider")…", subtitle: "Hosting", icon: "arrow.triangle.branch") { s.sheet = .fork }) }
+            all.append(Item(id: "remotes", title: "Manage Remotes…", subtitle: "Sync", icon: "network") { s.sheet = .remotes })
+            all.append(Item(id: "force-push", title: "Force Push (with Lease)…", subtitle: "Sync", icon: "arrow.up.circle") { s.confirmForcePush() })
             all.append(Item(id: "notifications", title: "Notifications…", subtitle: "Hosting", icon: "bell") { s.sheet = .notifications })
             all.append(Item(id: "cleanup", title: "Clean Up Branches…", subtitle: "Repository action", icon: "trash.slash") { s.sheet = .cleanup })
             all.append(Item(id: "reflog", title: "Open Reflog…", subtitle: "Repository action", icon: "clock.arrow.circlepath") { s.sheet = .reflog })

@@ -7,6 +7,8 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Pull and push options: right-click Pull for merge, rebase or fast-forward only; right-click Push for push with tags, force push with lease (always confirmed) and push to another remote. A rejected push offers to pull first or force push with lease; a diverged fast-forward-only pull says so plainly.
+- Remotes: "Manage Remotes…" lists remotes with their URLs (passwords redacted) and adds, renames, changes the URL of or removes them, with fetch and push per remote. URLs with embedded passwords are refused.
 - Fork: "Fork Repository…" forks the current repository on GitHub, GitLab, Gitea or Bitbucket Cloud with your connected account, then either makes the fork `origin` and the original `upstream`, or adds it as another remote, and fetches it.
 - Notifications: review requests, mentions and assignments from your GitHub, GitLab and Gitea accounts, with a bell and unread count in the toolbar (refreshed every 5 minutes), a list that opens the item on the web and marks it read, and Mark All as Read.
 - CI status: a checks summary ("All 38 checks passed", "2 of 9 checks failed") with an expandable list and links to each run, on the selected commit and on pull requests (GitHub check runs and statuses, GitLab pipeline jobs, Gitea and Bitbucket Cloud statuses). Works for public repositories without an account.

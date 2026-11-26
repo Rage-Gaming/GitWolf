@@ -173,6 +173,10 @@ struct AppCommands: Commands {
                 .keyboardShortcut("z", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
             Button("Compare Refs…") { workspace?.selected?.openCompare() }
                 .keyboardShortcut("c", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Button("Pull (Fast-forward Only)") { workspace?.selected?.pull(strategy: .fastForwardOnly) }.disabled(workspace?.selected == nil)
+            Button("Pull (Rebase)") { workspace?.selected?.pull(strategy: .rebase) }.disabled(workspace?.selected == nil)
+            Button("Force Push (with Lease)…") { workspace?.selected?.confirmForcePush() }.disabled(workspace?.selected == nil)
+            Button("Manage Remotes…") { workspace?.selected?.sheet = .remotes }.disabled(workspace?.selected == nil)
             Button("Fork Repository…") { workspace?.selected?.sheet = .fork }.disabled(workspace?.selected?.canFork != true)
             Button("Notifications…") { workspace?.selected?.sheet = .notifications }.disabled(workspace?.selected == nil)
             Button("New Pull Request…") { workspace?.selected?.sheet = .newCollab(.pullRequest) }

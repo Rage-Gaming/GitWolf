@@ -17,6 +17,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `GraphLayout` | Turns topologically ordered commits into per-row lane edges for drawing the branch graph. |
 | `GitRepository` | Stateless, `Sendable` façade for every read and write operation. |
 | `SyntaxHighlighter`, `SideBySide` | Pure helpers for diff presentation: token ranges per line, split-view row pairing. |
+| `Sync` | `PullStrategy`, `PushOptions`, `GitError.isPushRejected/isDivergedPull`, `RemoteInfo`, remote add/rename/set-url/remove. |
 | `Fork` | `ProviderClient.fork`, `GitRepository.adoptFork` (rename/add remotes, fetch), `ForkRemoteMode`. |
 | `Notifications` | `ProviderNotification`, `ProviderClient.notifications()`, `markRead`, `markAllRead`. App side: `NotificationsStore` polls every account. |
 | `CIStatus` | `CICheck`, `CIStatus` (overall state, summary), `ProviderClient.ciStatus(repoPath:sha:)`. `CollabItem.headSHA` is the pull request tip. |

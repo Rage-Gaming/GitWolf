@@ -69,6 +69,8 @@ struct RepositoryView: View {
                 NotificationsSheet()
             case .fork:
                 ForkSheet(store: store)
+            case .remotes:
+                RemotesSheet(store: store)
             case .cleanup:
                 BranchCleanupSheet(store: store)
             case .reflog:
@@ -241,9 +243,27 @@ struct TopBar: View {
         HStack(spacing: 0) {
             SyncButton(icon: "arrow.triangle.2.circlepath", count: 0, help: "Fetch (⇧⌘F)") { store.fetch() }
             Divider().frame(height: 16)
-            SyncButton(icon: "arrow.down", count: store.status.behind, help: "Pull (⇧⌘L)") { store.pull() }
+            SyncButton(icon: "arrow.down", count: store.status.behind, help: "Pull (⇧⌘L). Right-click for more") { store.pull() }
+                .contextMenu {
+                    ForEach(PullStrategy.allCases, id: \.self) { strategy in
+                        Button(strategy.title) { store.pull(strategy: strategy) }
+                    }
+                }
             Divider().frame(height: 16)
-            SyncButton(icon: "arrow.up", count: store.status.ahead, help: "Push (⇧⌘P)") { store.push() }
+            SyncButton(icon: "arrow.up", count: store.status.ahead, help: "Push (⇧⌘P). Right-click for more") { store.push() }
+                .contextMenu {
+                    Button("Push") { store.push() }
+                    Button("Push with Tags") { store.push(options: PushOptions(includeTags: true)) }
+                    Button("Force Push (with Lease)…") { store.confirmForcePush() }
+                    if store.remotes.count > 1 {
+                        Divider()
+                        ForEach(store.remotes, id: \.self) { remote in
+                            Button("Push to \(remote)") { store.push(options: PushOptions(remote: remote)) }
+                        }
+                    }
+                    Divider()
+                    Button("Manage Remotes…") { store.sheet = .remotes }
+                }
             Divider().frame(height: 16)
             SyncButton(icon: "tray.and.arrow.down", count: 0, help: "Stash changes") { store.sheet = .stash }
                 .disabled(store.status.isClean)

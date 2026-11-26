@@ -1708,3 +1708,85 @@ import Testing
         await #expect(throws: GitError.self) { try await t.repo.adoptFork(info, mode: .addRemote("--bad")) }
     }
 }
+
+@Suite struct SyncTests {
+    private func bare() async throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sync-\(UUID().uuidString).git")
+        _ = try await GitRunner(workingDirectory: dir.deletingLastPathComponent()).run(["init", "--bare", "-q", "-b", "main", dir.path])
+        return dir
+    }
+
+    @Test func manageRemotes() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try await t.repo.addRemote("origin", url: "https://example.com/a.git")
+        try await t.repo.addRemote("backup", url: "git@example.com:a.git")
+        var list = try await t.repo.remoteInfos()
+        #expect(list.map(\.name).sorted() == ["backup", "origin"])
+        #expect(list.first { $0.name == "backup" }?.fetchURL == "git@example.com:a.git")
+        try await t.repo.renameRemote("backup", to: "mirror")
+        try await t.repo.setRemoteURL("origin", url: "https://example.com/b.git")
+        list = try await t.repo.remoteInfos()
+        #expect(list.map(\.name).sorted() == ["mirror", "origin"])
+        #expect(list.first { $0.name == "origin" }?.fetchURL == "https://example.com/b.git")
+        try await t.repo.removeRemote("mirror")
+        #expect(try await t.repo.remoteInfos().count == 1)
+        await #expect(throws: GitError.self) { try await t.repo.addRemote("x y", url: "https://e.com/a") }
+        await #expect(throws: GitError.self) { try await t.repo.addRemote("-bad", url: "https://e.com/a") }
+        await #expect(throws: GitError.self) { try await t.repo.addRemote("ok", url: "https://me:secret@e.com/a") }
+        await #expect(throws: GitError.self) { try await t.repo.setRemoteURL("origin", url: "--upload-pack=evil") }
+        #expect(GitRepository.redact("https://me:pw@e.com/a") == "https://me@e.com/a")
+    }
+
+    @Test func pushVariantsAndRejection() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        let remote = try await bare()
+        defer { try? FileManager.default.removeItem(at: remote) }
+        _ = try await t.commit("one", file: "a.txt", text: "1")
+        try await t.git.run(["branch", "-M", "main"])
+        try await t.git.run(["remote", "add", "origin", remote.path])
+        try await t.git.run(["remote", "add", "second", remote.path])
+        var status = try await t.repo.status()
+        try await t.repo.push(status: status, remotes: ["origin", "second"])
+        status = try await t.repo.status()
+        #expect(status.upstream == "origin/main")
+
+        // Someone else pushes first.
+        let other = FileManager.default.temporaryDirectory.appendingPathComponent("other-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: other) }
+        let g = GitRunner(workingDirectory: FileManager.default.temporaryDirectory)
+        _ = try await g.run(["clone", "-q", remote.path, other.path])
+        let og = GitRunner(workingDirectory: other)
+        _ = try await og.run(["-c", "user.name=o", "-c", "user.email=o@e.c", "commit", "-q", "--allow-empty", "-m", "theirs"])
+        _ = try await og.run(["push", "-q"])
+
+        _ = try await t.commit("two", file: "a.txt", text: "2")
+        status = try await t.repo.status()
+        do {
+            try await t.repo.push(status: status, remotes: ["origin"])
+            Issue.record("push should be rejected")
+        } catch let e as GitError {
+            #expect(e.isPushRejected)
+        }
+        // A stale lease is also refused: our remote-tracking ref doesn't know about their commit... until we fetch.
+        try await t.repo.fetch()
+        do {
+            try await t.repo.pull(strategy: .fastForwardOnly)
+            Issue.record("diverged pull should fail with ff-only")
+        } catch let e as GitError {
+            #expect(e.isDivergedPull)
+        }
+        try await t.repo.push(status: try await t.repo.status(), remotes: ["origin"], options: PushOptions(forceWithLease: true))
+        let log = try await og.runString(["fetch", "-q"]) + (try await og.runString(["log", "--format=%s", "origin/main"]))
+        #expect(log.contains("two") && !log.contains("theirs"))
+
+        try await t.git.run(["tag", "v1"])
+        try await t.repo.push(status: try await t.repo.status(), remotes: ["origin"], options: PushOptions(includeTags: true))
+        #expect(String(decoding: try await t.git.run(["ls-remote", "--tags", "origin"], readOnly: true), as: UTF8.self).contains("v1"))
+
+        // Publish to another remote and start tracking it.
+        try await t.repo.push(status: try await t.repo.status(), remotes: ["origin"], options: PushOptions(remote: "second", setUpstream: true))
+        #expect(try await t.repo.status().upstream == "second/main")
+    }
+}

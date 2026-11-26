@@ -213,6 +213,17 @@ A menu button next to "Amend last commit":
 
 - Fetch (`fetch --all --prune`), pull (fast-forward/merge, no editor), push (sets upstream on first
   push). Ahead/behind badges in the toolbar.
+- **Pull strategy** (context menu on Pull, Repository menu, palette): merge, rebase (`--autostash`), or
+  fast-forward only (`--ff-only`; a diverged branch fails with a clear message). The default comes from
+  the Settings toggle.
+- **Push options** (context menu on Push): plain; with tags (`--tags`); force with lease
+  (`--force-with-lease`, never plain `--force`, always behind a confirmation); push to a chosen remote
+  (sets upstream when the branch has none).
+- **Rejected push**: detect `[rejected]`, `non-fast-forward`, `fetch first`, `stale info` in stderr and
+  offer Pull / Force Push… / Cancel. If a lease push is rejected, tell the user to fetch first.
+- **Remotes sheet**: list (`git remote -v`, redact any `user:password@`), add, rename, set URL, remove
+  (confirm), fetch one remote, push to one remote. Names: non-empty, no whitespace, no leading `-`.
+  Reject URLs with an embedded password or a leading `-`.
 - **Always live** [core `FileWatcher`]: watch the working tree and `.git`, ignore `.git/objects` and
   `*.lock`, coalesce events (≈250 ms), refresh one snapshot. Also refresh on app activation and after
   any mutation. Background fetch on a timer (setting; default 5 min, 0 = off).

@@ -12,6 +12,7 @@ enum StoreSheet: Identifiable {
     case fileHistory(String)
     case renameBranch(String)
     case cleanup
+    case remotes
     case fork
     case notifications
     case newCollab(CollabKind)
@@ -27,6 +28,7 @@ enum StoreSheet: Identifiable {
         case .fileHistory: "fileHistory"
         case .renameBranch: "renameBranch"
         case .cleanup: "cleanup"
+        case .remotes: "remotes"
         case .fork: "fork"
         case .notifications: "notifications"
         case .newCollab(let kind): "newCollab-\(kind.rawValue)"
@@ -315,6 +317,7 @@ final class RepositoryStore: Identifiable {
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "cleanup" { sheet = .cleanup }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "fork" { sheet = .fork }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "remotes" { sheet = .remotes }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "notes" { NotificationsStore.shared.loadSamples(); sheet = .notifications }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "newpr" { sheet = .newCollab(.pullRequest) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "hook" { sheet = .hookFailure(HookFailedError(hook: "pre-commit", output: "eslint: src/app.ts\n  12:5  error  Unexpected console statement  no-console\n\n1 problem (1 error, 0 warnings)")) }
@@ -592,17 +595,22 @@ final class RepositoryStore: Identifiable {
 
     // MARK: Operations
 
-    private func perform(_ label: String, _ op: @escaping @Sendable (GitRepository) async throws -> Void) {
+    private func perform(_ label: String, pushOptions: PushOptions? = nil, _ op: @escaping @Sendable (GitRepository) async throws -> Void) {
         guard !isBusy else { return }
         isBusy = true
         busyLabel = label
         Task {
+            var rejectedPush = false
             do { try await op(repo) } catch let failure as HookFailedError {
                 sheet = .hookFailure(failure)
+            } catch let failure as GitError where pushOptions != nil && failure.isPushRejected {
+                rejectedPush = true
             } catch { errorMessage = error.localizedDescription }
             isBusy = false
             busyLabel = nil
             requestRefresh()
+            // After the busy state is cleared, so the follow-up (pull or force push) can start.
+            if rejectedPush, let pushOptions { offerAfterRejectedPush(pushOptions) }
         }
     }
 
@@ -665,10 +673,12 @@ final class RepositoryStore: Identifiable {
     }
 
     func fetch() { perform("Fetching…") { try await $0.fetch() } }
-    func pull() {
-        let rebase = AppSettings.shared.pullRebase
-        perform(rebase ? "Pulling (rebase)…" : "Pulling…") { try await $0.pull(rebase: rebase) }
+    func pull(strategy: PullStrategy? = nil) {
+        let chosen = strategy ?? (AppSettings.shared.pullRebase ? .rebase : .merge)
+        perform(chosen == .rebase ? "Pulling (rebase)…" : "Pulling…") { try await $0.pull(strategy: chosen) }
     }
+
+    func fetch(remote: String) { perform("Fetching \(remote)…") { try await $0.fetch(remote: remote) } }
 
     /// Opens the interactive rebase editor for `commit` and everything after it on this branch.
     func beginInteractiveRebase(from commit: String) {
@@ -688,9 +698,44 @@ final class RepositoryStore: Identifiable {
 
     func startRebase(_ plan: RebasePlan) { perform("Rebasing…") { try await $0.startInteractiveRebase(plan) } }
     func rebase(onto target: String) { perform("Rebasing…") { try await $0.rebase(onto: target) } }
-    func push() {
+    func push(options: PushOptions = PushOptions()) {
         let (s, r) = (status, remotes)
-        perform("Pushing…") { try await $0.push(status: s, remotes: r) }
+        perform(options.forceWithLease ? "Force pushing…" : "Pushing…", pushOptions: options) {
+            try await $0.push(status: s, remotes: r, options: options)
+        }
+    }
+
+    /// Force push with a lease, after saying what it does.
+    func confirmForcePush(remote: String? = nil) {
+        guard let branch = status.branch else { return }
+        let alert = NSAlert()
+        alert.messageText = "Force push “\(branch)”?"
+        alert.informativeText = "This replaces “\(branch)” on \(remote ?? status.upstream ?? "the remote") with your local version. Commits that exist only there are lost. It is refused if someone pushed since your last fetch (--force-with-lease)."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Force Push")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        push(options: PushOptions(remote: remote, forceWithLease: true))
+    }
+
+    /// The remote refused the push: explain and offer the two ways forward.
+    private func offerAfterRejectedPush(_ options: PushOptions) {
+        if options.forceWithLease {
+            errorMessage = "The remote branch changed since your last fetch, so the force push was refused. Fetch, look at what is new, then try again."
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "The remote has commits you don’t have"
+        alert.informativeText = "Pull them first, then push again. Or force push to overwrite the remote branch with yours (commits that exist only there are lost)."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Pull")
+        alert.addButton(withTitle: "Force Push…")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: pull()
+        case .alertSecondButtonReturn: confirmForcePush(remote: options.remote)
+        default: break
+        }
     }
 
     /// Adds an ignore rule to `.gitignore` (or `.git/info/exclude` when `local`), optionally untracking the file so it takes effect.
