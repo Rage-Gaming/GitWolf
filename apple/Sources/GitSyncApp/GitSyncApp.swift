@@ -8,10 +8,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         Task { @MainActor in UpdateManager.checkInBackground() }
         StatusItemController.shared.sync()
+        MainMenuTidier.start()
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in StatusItemController.shared.sync() }
         }
         #if DEBUG
+        // GITSYNC_DUMP_MENU=/path.txt writes the main menu's structure, then quits.
+        if let path = ProcessInfo.processInfo.environment["GITSYNC_DUMP_MENU"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                func dump(_ menu: NSMenu, _ depth: Int) -> String {
+                    menu.items.map { item in
+                        let line = String(repeating: "  ", count: depth) + (item.isSeparatorItem ? "---" : item.title)
+                        return line + (item.submenu.map { "\n" + dump($0, depth + 1) } ?? "")
+                    }.joined(separator: "\n")
+                }
+                let text = dump(NSApp.mainMenu ?? NSMenu(), 0) + "\n\n" + StatusItemController.shared.debugState
+                try? text.write(toFile: path, atomically: true, encoding: .utf8)
+                exit(0)
+            }
+        }
         // GITSYNC_SNAPSHOT=/path.png renders the window to a PNG after a delay, then quits.
         // GITSYNC_APPEARANCE=dark|light forces an appearance for the capture.
         if let path = ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT"] {
@@ -67,6 +82,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
+/// SwiftUI leaves empty View and Format menus behind and AppKit adds AutoFill, Dictation and Emoji
+/// items to Edit (some twice). Nothing in GitSync uses them, so remove them, and again whenever
+/// SwiftUI rebuilds the menu.
+@MainActor
+enum MainMenuTidier {
+    private static var pending = false
+    private static let unwantedEditItems = ["AutoFill", "Start Dictation…", "Emoji & Symbols"]
+
+    static func start() {
+        NotificationCenter.default.addObserver(forName: NSMenu.didAddItemNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in schedule() }
+        }
+        schedule()
+    }
+
+    private static func schedule() {
+        guard !pending else { return }
+        pending = true
+        // Coalesce bursts of menu changes, and never mutate the menu from inside its own notification.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            pending = false
+            tidy()
+        }
+    }
+
+    static func tidy() {
+        guard let main = NSApp.mainMenu else { return }
+        for item in main.items.reversed() {
+            guard let sub = item.submenu else { continue }
+            let hasContent = sub.items.contains { !$0.isSeparatorItem }
+            if !hasContent && item.title != "GitSync" { main.removeItem(item); continue }
+            if item.title == "Edit" {
+                for entry in sub.items.reversed() where unwantedEditItems.contains(entry.title) { sub.removeItem(entry) }
+                // Drop separators left doubled or dangling at the ends.
+                var previousWasSeparator = true
+                for entry in sub.items {
+                    if entry.isSeparatorItem && previousWasSeparator { sub.removeItem(entry) }
+                    else { previousWasSeparator = entry.isSeparatorItem }
+                }
+                if sub.items.last?.isSeparatorItem == true { sub.removeItem(at: sub.items.count - 1) }
+            }
+        }
+    }
 }
 
 @main
@@ -224,6 +284,7 @@ struct AppCommands: Commands {
             Button("Create Patch from Changes…") { workspace?.selected?.createPatchFromChanges() }.disabled(workspace?.selected == nil)
             Button("Apply Patch…") { workspace?.selected?.applyPatches() }.disabled(workspace?.selected == nil)
             Button("Stop Bisect") { workspace?.selected?.stopBisect() }.disabled(workspace?.selected?.bisect.isActive != true)
+            Divider()
             Button("Show in Finder") { workspace?.selected?.openInFinder() }
                 .keyboardShortcut("r", modifiers: [.command, .shift, .option]).disabled(workspace?.selected == nil)
             Button("Open in Terminal") { workspace?.selected?.openInTerminal() }
@@ -235,6 +296,7 @@ struct AppCommands: Commands {
                     Button(action.name) { workspace?.selected?.run(action) }
                 }
             }.disabled(workspace?.selected == nil)
+            Divider()
             Button("Manage Remotes…") { workspace?.selected?.sheet = .remotes }.disabled(workspace?.selected == nil)
             Button("Fork Repository…") { workspace?.selected?.sheet = .fork }.disabled(workspace?.selected?.canFork != true)
             Button("Notifications…") { workspace?.selected?.sheet = .notifications }.disabled(workspace?.selected == nil)
@@ -242,6 +304,7 @@ struct AppCommands: Commands {
                 .disabled(workspace?.selected?.providerTitle == nil)
             Button("New Issue…") { workspace?.selected?.sheet = .newCollab(.issue) }
                 .disabled(workspace?.selected?.providerTitle == nil)
+            Divider()
             Button("Clean Up Branches…") { workspace?.selected?.sheet = .cleanup }.disabled(workspace?.selected == nil)
             Button("Reflog…") { workspace?.selected?.sheet = .reflog }.disabled(workspace?.selected == nil)
             Divider()

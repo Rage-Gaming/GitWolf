@@ -8,6 +8,7 @@ All notable changes are documented here. Format based on
 
 ### Changed
 - Redesigned the repository rail: narrower, uniform 40 pt tiles, flat tinted tiles that turn solid when selected with an edge marker, a smaller corner badge, no hover scaling or shadows.
+- Removed the empty View and Format menus and Edit's AutoFill, Dictation and Emoji items, and grouped the Repository menu with dividers.
 - Removed menu items that don't apply: File > New Window, the View menu's toolbar and sidebar toggles, the Format menu, and the empty Help book (replaced by links to the documentation and issue tracker).
 
 ### Added

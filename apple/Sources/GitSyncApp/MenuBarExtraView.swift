@@ -11,6 +11,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     static let shared = StatusItemController()
 
     private var item: NSStatusItem?
+    var debugState: String {
+        guard let item else { return "status item: none" }
+        let frame = item.button?.window?.frame ?? .zero
+        return "status item: visible=\(item.isVisible) title='\(item.button?.title ?? "")' image=\(item.button?.image != nil) frame=\(frame)"
+    }
     private var changes = 0
 
     /// Shows or hides the item to match the setting (default on).
