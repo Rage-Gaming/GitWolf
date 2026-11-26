@@ -141,6 +141,31 @@ struct SplitHandle: View {
     }
 }
 
+/// A horizontal divider the user drags up and down to size the pane next to it.
+/// `inverted` is for a pane below the handle, which grows when the handle moves up.
+struct VSplitHandle: View {
+    @Binding var height: Double
+    let range: ClosedRange<Double>
+    var inverted = false
+    @State private var start: Double?
+
+    var body: some View {
+        Color.clear
+            .frame(height: 9)
+            .overlay(Divider())
+            .contentShape(Rectangle())
+            .pointerStyle(.rowResize)
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        if start == nil { start = height }
+                        let delta = inverted ? -value.translation.height : value.translation.height
+                        height = min(max((start ?? height) + delta, range.lowerBound), range.upperBound)
+                    }
+                    .onEnded { _ in start = nil })
+    }
+}
+
 struct SearchField: View {
     @Binding var text: String
     let prompt: String

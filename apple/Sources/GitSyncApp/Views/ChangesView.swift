@@ -4,6 +4,7 @@ import SwiftUI
 struct ChangesView: View {
     @Bindable var store: RepositoryStore
     @FocusState private var composerFocused: Bool
+    @AppStorage("composerHeight") private var composerHeight = 96.0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,7 +33,7 @@ struct ChangesView: View {
                 .onKeyPress(.downArrow) { moveSelection(1); return .handled }
                 .onKeyPress(.upArrow) { moveSelection(-1); return .handled }
             }
-            Divider()
+            VSplitHandle(height: $composerHeight, range: 64...360, inverted: true)
             composer
         }
     }
@@ -94,7 +95,7 @@ struct ChangesView: View {
                 .task { store.issues.loadIfNeeded() }
                 .padding(12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .frame(height: 96)
+            .frame(height: composerHeight)
             .contentShape(Rectangle())
             .onTapGesture { composerFocused = true }
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))

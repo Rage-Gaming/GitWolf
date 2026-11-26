@@ -29,9 +29,9 @@ struct RepositoryView: View {
                 let content = min(CGFloat(contentWidth), max(320, geo.size.width - sidebar - 380 - 24))
                 HStack(spacing: 0) {
                     SidebarView(store: store).frame(width: sidebar)
-                    SplitHandle(width: $sidebarWidth, range: 200...360)
+                    SplitHandle(width: $sidebarWidth, range: 180...480)
                     mainColumn.frame(width: content).panel()
-                    SplitHandle(width: $contentWidth, range: 340...760)
+                    SplitHandle(width: $contentWidth, range: 280...900)
                     detailColumn.frame(minWidth: 360, maxWidth: .infinity).panel()
                 }
                 .padding(.trailing, 10).padding(.bottom, 10)
