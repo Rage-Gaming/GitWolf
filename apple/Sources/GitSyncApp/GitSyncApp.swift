@@ -84,7 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
-/// SwiftUI leaves empty View and Format menus behind, and the Edit menu isn't wanted. Remove them,
+/// SwiftUI leaves empty View and Format menus behind, and the Edit and Window menus aren't wanted. Remove them,
 /// and again whenever SwiftUI rebuilds the menu.
 @MainActor
 enum MainMenuTidier {
@@ -109,6 +109,7 @@ enum MainMenuTidier {
             case ("a", false): selector = #selector(NSText.selectAll(_:))
             case ("z", false): selector = Selector(("undo:"))
             case ("z", true): selector = Selector(("redo:"))
+            case ("m", false): selector = #selector(NSWindow.performMiniaturize(_:))
             default: selector = nil
             }
             guard let selector, NSApp.sendAction(selector, to: nil, from: nil) else { return event }
@@ -133,7 +134,7 @@ enum MainMenuTidier {
             guard let sub = item.submenu else { continue }
             let hasContent = sub.items.contains { !$0.isSeparatorItem }
             if !hasContent && item.title != "GitSync" { main.removeItem(item); continue }
-            if item.title == "Edit" { main.removeItem(item) }
+            if item.title == "Edit" || item.title == "Window" { main.removeItem(item) }
         }
     }
 }
