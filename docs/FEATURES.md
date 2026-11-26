@@ -394,7 +394,7 @@ Selecting a pushed commit (History) or a pull request shows a pill with the over
 | Open / Clone / New repository | ⌘O / ⇧⌘O / ⇧⌘N |
 | Close repository | ⇧⌘W |
 | Jump palette | ⌘K |
-| Repository 1-9 / next / previous | ⌘1…9 / ⌃⇥ / ⌃⇧⇥ |
+| Switch repository 1-9 / next / previous (Repository > Switch Repository) | ⌘1…9 / ⌃⇥ / ⌃⇧⇥ |
 | History / Changes | ⌥⌘1 / ⌥⌘2 |
 | Refresh / Fetch / Pull / Push | ⌘R / ⇧⌘F / ⇧⌘L / ⇧⌘P |
 | Open on provider | ⇧⌘G |

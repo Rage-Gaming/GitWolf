@@ -84,17 +84,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
-/// SwiftUI leaves empty View and Format menus behind and AppKit adds AutoFill, Dictation and Emoji
-/// items to Edit (some twice). Nothing in GitSync uses them, so remove them, and again whenever
-/// SwiftUI rebuilds the menu.
+/// SwiftUI leaves empty View and Format menus behind, and the Edit menu isn't wanted. Remove them,
+/// and again whenever SwiftUI rebuilds the menu.
 @MainActor
 enum MainMenuTidier {
     private static var pending = false
-    private static let unwantedEditItems = ["AutoFill", "Start Dictation…", "Emoji & Symbols"]
+    private static var monitor: Any?
 
     static func start() {
         NotificationCenter.default.addObserver(forName: NSMenu.didAddItemNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in schedule() }
+        }
+        // Without an Edit menu the standard text shortcuts would stop working, so route them to the
+        // focused text field ourselves.
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard flags.contains(.command), !flags.contains(.option), !flags.contains(.control),
+                  let key = event.charactersIgnoringModifiers?.lowercased() else { return event }
+            let selector: Selector?
+            switch (key, flags.contains(.shift)) {
+            case ("c", false): selector = #selector(NSText.copy(_:))
+            case ("v", false): selector = #selector(NSText.paste(_:))
+            case ("x", false): selector = #selector(NSText.cut(_:))
+            case ("a", false): selector = #selector(NSText.selectAll(_:))
+            case ("z", false): selector = Selector(("undo:"))
+            case ("z", true): selector = Selector(("redo:"))
+            default: selector = nil
+            }
+            guard let selector, NSApp.sendAction(selector, to: nil, from: nil) else { return event }
+            return nil
         }
         schedule()
     }
@@ -115,16 +133,7 @@ enum MainMenuTidier {
             guard let sub = item.submenu else { continue }
             let hasContent = sub.items.contains { !$0.isSeparatorItem }
             if !hasContent && item.title != "GitSync" { main.removeItem(item); continue }
-            if item.title == "Edit" {
-                for entry in sub.items.reversed() where unwantedEditItems.contains(entry.title) { sub.removeItem(entry) }
-                // Drop separators left doubled or dangling at the ends.
-                var previousWasSeparator = true
-                for entry in sub.items {
-                    if entry.isSeparatorItem && previousWasSeparator { sub.removeItem(entry) }
-                    else { previousWasSeparator = entry.isSeparatorItem }
-                }
-                if sub.items.last?.isSeparatorItem == true { sub.removeItem(at: sub.items.count - 1) }
-            }
+            if item.title == "Edit" { main.removeItem(item) }
         }
     }
 }
@@ -256,6 +265,17 @@ struct AppCommands: Commands {
         CommandMenu("Repository") {
             Button("Jump To…") { workspace?.showPalette.toggle() }
                 .keyboardShortcut("k")
+            Menu("Switch Repository") {
+                Button("Next Repository") { workspace?.cycle(1) }
+                    .keyboardShortcut(.tab, modifiers: .control)
+                Button("Previous Repository") { workspace?.cycle(-1) }
+                    .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                Divider()
+                ForEach(Array((workspace?.repos ?? []).prefix(9).enumerated()), id: \.element.id) { index, store in
+                    Button(store.name) { workspace?.selectIndex(index) }
+                        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
+                }
+            }.disabled(workspace?.repos.isEmpty ?? true)
             Divider()
             Button("Refresh") { workspace?.selected?.requestRefresh() }
                 .keyboardShortcut("r").disabled(workspace?.selected == nil)
@@ -318,31 +338,6 @@ struct AppCommands: Commands {
             if let store = workspace?.selected, store.supports(.issue) {
                 Button("Show Issues") { store.mode = .issues }
             }
-        }
-        CommandMenu("Repositories") {
-            Button("Next Repository") { workspace?.cycle(1) }
-                .keyboardShortcut(.tab, modifiers: .control)
-            Button("Previous Repository") { workspace?.cycle(-1) }
-                .keyboardShortcut(.tab, modifiers: [.control, .shift])
-            Divider()
-            Button("Repository 1") { workspace?.selectIndex(0) }
-                .keyboardShortcut("1")
-            Button("Repository 2") { workspace?.selectIndex(1) }
-                .keyboardShortcut("2")
-            Button("Repository 3") { workspace?.selectIndex(2) }
-                .keyboardShortcut("3")
-            Button("Repository 4") { workspace?.selectIndex(3) }
-                .keyboardShortcut("4")
-            Button("Repository 5") { workspace?.selectIndex(4) }
-                .keyboardShortcut("5")
-            Button("Repository 6") { workspace?.selectIndex(5) }
-                .keyboardShortcut("6")
-            Button("Repository 7") { workspace?.selectIndex(6) }
-                .keyboardShortcut("7")
-            Button("Repository 8") { workspace?.selectIndex(7) }
-                .keyboardShortcut("8")
-            Button("Repository 9") { workspace?.selectIndex(8) }
-                .keyboardShortcut("9")
         }
     }
 }
