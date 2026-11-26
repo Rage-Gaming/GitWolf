@@ -152,6 +152,21 @@ and should follow each platform's native idioms.
 - Tag rows: tooltip shows annotated message; context menu has **Push to <remote>**, **Delete on <remote>…** (confirmation, `git push <remote> --delete refs/tags/<tag>`) and **Delete Local Tag**. A "Push All Tags" link appears when there are several (`git push <remote> --tags`).
 - Tag list reads `for-each-ref` with the peeled object (`%(*objectname)`) so annotated tags point at their commit, plus `%(objecttype)` and `%(contents:subject)`.
 
+## 3j. History search
+
+The History search field filters loaded commits (message, author, hash prefix). The options button next to it widens the search; whenever a scope other than the default, a file/folder, or a date is set, git does the search over all refs (debounced 300 ms, max 500 results, graph hidden while searching):
+
+| Scope | Git flags |
+|---|---|
+| Message (all history) | `--grep=<text> --fixed-strings --regexp-ignore-case` |
+| Author | `--author=<text> --regexp-ignore-case` |
+| Code added or removed | `-S<text>` (pickaxe) |
+| Code matching regex | `-G<regex>` |
+| File or folder | `-- <path>` |
+| From / To dates | `--since=<date> 00:00:00` / `--until=<date> 23:59:59` |
+
+User text is always glued to its flag (`--grep=…`, `-S…`) so it can never be read as an option.
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is

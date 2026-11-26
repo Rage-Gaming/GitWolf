@@ -1319,3 +1319,44 @@ import Testing
         #expect(!remoteTags.contains("refs/tags/v1"))
     }
 }
+
+@Suite struct HistorySearchTests {
+    @Test func searchesByMessageAuthorContentPathAndDate() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("add greeting", file: "hello.txt", text: "hello world\n")
+        _ = try await t.commit("tune config", file: "config.txt", text: "timeout=30\n")
+        _ = try await t.commit("rename greeting", file: "hello.txt", text: "hello there\n")
+        let remotes: Set<String> = []
+
+        let message = try await t.repo.search(HistoryQuery(kind: .message, text: "GREETING"), remotes: remotes)
+        #expect(message.map(\.subject) == ["rename greeting", "add greeting"])
+
+        let pickaxe = try await t.repo.search(HistoryQuery(kind: .contentChanged, text: "timeout=30"), remotes: remotes)
+        #expect(pickaxe.map(\.subject) == ["tune config"])
+
+        let regex = try await t.repo.search(HistoryQuery(kind: .contentRegex, text: "hello (world|there)"), remotes: remotes)
+        #expect(regex.count == 2)
+
+        let byPath = try await t.repo.search(HistoryQuery(kind: .message, text: "", path: "config.txt"), remotes: remotes)
+        #expect(byPath.map(\.subject) == ["tune config"])
+
+        let future = try await t.repo.search(HistoryQuery(since: Date().addingTimeInterval(86_400 * 2)), remotes: remotes)
+        #expect(future.isEmpty)
+        let today = try await t.repo.search(HistoryQuery(since: Date().addingTimeInterval(-86_400), until: Date().addingTimeInterval(86_400)), remotes: remotes)
+        #expect(today.count == 3)
+
+        let byAuthor = try await t.repo.search(HistoryQuery(kind: .author, text: "nobody-like-this"), remotes: remotes)
+        #expect(byAuthor.isEmpty)
+    }
+
+    @Test func optionLikeTextIsNotAnOption() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("one", file: "a.txt", text: "a")
+        let found = try await t.repo.search(HistoryQuery(kind: .message, text: "--all"), remotes: [])
+        #expect(found.isEmpty)
+        let hyphen = try await t.repo.search(HistoryQuery(kind: .contentChanged, text: "-x"), remotes: [])
+        #expect(hyphen.isEmpty)
+    }
+}

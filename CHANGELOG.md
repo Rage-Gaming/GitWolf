@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- History search: search all history (not just loaded commits) by message or author, find commits that add or remove a piece of code (pickaxe) or match a regex in their diff, and limit by file or folder and by date range.
 - Tag tools: annotated tags (a message makes the tag annotated), push a tag or all tags, delete a tag on the remote, optional push when creating; the sidebar tooltip shows the tag message.
 - Branch tools: rename a branch, choose or clear its tracking branch, delete a branch on the remote (with confirmation), and "Clean Up Branches…" listing local branches that are merged or whose remote branch is gone (unmerged ones are flagged).
 - Compare any two refs (branches, tags, commits): ahead/behind, the commits, the changed files and a diff for each, optionally only the changes since the common ancestor.
