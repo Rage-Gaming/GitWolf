@@ -17,7 +17,7 @@ enum AppearanceChoice: String, CaseIterable, Identifiable {
     }
 }
 
-/// Accent colour presets. Each has a primary and a secondary tone used for gradients.
+/// Accent colour presets.
 enum AccentChoice: String, CaseIterable, Identifiable {
     case indigo, blue, purple, pink, red, orange, green, teal
     var id: String { rawValue }
@@ -35,19 +35,6 @@ enum AccentChoice: String, CaseIterable, Identifiable {
         case .teal: Color(red: 0.10, green: 0.68, blue: 0.70)
         }
     }
-    var secondary: Color {
-        switch self {
-        case .indigo: Color(red: 0.20, green: 0.56, blue: 1.0)
-        case .blue: Color(red: 0.20, green: 0.78, blue: 0.95)
-        case .purple: Color(red: 0.42, green: 0.40, blue: 0.98)
-        case .pink: Color(red: 0.98, green: 0.52, blue: 0.40)
-        case .red: Color(red: 0.98, green: 0.52, blue: 0.30)
-        case .orange: Color(red: 0.98, green: 0.74, blue: 0.20)
-        case .green: Color(red: 0.16, green: 0.78, blue: 0.70)
-        case .teal: Color(red: 0.20, green: 0.56, blue: 0.98)
-        }
-    }
-
     static var current: AccentChoice {
         AccentChoice(rawValue: UserDefaults.standard.string(forKey: SettingsKey.accent) ?? "") ?? .indigo
     }

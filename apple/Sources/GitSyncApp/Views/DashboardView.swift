@@ -13,7 +13,7 @@ struct DashboardView: View {
                         .font(.system(size: 38, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 84, height: 84)
-                        .background(Theme.brandGradient, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .background(Theme.brand, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                         .shadow(color: Theme.brand.opacity(0.4), radius: 18, y: 8)
                     Text("GitSync").font(.system(size: 34, weight: .bold, design: .rounded))
                     Text("Your repositories, always in sync.").font(.title3).foregroundStyle(.secondary)
@@ -75,7 +75,7 @@ private struct RecentCard: View {
                 Text(String(url.lastPathComponent.prefix(2)).capitalized)
                     .font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(.white)
                     .frame(width: 40, height: 40)
-                    .background(gradient(for: url.lastPathComponent), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(avatarColor(for: url.lastPathComponent), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(url.lastPathComponent).font(.body.weight(.semibold)).lineLimit(1)
                     Text(url.deletingLastPathComponent().path(percentEncoded: false))

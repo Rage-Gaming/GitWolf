@@ -49,7 +49,7 @@ private struct RailIconButton: View {
                 .frame(width: 44, height: 44)
                 .background(
                     RoundedRectangle(cornerRadius: selected ? 14 : 18, style: .continuous)
-                        .fill(selected ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(Color.primary.opacity(hovering ? 0.10 : 0.06))))
+                        .fill(selected ? AnyShapeStyle(Theme.brand) : AnyShapeStyle(Color.primary.opacity(hovering ? 0.10 : 0.06))))
                 .scaleEffect(hovering ? 1.05 : 1)
         }
         .buttonStyle(.plain)
@@ -80,7 +80,7 @@ private struct RepoTile: View {
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
-                    .background(gradient(for: store.name),
+                    .background(avatarColor(for: store.name),
                                 in: RoundedRectangle(cornerRadius: selected ? 14 : 18, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: selected ? 14 : 18, style: .continuous)
                         .strokeBorder(.white.opacity(0.22), lineWidth: 0.75))

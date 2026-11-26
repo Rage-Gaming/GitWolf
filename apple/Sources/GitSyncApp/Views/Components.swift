@@ -6,10 +6,6 @@ import SwiftUI
 enum Theme {
     /// User-selectable accent (Settings). Views re-render when it changes via `AppearanceModifier`.
     static var brand: Color { AccentChoice.current.primary }
-    static var brand2: Color { AccentChoice.current.secondary }
-    static var brandGradient: LinearGradient {
-        LinearGradient(colors: [brand, brand2], startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
 
     static let laneColors: [Color] = [
         Color(red: 0.36, green: 0.52, blue: 1.0), Color(red: 0.74, green: 0.38, blue: 0.96),
@@ -39,11 +35,10 @@ func stableHash(_ s: String) -> Int {
     s.utf8.reduce(5381) { ($0 &* 33) &+ Int($1) }
 }
 
-func gradient(for seed: String) -> LinearGradient {
+/// Flat, stable colour for a person or repository avatar.
+func avatarColor(for seed: String) -> Color {
     let hue = Double(abs(stableHash(seed.lowercased())) % 360) / 360
-    return LinearGradient(
-        colors: [Color(hue: hue, saturation: 0.55, brightness: 0.92), Color(hue: (hue + 0.06).truncatingRemainder(dividingBy: 1), saturation: 0.75, brightness: 0.66)],
-        startPoint: .top, endPoint: .bottom)
+    return Color(hue: hue, saturation: 0.5, brightness: 0.78)
 }
 
 // MARK: - Modifiers
@@ -56,11 +51,9 @@ struct WindowBackdrop: View {
     var body: some View {
         ZStack {
             Rectangle().fill(.ultraThinMaterial)
-            LinearGradient(
-                colors: scheme == .light
-                    ? [Color(red: 0.957, green: 0.961, blue: 0.980), Color(red: 0.925, green: 0.932, blue: 0.962)]
-                    : [Color(red: 0.090, green: 0.094, blue: 0.118), Color(red: 0.063, green: 0.067, blue: 0.086)],
-                startPoint: .top, endPoint: .bottom)
+            (scheme == .light
+                ? Color(red: 0.945, green: 0.949, blue: 0.972)
+                : Color(red: 0.075, green: 0.079, blue: 0.102))
                 .opacity(scheme == .light ? 0.94 : 0.96)
         }
     }
@@ -171,7 +164,7 @@ struct AvatarView: View {
             .font(.system(size: size * 0.4, weight: .semibold, design: .rounded))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(gradient(for: email), in: Circle())
+            .background(avatarColor(for: email), in: Circle())
             .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
     }
 }
@@ -213,7 +206,7 @@ struct RefChip: View {
         case .tag: .orange
         case .remote: .purple
         case .head: .gray
-        case .local: Theme.brand2
+        case .local: Theme.brand
         }
     }
 }

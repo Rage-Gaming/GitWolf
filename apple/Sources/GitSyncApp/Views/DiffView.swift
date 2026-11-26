@@ -194,7 +194,7 @@ private struct HunkHeaderRow: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 3)
-                        .background(Theme.brandGradient, in: Capsule())
+                        .background(Theme.brand, in: Capsule())
                 }
                 .buttonStyle(.plain)
                 if !staging.staged {

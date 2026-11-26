@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ChangesView: View {
     @Bindable var store: RepositoryStore
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,17 +56,17 @@ struct ChangesView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $store.draftMessage)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
-                if store.draftMessage.isEmpty {
-                    Text("Describe your changes…").foregroundStyle(.tertiary)
-                        .padding(.horizontal, 13).padding(.vertical, 16).allowsHitTesting(false)
-                }
-            }
+            // A vertical TextField draws its own placeholder, so the caret and placeholder always align.
+            TextField("Describe your changes…", text: $store.draftMessage, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .lineLimit(4...5)
+                .focused($composerFocused)
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .frame(height: 96)
+            .contentShape(Rectangle())
+            .onTapGesture { composerFocused = true }
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.06)))
 
@@ -77,20 +78,23 @@ struct ChangesView: View {
                         .help("Subject line is longer than 72 characters")
                 }
                 Spacer()
+                if !store.amend, !store.status.staged.isEmpty {
+                    Text("\(store.status.staged.count) staged").font(.caption).foregroundStyle(.secondary)
+                }
                 Button { store.commit() } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark")
-                        Text(store.amend ? "Amend" : "Commit")
-                        if !store.amend { Text("\(store.status.staged.count)").opacity(0.75) }
-                    }
-                    .fontWeight(.semibold).foregroundStyle(.white)
-                    .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(canCommit ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(Color.primary.opacity(0.15)), in: Capsule())
-                    .shadow(color: canCommit ? Theme.brand.opacity(0.35) : .clear, radius: 8, y: 3)
+                    Text(store.amend ? "Amend" : "Commit")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(canCommit ? Color.white : Color.secondary)
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .background(canCommit ? Theme.brand : Color.primary.opacity(0.07),
+                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(canCommit ? Color.clear : Color.primary.opacity(0.10)))
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!canCommit)
+                .help(canCommit ? "Commit staged changes (⌘↩)" : "Stage files and write a message to commit")
             }
         }
         .padding(12)

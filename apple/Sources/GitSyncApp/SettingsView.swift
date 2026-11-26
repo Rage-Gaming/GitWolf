@@ -60,7 +60,7 @@ struct SettingsView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 26, height: 26)
-                    .background(Theme.brandGradient, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(Theme.brand, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Text("Settings").font(.system(size: 15, weight: .semibold, design: .rounded))
             }
             .padding(.horizontal, 10).padding(.bottom, 14).padding(.top, 8)
@@ -75,7 +75,7 @@ struct SettingsView: View {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(selected ? .white : .secondary)
                             .frame(width: 24, height: 24)
-                            .background(selected ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(Color.primary.opacity(0.07)),
+                            .background(selected ? AnyShapeStyle(Theme.brand) : AnyShapeStyle(Color.primary.opacity(0.07)),
                                         in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                         VStack(alignment: .leading, spacing: 0) {
                             Text(item.rawValue).fontWeight(.medium)
@@ -137,7 +137,7 @@ private struct Row<Trailing: View>: View {
                 Image(systemName: icon)
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
                     .frame(width: 26, height: 26)
-                    .background(tint.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .background(tint, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).fontWeight(.medium)
                     if let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
@@ -215,8 +215,7 @@ private struct GeneralSettings: View {
                                 withAnimation(.snappy(duration: 0.2)) { accent = choice.rawValue }
                             } label: {
                                 Circle()
-                                    .fill(LinearGradient(colors: [choice.primary, choice.secondary],
-                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                                    .fill(choice.primary)
                                     .frame(width: 20, height: 20)
                                     .overlay {
                                         if selected { Image(systemName: "checkmark").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white) }
