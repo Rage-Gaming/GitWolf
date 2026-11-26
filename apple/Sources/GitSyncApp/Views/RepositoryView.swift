@@ -28,7 +28,7 @@ struct RepositoryView: View {
                 .padding(.trailing, 10).padding(.bottom, 10)
             }
         }
-        .task { store.start() }
+        .task { store.start(); NotificationsStore.shared.startPolling() }
         .overlay(alignment: .bottom) { if let label = store.busyLabel { BusyPill(label: label) } }
         .animation(.snappy, value: store.busyLabel)
         .animation(.snappy, value: store.operation)
@@ -65,6 +65,8 @@ struct RepositoryView: View {
                 HookOutputSheet(failure: failure) { store.commit(skipHooks: true) }
             case .newCollab(let kind):
                 NewCollabSheet(store: store, kind: kind)
+            case .notifications:
+                NotificationsSheet()
             case .cleanup:
                 BranchCleanupSheet(store: store)
             case .reflog:
@@ -136,6 +138,7 @@ struct TopBar: View {
             modeTabs
             Spacer(minLength: 12)
             syncCluster
+            if NotificationsStore.shared.hasAccounts { bell }
             Button { workspace.showPalette = true } label: {
                 HStack(spacing: 7) {
                     Image(systemName: "magnifyingglass")
@@ -218,6 +221,18 @@ struct TopBar: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    private var bell: some View {
+        let count = NotificationsStore.shared.unreadCount
+        return Button { store.sheet = .notifications } label: {
+            Image(systemName: count > 0 ? "bell.badge.fill" : "bell")
+                .symbolRenderingMode(count > 0 ? .multicolor : .monochrome)
+                .font(.callout)
+                .pill()
+        }
+        .buttonStyle(.plain)
+        .help(count > 0 ? "\(count) notification\(count == 1 ? "" : "s")" : "Notifications")
     }
 
     private var syncCluster: some View {

@@ -109,6 +109,14 @@ comment count, created/updated, web URL, body, source/target branch.
 
 With no account for the host, send the request without an `Authorization` header (public data).
 
+### Notifications
+
+| Provider | List | Mark read | Mark all |
+|---|---|---|---|
+| GitHub | `GET /notifications?participating=true` (needs the `notifications` or `repo` scope; `reason`: `review_requested`, `mention`/`team_mention`, `assign`, other → Activity). `subject.url` is an API URL: `…/repos/o/r/pulls/12` → `/o/r/pull/12`, `issues/7` → `/o/r/issues/7`, `commits/<sha>` → `/o/r/commit/<sha>` | `PATCH /notifications/threads/{id}` | `PUT /notifications` |
+| GitLab | `GET /todos?state=pending` (`action_name`: `review_requested`, `mentioned`/`directly_addressed`, `assigned`; `target_url` is the web URL) | `POST /todos/{id}/mark_as_done` | `POST /todos/mark_as_done` |
+| Gitea | `GET /notifications?status-types=unread` (`subject.html_url`; no reason, shown as Activity) | `PATCH /notifications/threads/{id}` | `PUT /notifications` |
+
 ### CI checks
 
 `GET` per commit SHA (only hex SHAs are sent):

@@ -37,6 +37,7 @@ struct CommandPalette: View {
                 all.append(Item(id: "new-pr", title: "New \(s.webLinks?.pullRequestsWord ?? "Pull Request")…", subtitle: "Hosting", icon: "arrow.triangle.pull") { s.sheet = .newCollab(.pullRequest) })
                 all.append(Item(id: "new-issue", title: "New Issue…", subtitle: "Hosting", icon: "smallcircle.filled.circle") { s.sheet = .newCollab(.issue) })
             }
+            all.append(Item(id: "notifications", title: "Notifications…", subtitle: "Hosting", icon: "bell") { s.sheet = .notifications })
             all.append(Item(id: "cleanup", title: "Clean Up Branches…", subtitle: "Repository action", icon: "trash.slash") { s.sheet = .cleanup })
             all.append(Item(id: "reflog", title: "Open Reflog…", subtitle: "Repository action", icon: "clock.arrow.circlepath") { s.sheet = .reflog })
             if let op = s.operation {

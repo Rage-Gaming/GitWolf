@@ -9,5 +9,5 @@
 - Submodules and worktrees
 - Git LFS indicators
 - Bundled OAuth client IDs for github.com, gitlab.com, codeberg.org and Azure DevOps (Bitbucket Cloud can't ship one: it needs a secret)
-- Formal reviews and assignees on pull requests; CI status; issues for Bitbucket and Azure DevOps
+- Formal reviews and assignees on pull requests; issues for Bitbucket and Azure DevOps
 - Windows and Linux native clients (see [PORTING.md](PORTING.md))

@@ -1620,3 +1620,41 @@ import Testing
         #expect(bb[0].headSHA == "123")
     }
 }
+
+@Suite struct NotificationTests {
+    @Test func githubThreadsBecomeWebLinks() throws {
+        let json = #"[{"id":"42","unread":true,"reason":"review_requested","updated_at":"2026-05-01T10:00:00Z","subject":{"title":"Fix login","url":"https://api.github.com/repos/o/r/pulls/12","type":"PullRequest"},"repository":{"full_name":"o/r"}},{"id":"43","reason":"mention","subject":{"title":"Question","url":"https://api.github.com/repos/o/r/issues/7","type":"Issue"},"repository":{"full_name":"o/r"}},{"id":"44","reason":"ci_activity","subject":{"title":"Run failed","url":"https://api.github.com/repos/o/r/commits/abc123","type":"CheckSuite"},"repository":{"full_name":"o/r"}}]"#
+        let list = try ProviderClient.parseGitHubNotifications(Data(json.utf8), webBase: "https://github.com")
+        #expect(list.count == 3)
+        #expect(list[0].reason == .reviewRequested && list[0].isPullRequest)
+        #expect(list[0].url?.absoluteString == "https://github.com/o/r/pull/12")
+        #expect(list[1].reason == .mention && list[1].url?.absoluteString == "https://github.com/o/r/issues/7")
+        #expect(list[2].reason == .other && list[2].url?.absoluteString == "https://github.com/o/r/commit/abc123")
+    }
+
+    @Test func gitlabTodosAndGitea() throws {
+        let todos = #"[{"id":9,"action_name":"review_requested","target_type":"MergeRequest","target":{"title":"Add thing"},"target_url":"https://gitlab.com/g/p/-/merge_requests/3","project":{"path_with_namespace":"g/p"}},{"id":10,"action_name":"directly_addressed","target_type":"Issue","body":"@me look","target_url":"https://gitlab.com/g/p/-/issues/4","project":{"path_with_namespace":"g/p"}}]"#
+        let gl = try ProviderClient.parseGitLabTodos(Data(todos.utf8))
+        #expect(gl.map(\.reason) == [.reviewRequested, .mention])
+        #expect(gl[0].isPullRequest && !gl[1].isPullRequest && gl[1].title == "@me look")
+        let gitea = #"[{"id":5,"unread":true,"subject":{"title":"Bug","type":"Issue","html_url":"https://git.x/o/r/issues/1"},"repository":{"full_name":"o/r"}}]"#
+        let gt = try ProviderClient.parseGiteaNotifications(Data(gitea.utf8))
+        #expect(gt[0].repository == "o/r" && gt[0].url?.host == "git.x")
+    }
+
+    @Test func markReadCallsTheRightEndpoints() async throws {
+        final class Log: @unchecked Sendable { var calls: [String] = [] }
+        let log = Log()
+        func client(_ kind: ProviderKind) -> ProviderClient {
+            ProviderClient(account: ProviderAccount(kind: kind, host: kind.defaultHost, username: "me"), token: "t", transport: { r in
+                log.calls.append("\(r.httpMethod ?? "GET") \(r.url!.path)")
+                return (Data("{}".utf8), HTTPURLResponse(url: r.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            })
+        }
+        let n = ProviderNotification(id: "7", title: "t", repository: "o/r", reason: .mention, isPullRequest: false, updated: nil, url: nil)
+        try await client(.github).markRead(n)
+        try await client(.gitlab).markRead(n)
+        try await client(.github).markAllRead()
+        #expect(log.calls == ["PATCH /notifications/threads/7", "POST /api/v4/todos/7/mark_as_done", "PUT /notifications"])
+    }
+}

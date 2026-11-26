@@ -12,6 +12,7 @@ enum StoreSheet: Identifiable {
     case fileHistory(String)
     case renameBranch(String)
     case cleanup
+    case notifications
     case newCollab(CollabKind)
     case hookFailure(HookFailedError)
     var id: String {
@@ -25,6 +26,7 @@ enum StoreSheet: Identifiable {
         case .fileHistory: "fileHistory"
         case .renameBranch: "renameBranch"
         case .cleanup: "cleanup"
+        case .notifications: "notifications"
         case .newCollab(let kind): "newCollab-\(kind.rawValue)"
         case .hookFailure: "hookFailure"
         }
@@ -304,6 +306,7 @@ final class RepositoryStore: Identifiable {
             #if DEBUG
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "cleanup" { sheet = .cleanup }
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "notes" { NotificationsStore.shared.loadSamples(); sheet = .notifications }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "newpr" { sheet = .newCollab(.pullRequest) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "hook" { sheet = .hookFailure(HookFailedError(hook: "pre-commit", output: "eslint: src/app.ts\n  12:5  error  Unexpected console statement  no-console\n\n1 problem (1 error, 0 warnings)")) }
             if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "tag", let h = s.commits.first?.hash { sheet = .newTag(hash: h) }
