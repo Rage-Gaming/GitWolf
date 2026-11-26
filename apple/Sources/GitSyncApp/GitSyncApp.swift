@@ -128,13 +128,24 @@ enum MainMenuTidier {
         }
     }
 
+    /// Removes leading, trailing and doubled separators left behind by deleted items.
+    private static func collapseSeparators(in menu: NSMenu) {
+        var previousWasSeparator = true
+        for entry in menu.items where !entry.isHidden {
+            if entry.isSeparatorItem && previousWasSeparator { menu.removeItem(entry) }
+            else { previousWasSeparator = entry.isSeparatorItem }
+        }
+        while let last = menu.items.last, last.isSeparatorItem { menu.removeItem(last) }
+    }
+
     static func tidy() {
         guard let main = NSApp.mainMenu else { return }
         for item in main.items.reversed() {
             guard let sub = item.submenu else { continue }
             let hasContent = sub.items.contains { !$0.isSeparatorItem }
             if !hasContent && item.title != "GitSync" { main.removeItem(item); continue }
-            if item.title == "Edit" || item.title == "Window" { main.removeItem(item) }
+            if item.title == "Edit" || item.title == "Window" { main.removeItem(item); continue }
+            collapseSeparators(in: sub)
         }
     }
 }
@@ -237,6 +248,8 @@ struct AppCommands: Commands {
         }
         // Menus that don't apply to GitSync: extra windows, toolbar and sidebar toggles, font
         // formatting and the empty Help book.
+        CommandGroup(replacing: .systemServices) {}
+        CommandGroup(replacing: .appVisibility) {}
         CommandGroup(replacing: .toolbar) {}
         CommandGroup(replacing: .sidebar) {}
         CommandGroup(replacing: .textFormatting) {}
