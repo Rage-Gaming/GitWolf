@@ -2,18 +2,20 @@ import AppKit
 import SwiftUI
 
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general = "General", git = "Git"
+    case general = "General", git = "Git", shortcuts = "Shortcuts"
     var id: String { rawValue }
     var icon: String {
         switch self {
         case .general: "slider.horizontal.3"
         case .git: "arrow.triangle.branch"
+        case .shortcuts: "command"
         }
     }
     var subtitle: String {
         switch self {
         case .general: "Look, sync and diffs"
         case .git: "Executable and tooling"
+        case .shortcuts: "Keys for everything"
         }
     }
 }
@@ -33,6 +35,7 @@ struct SettingsView: View {
                         switch pane {
                         case .general: GeneralSettings()
                         case .git: GitSettings()
+                        case .shortcuts: ShortcutsSettings()
                         }
                     }
                     .padding(22)
@@ -326,6 +329,63 @@ private struct GitSettings: View {
         panel.canChooseDirectories = false
         panel.prompt = "Choose"
         if panel.runModal() == .OK, let url = panel.url { gitPath = url.path }
+    }
+}
+
+// MARK: - Shortcuts
+
+private struct ShortcutsSettings: View {
+    private struct Item: Identifiable {
+        let id = UUID()
+        let title: String
+        let keys: [String]
+    }
+    private struct Section: Identifiable {
+        let id = UUID()
+        let title: String
+        let items: [Item]
+    }
+
+    private let sections: [Section] = [
+        Section(title: "Repositories", items: [
+            Item(title: "Open repository…", keys: ["⌘", "O"]),
+            Item(title: "Close repository", keys: ["⇧", "⌘", "W"]),
+            Item(title: "Jump to…", keys: ["⌘", "K"]),
+            Item(title: "Switch to repository 1–9", keys: ["⌘", "1…9"]),
+            Item(title: "Next repository", keys: ["⌃", "⇥"]),
+            Item(title: "Previous repository", keys: ["⌃", "⇧", "⇥"]),
+        ]),
+        Section(title: "Views", items: [
+            Item(title: "Show history", keys: ["⌥", "⌘", "1"]),
+            Item(title: "Show changes", keys: ["⌥", "⌘", "2"]),
+        ]),
+        Section(title: "Sync", items: [
+            Item(title: "Refresh", keys: ["⌘", "R"]),
+            Item(title: "Fetch", keys: ["⇧", "⌘", "F"]),
+            Item(title: "Pull", keys: ["⇧", "⌘", "L"]),
+            Item(title: "Push", keys: ["⇧", "⌘", "P"]),
+        ]),
+        Section(title: "App", items: [
+            Item(title: "Settings", keys: ["⌘", ","]),
+        ]),
+    ]
+
+    var body: some View {
+        ForEach(sections) { section in
+            Group(title: section.title) {
+                ForEach(Array(section.items.enumerated()), id: \.element.id) { index, item in
+                    VStack(spacing: 0) {
+                        HStack(spacing: 4) {
+                            Text(item.title)
+                            Spacer(minLength: 12)
+                            ForEach(item.keys, id: \.self) { Kbd(text: $0) }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 9)
+                        if index < section.items.count - 1 { Divider().padding(.leading, 12).opacity(0.6) }
+                    }
+                }
+            }
+        }
     }
 }
 
