@@ -104,6 +104,55 @@ public enum FileIcons {
         return m
     }()
 
+    /// The icon for a branch, chosen from its name: `main`, `develop`, and conventional prefixes such as
+    /// `feature/…`, `fix/…`, `release/…`, `docs/…`. Also accepts `refs/heads/x` style short names only.
+    public static func branchIcon(named name: String) -> FileIcon {
+        let lower = name.lowercased()
+        if let exact = branchNames[lower] { return exact }
+        let separators = CharacterSet(charactersIn: "/-_")
+        let first = lower.components(separatedBy: separators).first ?? lower
+        if let byPrefix = branchPrefixes[first] { return byPrefix }
+        // `123-fix-login` and `issue-42` look like issue branches.
+        if first.allSatisfy(\.isNumber) && !first.isEmpty { return branchPrefixes["issue"] ?? branchDefault }
+        return branchDefault
+    }
+
+    private static let branchDefault = FileIcon("Branch", .symbol("arrow.triangle.branch"), 0x8E8E93)
+
+    private static func branch(_ name: String, _ symbol: String, _ color: UInt32) -> FileIcon {
+        FileIcon(name, .symbol(symbol), color)
+    }
+
+    static let branchNames: [String: FileIcon] = {
+        var m: [String: FileIcon] = [:]
+        for n in ["main", "master", "trunk"] { m[n] = branch("Main branch", "star.fill", 0x42A5F5) }
+        for n in ["develop", "dev", "development", "next"] { m[n] = branch("Development", "hammer.fill", 0xAB47BC) }
+        for n in ["staging", "stage", "preprod"] { m[n] = branch("Staging", "flag.fill", 0xFF9800) }
+        for n in ["production", "prod", "live"] { m[n] = branch("Production", "bolt.shield.fill", 0xE53935) }
+        return m
+    }()
+
+    static let branchPrefixes: [String: FileIcon] = {
+        var m: [String: FileIcon] = [:]
+        func add(_ names: [String], _ icon: FileIcon) { for n in names { m[n] = icon } }
+        add(["feature", "feat", "features"], branch("Feature", "sparkles", 0x26A69A))
+        add(["fix", "bugfix", "bug"], branch("Bug fix", "ladybug.fill", 0xE53935))
+        add(["hotfix", "urgent"], branch("Hotfix", "flame.fill", 0xFF7043))
+        add(["release", "releases", "rc", "v"], branch("Release", "shippingbox.fill", 0x7E57C2))
+        add(["chore", "build", "ci", "ops"], branch("Chore", "wrench.and.screwdriver.fill", 0x78909C))
+        add(["docs", "doc", "documentation"], branch("Docs", "book.fill", 0x4DB6AC))
+        add(["test", "tests", "testing"], branch("Tests", "checkmark.seal.fill", 0x66BB6A))
+        add(["refactor", "cleanup", "tidy"], branch("Refactor", "arrow.triangle.2.circlepath", 0x5C6BC0))
+        add(["perf", "performance", "speed"], branch("Performance", "bolt.fill", 0xFFB300))
+        add(["style", "ui", "design", "theme"], branch("Design", "paintpalette.fill", 0xEC407A))
+        add(["wip", "experiment", "spike", "poc", "tmp", "temp", "try"], branch("Experiment", "testtube.2", 0x9C27B0))
+        add(["revert"], branch("Revert", "arrow.uturn.backward.circle.fill", 0xEF5350))
+        add(["dependabot", "renovate", "deps", "bump"], branch("Dependencies", "arrow.down.circle.fill", 0x8BC34A))
+        add(["pr", "pull", "review", "mr"], branch("Pull request", "arrow.triangle.pull", 0x29B6F6))
+        add(["issue", "issues", "ticket"], branch("Issue", "smallcircle.filled.circle", 0x66BB6A))
+        return m
+    }()
+
     private static let generic = FileIcon("File", .symbol("doc"), 0x8E8E93)
     private static let env = FileIcon("Environment", .symbol("key.fill"), 0xECD53F)
     private static let license = FileIcon("License", .symbol("checkmark.seal.fill"), 0xD0B64B)

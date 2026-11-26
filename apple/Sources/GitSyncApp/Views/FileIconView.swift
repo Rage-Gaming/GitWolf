@@ -1,6 +1,13 @@
 import GitSyncCore
 import SwiftUI
 
+extension Color {
+    /// 0xRRGGBB.
+    init(hex: UInt32) {
+        self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
+    }
+}
+
 /// A flat, colourful icon for a file type (React atom for .tsx/.jsx, brand tiles for languages).
 struct FileIconView: View {
     let icon: FileIcon
@@ -10,9 +17,7 @@ struct FileIconView: View {
     init(icon: FileIcon, size: CGFloat = 17) { self.icon = icon; self.size = size }
 
     var body: some View {
-        let color = Color(red: Double((icon.color >> 16) & 0xFF) / 255,
-                          green: Double((icon.color >> 8) & 0xFF) / 255,
-                          blue: Double(icon.color & 0xFF) / 255)
+        let color = Color(hex: icon.color)
         Group {
             switch icon.glyph {
             case .react:

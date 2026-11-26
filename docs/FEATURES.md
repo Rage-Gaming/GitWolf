@@ -244,6 +244,13 @@ ellipses at 0°, 60° and 120° plus a centre dot, stroked in #61DAFB). Flat col
 white on it, before the directory text of a file row. Draw it at
 the start of every file row (after the status badge), in the diff header and file history.
 
+Branches [`FileIcons.branchIcon(named:)`]: exact names first (`main`/`master`/`trunk` star, `develop`/`dev`
+hammer, `staging` flag, `production` shield), then the first word split on `/`, `-` or `_` (`feature`, `feat`,
+`fix`, `bugfix`, `hotfix`, `release`, `chore`, `docs`, `test`, `refactor`, `perf`, `style`, `wip`, `revert`,
+`dependabot`, `pr`, `issue`), a leading number means an issue branch, anything else is the plain branch symbol.
+In the sidebar draw the symbol in its colour; mark the current branch with a small green check badge on the icon
+(and a semibold name) rather than replacing the icon.
+
 ## 6b. Scale and power
 
 - **Bisect** [core `Bisect.swift`]: state comes from `BISECT_LOG` (marks, and the

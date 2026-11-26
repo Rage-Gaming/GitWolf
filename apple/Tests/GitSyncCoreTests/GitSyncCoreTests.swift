@@ -2161,6 +2161,22 @@ struct FileIconTests {
         #expect(FileIcons.icon(forPath: ".gitignore").name == "Git")
     }
 
+    @Test func branchesByName() {
+        #expect(FileIcons.branchIcon(named: "main").name == "Main branch")
+        #expect(FileIcons.branchIcon(named: "Master").name == "Main branch")
+        #expect(FileIcons.branchIcon(named: "develop").name == "Development")
+        #expect(FileIcons.branchIcon(named: "feature/login-form").name == "Feature")
+        #expect(FileIcons.branchIcon(named: "feat-login").name == "Feature")
+        #expect(FileIcons.branchIcon(named: "fix/crash-on-start").name == "Bug fix")
+        #expect(FileIcons.branchIcon(named: "hotfix/1.2.1").name == "Hotfix")
+        #expect(FileIcons.branchIcon(named: "release/2.0").name == "Release")
+        #expect(FileIcons.branchIcon(named: "dependabot/npm_and_yarn/x").name == "Dependencies")
+        #expect(FileIcons.branchIcon(named: "123-fix-login").name == "Issue")
+        #expect(FileIcons.branchIcon(named: "dhanush/experiment").name == "Branch")
+        #expect(FileIcons.branchIcon(named: "some-random").name == "Branch")
+        #expect(FileIcons.branchIcon(named: "").name == "Branch")
+    }
+
     @Test func foldersByName() {
         #expect(FileIcons.folderIcon(named: "src").name == "Source")
         #expect(FileIcons.folderIcon(named: "Docs").name == "Docs")
