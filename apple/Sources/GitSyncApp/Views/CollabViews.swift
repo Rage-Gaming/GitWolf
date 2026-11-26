@@ -212,7 +212,7 @@ struct CollabDetailView: View {
                     if item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("No description provided.").foregroundStyle(.secondary)
                     } else {
-                        Text(rendered(item.body)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                        MarkdownView(source: item.body)
                     }
                 }
                 .padding(20)
@@ -238,10 +238,5 @@ struct CollabDetailView: View {
         if let created = item.created { parts.append(created.formatted(date: .abbreviated, time: .omitted)) }
         if item.comments > 0 { parts.append("\(item.comments) comment\(item.comments == 1 ? "" : "s")") }
         return parts.joined(separator: " · ")
-    }
-
-    private func rendered(_ markdown: String) -> AttributedString {
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: markdown, options: options)) ?? AttributedString(markdown)
     }
 }
