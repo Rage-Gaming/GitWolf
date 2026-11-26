@@ -173,20 +173,32 @@ struct TopBar: View {
         .background { Color.clear.contentShape(Rectangle()).gesture(WindowDragGesture()) }
     }
 
+    static func symbol(for branch: String) -> String {
+        if case .symbol(let name) = FileIcons.branchIcon(named: branch).glyph { return name }
+        return "arrow.triangle.branch"
+    }
+
+    /// The current branch's icon and colour (the plain brand branch symbol when detached or unborn).
+    private var currentIcon: (symbol: String, color: Color) {
+        guard let name = store.status.branch else { return ("arrow.triangle.branch", Theme.brand) }
+        return (Self.symbol(for: name), Color(hex: FileIcons.branchIcon(named: name).color))
+    }
+
     private var branchMenu: some View {
         Menu {
             ForEach(store.localBranches) { branch in
                 Button {
                     store.checkout(branch)
                 } label: {
-                    if branch.isCurrent { Label(branch.name, systemImage: "checkmark") } else { Text(branch.name) }
+                    if branch.isCurrent { Label(branch.name, systemImage: "checkmark") }
+                    else { Label(branch.name, systemImage: Self.symbol(for: branch.name)) }
                 }
             }
             Divider()
             Button("New Branch…", systemImage: "plus") { store.sheet = .newBranch(from: nil) }
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: "arrow.triangle.branch").foregroundStyle(Theme.brand)
+                Image(systemName: currentIcon.symbol).foregroundStyle(currentIcon.color)
                 Text(store.status.branchDisplay).fontWeight(.semibold).lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
             }
