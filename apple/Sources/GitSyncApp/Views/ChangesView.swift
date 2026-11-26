@@ -54,6 +54,16 @@ struct ChangesView: View {
         }
     }
 
+    @AppStorage("spellCheckCommitMessages") private var spellCheck = true
+
+    /// Applies the system's check-as-you-type setting to the text view that has just become the composer.
+    private func applySpellChecking() {
+        let enabled = spellCheck
+        DispatchQueue.main.async {
+            (NSApp.keyWindow?.firstResponder as? NSTextView)?.isContinuousSpellCheckingEnabled = enabled
+        }
+    }
+
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
             // A vertical TextField draws its own placeholder, so the caret and placeholder always align.
@@ -62,6 +72,10 @@ struct ChangesView: View {
                 .font(.body)
                 .lineLimit(4...5)
                 .focused($composerFocused)
+                .onChange(of: composerFocused) { _, focused in
+                    if focused { applySpellChecking() }
+                }
+                .task { store.issues.loadIfNeeded() }
                 .padding(12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .frame(height: 96)
@@ -72,6 +86,7 @@ struct ChangesView: View {
 
             HStack {
                 Toggle("Amend last commit", isOn: $store.amend).toggleStyle(.checkbox).controlSize(.small)
+                MessageHelpersMenu(store: store)
                 if let signing = store.signing, signing.isConfigured {
                     Toggle(isOn: $store.signCommit) {
                         Label("Sign", systemImage: "signature")

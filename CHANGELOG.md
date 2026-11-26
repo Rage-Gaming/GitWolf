@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Commit message helpers: a menu beside the commit box with a conventional-commit type picker (plus scopes taken from the staged folders), an issue reference picker (Closes or Refs, from your open issues), your `commit.template`, reuse of recent messages, and spell checking while typing (on by default, can be turned off).
 - Ignore helper: right-click a changed file, then Ignore, to ignore that file, any file with its name, all files with its extension, or its folder; written to `.gitignore` or, with "Only on This Machine", to `.git/info/exclude`. Already-tracked files are untracked (kept on disk) so the rule takes effect.
 - Hook output: when a pre-commit, prepare-commit-msg or commit-msg hook rejects a commit, a panel shows everything the hook printed (colour codes stripped), keeps your message, and offers Copy Output and "Commit Without Hooks" (`--no-verify`).
 - History search: search all history (not just loaded commits) by message or author, find commits that add or remove a piece of code (pickaxe) or match a regex in their diff, and limit by file or folder and by date range.

@@ -1444,3 +1444,39 @@ import Testing
         #expect(try t.read("secret.env") == "S=2")
     }
 }
+
+@Suite struct CommitMessageTests {
+    @Test func prefixIsAppliedAndReplaced() {
+        #expect(CommitMessage.applyPrefix(type: "feat", to: "add login") == "feat: add login")
+        #expect(CommitMessage.applyPrefix(type: "fix", scope: "auth", to: "feat: add login\n\nbody") == "fix(auth): add login\n\nbody")
+        #expect(CommitMessage.applyPrefix(type: "chore", to: "") == "chore: ")
+        #expect(CommitMessage.stripPrefix("feat(ui)!: big change") == "big change")
+        #expect(CommitMessage.stripPrefix("Fix: not conventional") == "Fix: not conventional")
+        #expect(CommitMessage.stripPrefix("update: x y") == "x y")
+    }
+
+    @Test func referencesGoInAFooter() {
+        var m = CommitMessage.addReference(keyword: "Closes", number: 12, to: "fix crash")
+        #expect(m == "fix crash\n\nCloses #12")
+        m = CommitMessage.addReference(keyword: "Refs", number: 7, to: m)
+        #expect(m == "fix crash\n\nCloses #12\nRefs #7")
+        #expect(CommitMessage.addReference(keyword: "Refs", number: 7, to: m) == m)
+        #expect(CommitMessage.addReference(keyword: "Closes", number: 1, to: "") == "Closes #1")
+    }
+
+    @Test func scopesComeFromFolders() {
+        #expect(CommitMessage.suggestedScopes(for: ["README.md", "src/a.swift", "src/b.swift", "docs/x.md", "t/1", "u/2"]) == ["src", "docs", "t"])
+    }
+
+    @Test func templateAndRecentMessages() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        _ = try await t.commit("first\n\nwith body", file: "a.txt", text: "1")
+        _ = try await t.commit("second", file: "a.txt", text: "2")
+        #expect(await t.repo.commitTemplate() == nil)
+        try t.write("# comment\nsubject here\n\n# more\nBody:\n", ".gitmessage")
+        try await t.git.run(["config", "commit.template", ".gitmessage"])
+        #expect(await t.repo.commitTemplate() == "subject here\n\nBody:\n")
+        #expect(await t.repo.recentMessages() == ["second", "first\n\nwith body"])
+    }
+}

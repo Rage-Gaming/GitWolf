@@ -25,6 +25,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `Signing` | `signature(of:)` (format, state, signer, key), `signingConfig()`, and the `sign` option of `commit`. |
 | `Blame` | `blame` (porcelain parser), `fileHistory` (`--follow`), `fileDiff` (rename-aware per-commit diff). |
 | `Compare` | `compare(from:to:sinceAncestor:)` returns resolved hashes, changed files, commits and ahead/behind. |
+| `CommitMessage` | Pure helpers: `applyPrefix`, `stripPrefix`, `addReference`, `suggestedScopes`; `commitTemplate()` and `recentMessages()` on `GitRepository`. |
 | `Ignore` | `IgnoreRules.options(for:)`, `addIgnoreRule(_:local:)`, `stopTracking`. |
 | `Hooks` | `HookFailedError`, `HookDiagnosis.diagnose` (is this commit failure a hook?), `activeHooks()`; `commit` throws `HookFailedError`. |
 | `HistorySearch` | `HistoryQuery` (scope, text, path, dates) and `GitRepository.search`. |

@@ -175,6 +175,15 @@ If `git commit` fails and an executable `pre-commit`, `prepare-commit-msg` or `c
 
 Context menu on a change row, **Ignore**: options are generated from the path (`/path/to/file`, `name`, `*.ext`, `/folder/`; special characters `* ? [ ] \` and a leading `#` or `!` are escaped). Rules are appended to `.gitignore`, or to `git rev-parse --git-path info/exclude` under **Only on This Machine**; duplicates are skipped. For a file that is already tracked the app also runs `git rm --cached -r` on the file (or, for a folder rule, the folder) so the rule takes effect; the file stays on disk.
 
+## 3m. Commit message helpers
+
+A menu button next to "Amend last commit":
+- **Type Prefix**: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert. Sets or replaces a `type(scope): ` prefix on the first line (regex `^[a-z]+(\([^)]*\))?!?:\s*`). Scope entries offer up to three top-level folders of the staged files.
+- **Reference Issue**: lists up to 15 open issues from the provider; appends `Closes #N` or `Refs #N` in a footer after a blank line, joining an existing reference block and never duplicating.
+- **Use Repository Template**: the file named by `commit.template` (`~/` and repo-relative paths supported, lines starting with `#` removed).
+- **Reuse Recent Message**: your last 10 distinct commit messages.
+- **Check Spelling While Typing**: the system spell checker on the message field (preference "spellCheckCommitMessages", default on).
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is
@@ -269,4 +278,4 @@ Full details in [PROVIDERS.md](PROVIDERS.md). Summary:
 
 ## 10. Not built yet
 
-See [ROADMAP.md](ROADMAP.md): submodules/worktrees, LFS, notarised releases, blame, compare refs, branch tools.
+See [ROADMAP.md](ROADMAP.md): submodules/worktrees, LFS, notarised releases.
