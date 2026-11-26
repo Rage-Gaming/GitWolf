@@ -61,6 +61,17 @@ and should follow each platform's native idioms.
   binary) offer Keep Ours / Keep Theirs / Delete via `git checkout --ours|--theirs` and `git rm`,
   chosen from `git ls-files -u` stages. The row context menu has Resolve Using Ours / Theirs.
 
+## 3b. Reset, reflog and undo
+
+- **Reset Branch to Here** in the commit context menu: Soft (keep changes staged), Mixed (keep
+  changes unstaged), Hard (discard changes). `git reset --soft|--mixed|--hard <commit>`.
+- **Hard reset always asks first**, saying how many commits leave the branch and how many files
+  with uncommitted changes will be lost (`git rev-list --count target..HEAD` + status).
+- **Reflog…** (Repository menu, palette): `git reflog show HEAD`, newest first, with relative
+  dates; per entry Reset (soft/mixed/hard), Checkout (detached) and New Branch Here.
+- **Undo Last Change…** (⌥⌘Z): confirms with the last reflog message, then
+  `git reset --keep HEAD@{1}`, which keeps uncommitted work and refuses rather than overwrite it.
+
 ## 4. Diff view
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is

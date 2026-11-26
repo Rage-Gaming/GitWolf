@@ -117,6 +117,11 @@ private struct CommitRow: View {
             Divider()
             Button("Cherry-Pick") { store.cherryPick(c.hash) }
             Button("Revert") { store.revert(c.hash) }
+            Menu("Reset Branch to Here") {
+                Button("Soft: keep changes staged") { store.reset(to: c.hash, label: c.shortHash, mode: .soft) }
+                Button("Mixed: keep changes unstaged") { store.reset(to: c.hash, label: c.shortHash, mode: .mixed) }
+                Button("Hard: discard changes…") { store.reset(to: c.hash, label: c.shortHash, mode: .hard) }
+            }
             Divider()
             if store.webLinks != nil {
                 Button("Open on \(store.providerTitle ?? "Web")") { store.openOnWeb(.commit(c.hash)) }

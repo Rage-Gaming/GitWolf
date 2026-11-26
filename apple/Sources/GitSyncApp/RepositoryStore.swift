@@ -6,11 +6,13 @@ enum StoreSheet: Identifiable {
     case newBranch(from: String?)
     case newTag(hash: String)
     case stash
+    case reflog
     var id: String {
         switch self {
         case .newBranch: "branch"
         case .newTag: "tag"
         case .stash: "stash"
+        case .reflog: "reflog"
         }
     }
 }
@@ -232,6 +234,7 @@ final class RepositoryStore: Identifiable {
             isLoaded = true
             if !s.status.isClean { mode = .changes }
             #if DEBUG
+            if ProcessInfo.processInfo.environment["GITSYNC_REPO_SHEET"] == "reflog" { sheet = .reflog }
             if ProcessInfo.processInfo.environment["GITSYNC_MODE"] == "history" {
                 mode = .history
                 selectCommit(s.commits.first?.id)
@@ -423,6 +426,44 @@ final class RepositoryStore: Identifiable {
     }
     func resolveConflict(_ path: String, taking side: ConflictSide) {
         perform("Resolving…") { try await $0.resolveConflict(path, taking: side) }
+    }
+
+    /// Resets the current branch to `target`. A hard reset says what it will lose and asks first.
+    func reset(to target: String, label: String, mode: ResetMode) {
+        Task {
+            let impact = try? await repo.resetImpact(to: target)
+            if mode == .hard {
+                let alert = NSAlert()
+                alert.messageText = "Hard reset to \(label)?"
+                var lost: [String] = []
+                if let n = impact?.droppedCommits, n > 0 { lost.append("\(n) commit\(n == 1 ? "" : "s") will no longer be on this branch (still reachable from the reflog)") }
+                if let n = impact?.modifiedFiles, n > 0 { lost.append("uncommitted changes in \(n) file\(n == 1 ? "" : "s") will be permanently lost") }
+                alert.informativeText = lost.isEmpty ? "The working tree will match that commit." : lost.joined(separator: "; ").capitalizedFirst + "."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "Hard Reset")
+                alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+            }
+            perform("Resetting…") { try await $0.reset(to: target, mode: mode) }
+        }
+    }
+
+    /// Moves HEAD back to where it was before the last reflog entry, keeping uncommitted work
+    /// (git refuses rather than overwrite it).
+    func undoLastChange() {
+        Task {
+            guard let log = try? await repo.reflog(limit: 2), log.count > 1 else {
+                errorMessage = "There is nothing to undo."; return
+            }
+            let alert = NSAlert()
+            alert.messageText = "Undo “\(log[0].message)”?"
+            alert.informativeText = "HEAD moves back to \(log[1].shortHash). Uncommitted changes are kept; if they would be overwritten, nothing happens."
+            alert.addButton(withTitle: "Undo")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            let target = log[1].hash
+            perform("Undoing…") { try await $0.reset(to: target, mode: .keep) }
+        }
     }
 
     func continueOperation() {

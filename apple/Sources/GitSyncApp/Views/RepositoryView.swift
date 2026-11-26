@@ -51,6 +51,8 @@ struct RepositoryView: View {
                 PromptSheet(title: "New Tag", placeholder: "v1.0.0", confirm: "Create") { name, _ in
                     store.createTag(name, at: hash)
                 }
+            case .reflog:
+                ReflogSheet(store: store)
             case .stash:
                 PromptSheet(title: "Stash Changes", placeholder: "Message (optional)", confirm: "Stash", allowEmpty: true) { msg, _ in
                     store.stashPush(msg)

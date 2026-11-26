@@ -31,6 +31,8 @@ struct CommandPalette: View {
                 Item(id: "history", title: "Show History", subtitle: "View", icon: "clock.arrow.circlepath") { s.mode = .history },
                 Item(id: "changes", title: "Show Changes", subtitle: "View", icon: "square.and.pencil") { s.mode = .changes },
             ]
+            all.append(Item(id: "undo", title: "Undo Last Change…", subtitle: "Repository action", icon: "arrow.uturn.backward") { s.undoLastChange() })
+            all.append(Item(id: "reflog", title: "Open Reflog…", subtitle: "Repository action", icon: "clock.arrow.circlepath") { s.sheet = .reflog })
             if let op = s.operation {
                 all.append(Item(id: "op-continue", title: "Continue \(op.verb)", subtitle: "Repository action", icon: "play.fill") { s.continueOperation() })
                 if op.canSkip { all.append(Item(id: "op-skip", title: "Skip Current Commit", subtitle: "Repository action", icon: "forward.fill") { s.skipOperation() }) }

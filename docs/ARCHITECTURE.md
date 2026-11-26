@@ -19,6 +19,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `SyntaxHighlighter`, `SideBySide` | Pure helpers for diff presentation: token ranges per line, split-view row pairing. |
 | `Providers`, `ProviderClient` | Hosting provider kinds, remote URL parsing, web links, askpass credential environment, REST clients for listing/verifying. See [PROVIDERS.md](PROVIDERS.md). |
 | `Operations` | Detects an in-progress merge/rebase/cherry-pick/revert from files in the git dir and runs `--continue`, `--abort`, `--skip`. The snapshot carries it so the UI banner follows the refresh loop. |
+| `Reset` | `reset(to:mode:)`, `reflog()` and `resetImpact(to:)` (commits dropped, files modified) so the UI can warn before a hard reset. |
 | `FileWatcher` | FSEvents watcher that emits a coalesced "something changed" signal, filtering object-db and lock-file noise. |
 
 ## Keeping the UI in sync

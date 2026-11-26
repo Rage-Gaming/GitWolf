@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Reset and undo: Reset Branch to Here (soft, mixed, hard) from the history menu, a Reflog browser (reset, checkout or branch from any earlier HEAD), and Undo Last Change.
 - Conflict resolution UI: per-conflict Ours / Theirs / Both choices with side-by-side previews, All Ours / All Theirs, Mark as Resolved (saves and stages); whole-file Keep Ours / Keep Theirs / Delete for delete-modify and binary conflicts.
 - In-progress operation banner: detects a merge, rebase, cherry-pick or revert in progress (including a sequence of picks) and offers Continue, Skip and Abort, plus palette commands.
 - Hosting provider accounts (GitHub, GitLab, Bitbucket, Gitea/Forgejo/Codeberg, Azure DevOps, including self-hosted) with tokens in the Keychain; authenticated fetch, pull, push and clone for private repositories via `GIT_ASKPASS` (secrets never appear in URLs or config).

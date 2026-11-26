@@ -827,3 +827,59 @@ import Testing
         #expect(try await t.repo.status().conflicted.isEmpty)
     }
 }
+
+@Suite struct ResetAndReflogTests {
+    private func history() async throws -> (TestRepo, [String]) {
+        let t = try await TestRepo.make()
+        var hashes: [String] = []
+        for i in 1...3 { hashes.append(try await t.commit("c\(i)", text: "v\(i)\n")) }
+        return (t, hashes)
+    }
+
+    @Test func softMixedHardKeepDifferInWhatTheyTouch() async throws {
+        let (t, h) = try await history()
+        defer { t.cleanup() }
+        try await t.repo.reset(to: h[1], mode: .soft)
+        var s = try await t.repo.status()
+        var text = try t.read()
+        #expect(s.staged.count == 1 && text == "v3\n")
+        try await t.repo.reset(to: h[0], mode: .mixed)
+        s = try await t.repo.status()
+        text = try t.read()
+        #expect(s.staged.isEmpty && s.unstaged.count == 1 && text == "v3\n")
+        try await t.repo.reset(to: h[0], mode: .hard)
+        s = try await t.repo.status()
+        text = try t.read()
+        #expect(s.isClean && text == "v1\n")
+    }
+
+    @Test func keepRefusesToOverwriteLocalEdits() async throws {
+        let (t, h) = try await history()
+        defer { t.cleanup() }
+        try t.write("local\n")
+        await #expect(throws: (any Error).self) { try await t.repo.reset(to: h[0], mode: .keep) }
+        #expect(try t.read() == "local\n")
+    }
+
+    @Test func reflogListsMovesAndUndoRestoresADroppedCommit() async throws {
+        let (t, h) = try await history()
+        defer { t.cleanup() }
+        try await t.repo.reset(to: h[0], mode: .hard)
+        let log = try await t.repo.reflog()
+        #expect(log.first?.hash == h[0] && log.first?.index == 0)
+        #expect(log.first?.message.hasPrefix("reset") == true)
+        #expect(log.first?.selector == "HEAD@{0}")
+        let before = try #require(log.dropFirst().first)
+        #expect(before.hash == h[2])
+        try await t.repo.reset(to: before.hash, mode: .keep)
+        #expect(try t.read() == "v3\n")
+    }
+
+    @Test func impactCountsDroppedCommitsAndModifiedFiles() async throws {
+        let (t, h) = try await history()
+        defer { t.cleanup() }
+        try t.write("dirty\n")
+        let impact = try await t.repo.resetImpact(to: h[0])
+        #expect(impact == ResetImpact(droppedCommits: 2, modifiedFiles: 1))
+    }
+}
