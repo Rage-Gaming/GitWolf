@@ -5,7 +5,9 @@ namespace GitSync.Store;
 // Mutating operations. One runs at a time; each returns true only if it ran and succeeded.
 public sealed partial class RepositoryStore
 {
-    private async Task<bool> PerformAsync(string label, Func<GitRepository, Task> operation)
+    /// <param name="handle">Returns true when it has dealt with the failure itself.</param>
+    private async Task<bool> PerformAsync(
+        string label, Func<GitRepository, Task> operation, Func<Exception, bool>? handle = null)
     {
         if (IsBusy) return false;
         SetBusy(true, label);
@@ -17,7 +19,7 @@ public sealed partial class RepositoryStore
         }
         catch (Exception e)
         {
-            ErrorMessage = e.Message;
+            if (handle?.Invoke(e) != true) ErrorMessage = e.Message;
             return false;
         }
         finally
@@ -54,7 +56,26 @@ public sealed partial class RepositoryStore
     }
 
     public Task<bool> FetchAsync() => PerformAsync("Fetching…", r => r.FetchAsync());
-    public Task<bool> PullAsync() => PerformAsync("Pulling…", r => r.PullAsync());
+
+    /// <summary>A pull that local work is in the way of sets <see cref="PullBlock"/> rather than an error.</summary>
+    public Task<bool> PullAsync() => PerformAsync("Pulling…", r => r.PullAsync(), e =>
+    {
+        if (e is not GitException git || Core.PullBlock.Parse(git.Stderr) is not { } block) return false;
+        PullBlock = block;
+        return true;
+    });
+
+    public async Task<bool> StashAndPullAsync()
+    {
+        var restored = false;
+        if (!await PerformAsync("Stashing and pulling…", async r => restored = await r.PullWithStashAsync()))
+            return false;
+        if (!restored)
+            ErrorMessage = "The pull finished, but your changes conflict with the new commits. "
+                + "Resolve any conflicted files. Your changes are also still saved in the stash list.";
+        return restored;
+    }
+
 
     public Task<bool> PushAsync()
     {

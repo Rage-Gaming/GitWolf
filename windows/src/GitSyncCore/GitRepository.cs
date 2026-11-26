@@ -394,6 +394,64 @@ public sealed class GitRepository
         }
     }
 
+    /// <summary>
+    /// Stashes local work (untracked files too), pulls, then puts the work back. The work is put
+    /// back when the pull fails as well. False means it couldn't be restored cleanly, in which case
+    /// git keeps the stash.
+    /// </summary>
+    public async Task<bool> PullWithStashAsync()
+    {
+        var before = await StashHashesAsync();
+        await StashPushAsync("Changes set aside to pull");
+        // Git succeeds without creating a stash when there is nothing it can save.
+        var mine = (await StashHashesAsync()).Except(before).FirstOrDefault();
+        try
+        {
+            await PullAsync();
+        }
+        catch (Exception pullError)
+        {
+            if (mine is not null && !await RestoreStashAsync(mine))
+                throw new InvalidOperationException(
+                    $"{pullError.Message}\n\nYour changes are saved in the stash list.", pullError);
+            throw;
+        }
+        return mine is null || await RestoreStashAsync(mine);
+    }
+
+    private async Task<List<string>> StashHashesAsync() =>
+        (await Git.RunStringAsync(["stash", "list", "--format=%H"], readOnly: true))
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    private async Task<bool> RestoreStashAsync(string hash)
+    {
+        // Looked up again: other stashes may have been added since, shifting the numbers.
+        var index = (await StashHashesAsync()).IndexOf(hash);
+        if (index < 0) return false;
+        var reference = $"stash@{{{index}}}";
+        try
+        {
+            // --index also restores what was staged.
+            await Git.RunAsync(["stash", "pop", "--index", reference]);
+            return true;
+        }
+        catch (GitException)
+        {
+            // The staged state may no longer apply to the new files; the contents still might.
+        }
+        var unmerged = await Git.RunAsync(["diff", "--name-only", "--diff-filter=U"], readOnly: true);
+        if (unmerged.Length > 0) return false;
+        try
+        {
+            await Git.RunAsync(["stash", "pop", reference]);
+            return true;
+        }
+        catch (GitException)
+        {
+            return false;
+        }
+    }
+
     public async Task PushAsync(WorkingStatus status, IReadOnlyList<string> remotes)
     {
         var net = await NetworkGitAsync();

@@ -84,6 +84,10 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
     private string? _errorMessage;
     public string? ErrorMessage { get => _errorMessage; set => Set(ref _errorMessage, value); }
 
+    private PullBlock? _pullBlock;
+    /// <summary>Set when a pull was refused to protect local work; the UI asks what to do, then clears it.</summary>
+    public PullBlock? PullBlock { get => _pullBlock; set => Set(ref _pullBlock, value); }
+
     private StoreSheet? _sheet;
     public StoreSheet? Sheet { get => _sheet; set => Set(ref _sheet, value); }
 

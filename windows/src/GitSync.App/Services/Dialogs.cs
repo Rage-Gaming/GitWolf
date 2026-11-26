@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using GitSync.Core;
 using GitSync.Store;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace GitSync.App.Services;
@@ -26,6 +28,73 @@ internal static class Dialogs
     {
         if (await PromptAsync(root, "Stash changes", "Message (optional)", "Stash", allowEmpty: true) is { } message)
             await store.StashPushAsync(message);
+    }
+
+    /// <summary>Explains a refused pull and offers the two safe ways forward.</summary>
+    public static async Task PullBlockedAsync(XamlRoot root, RepositoryStore store, PullBlock block)
+    {
+        var count = block.Files.Count;
+        var summary = count switch
+        {
+            0 => "You have uncommitted changes.",
+            1 => "The incoming commits change a file you haven’t committed.",
+            _ => $"The incoming commits change {count} files you haven’t committed.",
+        };
+        var content = new StackPanel { Spacing = 12, MinWidth = 380 };
+        content.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Text = summary + " The pull was stopped, and your files are as you left them.",
+        });
+        if (count > 0)
+        {
+            content.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 12, 8),
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0x33, 0x80, 0x80, 0x80)),
+                Child = new ScrollViewer
+                {
+                    MaxHeight = 150,
+                    Content = new TextBlock
+                    {
+                        Text = string.Join("\n", block.Files), FontSize = 12, IsTextSelectionEnabled = true,
+                        FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap,
+                    },
+                },
+            });
+        }
+        content.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.7,
+            Text = "Commit your changes, then pull again. Or stash them: they are set aside, "
+                + "the commits are pulled, and your changes are put back.",
+        });
+        var dialog = new ContentDialog
+        {
+            RequestedTheme = (root.Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default,
+            XamlRoot = root, Title = "Commit your changes before pulling", Content = content,
+            PrimaryButtonText = "Commit changes", SecondaryButtonText = "Stash and pull", CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        try
+        {
+            switch (await dialog.ShowAsync())
+            {
+                case ContentDialogResult.Primary:
+                    store.Mode = StoreMode.Changes;
+                    break;
+                case ContentDialogResult.Secondary:
+                    await store.StashAndPullAsync();
+                    break;
+            }
+        }
+        catch (Exception e)
+        {
+            // WinUI allows one dialog at a time; the banner still says what to do.
+            Trace.TraceWarning($"Pull dialog could not be shown: {e.GetType().Name}");
+            store.ErrorMessage = "The pull was stopped. Commit or stash your changes, then pull again.";
+        }
     }
 
     public static void Copy(string text)

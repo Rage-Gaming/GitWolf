@@ -134,8 +134,17 @@ public sealed partial class MainWindow : Window
             }
             ShowError(selected?.ErrorMessage);
             Title = selected is null ? "GitSync" : $"{selected.Name} — GitSync";
+            if (selected?.PullBlock is not null) DispatcherQueue.TryEnqueue(ShowPullBlock);
         }
         ShowAll();
+    }
+
+    /// <summary>Asked once, for the repository on screen; one in the background asks when selected.</summary>
+    private void ShowPullBlock()
+    {
+        if (_store is not { PullBlock: { } block } store) return;
+        store.PullBlock = null;
+        _ = Dialogs.PullBlockedAsync(Root.XamlRoot, store, block);
     }
 
     private void ShowAll()
@@ -234,6 +243,10 @@ public sealed partial class MainWindow : Window
                 break;
             case nameof(RepositoryStore.ErrorMessage):
                 ShowError(store.ErrorMessage);
+                break;
+            case nameof(RepositoryStore.PullBlock):
+                // The dialog can start another pull, so wait until this one has finished.
+                DispatcherQueue.TryEnqueue(ShowPullBlock);
                 break;
             case nameof(RepositoryStore.Mode):
             case nameof(RepositoryStore.IsLoaded):
