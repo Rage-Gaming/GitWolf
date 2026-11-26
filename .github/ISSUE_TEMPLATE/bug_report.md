@@ -1,0 +1,16 @@
+---
+name: Bug report
+about: Something isn't working
+labels: bug
+---
+
+**What happened?**
+
+**Steps to reproduce**
+
+**Expected behaviour**
+
+**Environment**
+- GitSync version:
+- macOS version:
+- `git --version`:

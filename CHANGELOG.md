@@ -1,0 +1,12 @@
+# Changelog
+
+All notable changes are documented here. Format based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
+[Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Added
+- Initial macOS app (SwiftUI): history with branch graph, working-copy staging and commit,
+  branches / remotes / tags / stashes sidebar, fetch / pull / push, live repository watching.
+- `GitSyncCore` engine with parsers, graph layout and tests.
