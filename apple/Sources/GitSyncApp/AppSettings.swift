@@ -60,6 +60,7 @@ enum SettingsKey {
     static let autoFetchMinutes = "settings.autoFetchMinutes"
     static let commitPageSize = "settings.commitPageSize"
     static let diffContext = "settings.diffContext"
+    static let syntaxHighlighting = "settings.syntaxHighlighting"
     static let gitPath = "settings.gitPath"
 }
 

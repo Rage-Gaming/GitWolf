@@ -1,3 +1,4 @@
+import AppKit
 import GitSyncCore
 import SwiftUI
 
@@ -16,6 +17,9 @@ struct DiffPane: View {
     let diff: FileDiff?
     let path: String?
     var staging: DiffStaging?
+
+    @AppStorage(SettingsKey.syntaxHighlighting) private var syntaxOn = true
+    @State private var highlights: [Int: AttributedString] = [:]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,6 +43,60 @@ struct DiffPane: View {
             }
             content
         }
+        .task(id: HighlightKey(path: path, enabled: syntaxOn, diff: diff)) { await computeHighlights() }
+    }
+
+    private static let charWidth: CGFloat =
+        NSFont.monospacedSystemFont(ofSize: 12, weight: .regular).maximumAdvancement.width
+
+    /// Gutters (selection, two line numbers, marker) plus the longest line, with some slack.
+    private static func contentWidth(of diff: FileDiff, staged hasSelectionGutter: Bool) -> CGFloat {
+        let longest = diff.lines.reduce(0) { max($0, $1.text.utf8.count) }
+        let gutters: CGFloat = (hasSelectionGutter ? 22 : 0) + 46 + 46 + 22
+        return gutters + CGFloat(longest) * charWidth + 32
+    }
+
+    /// Re-run highlighting only when the diff, file or setting changes (not on selection changes).
+    private struct HighlightKey: Hashable {
+        let path: String?
+        let enabled: Bool
+        let signature: Int
+
+        init(path: String?, enabled: Bool, diff: FileDiff?) {
+            self.path = path
+            self.enabled = enabled
+            var hasher = Hasher()
+            if let diff {
+                hasher.combine(diff.lines.count)
+                for line in diff.lines { hasher.combine(line.text) }
+            }
+            signature = hasher.finalize()
+        }
+    }
+
+    private func computeHighlights() async {
+        guard syntaxOn, let diff, let path, !diff.isBinary else {
+            if !highlights.isEmpty { highlights = [:] }
+            return
+        }
+        let result = await Task.detached(priority: .userInitiated) { () -> [Int: AttributedString] in
+            let tokens = SyntaxHighlighter.tokens(for: diff, path: path)
+            var out: [Int: AttributedString] = [:]
+            for line in diff.lines {
+                guard let spans = tokens[line.id] else { continue }
+                var text = AttributedString(line.text)
+                for span in spans {
+                    let chars = text.characters
+                    guard span.start < chars.count, span.end <= chars.count else { continue }
+                    let lower = chars.index(chars.startIndex, offsetBy: span.start)
+                    let upper = chars.index(chars.startIndex, offsetBy: span.end)
+                    text[lower..<upper].foregroundColor = SyntaxPalette.color(span.kind)
+                }
+                out[line.id] = text
+            }
+            return out
+        }.value
+        if !Task.isCancelled { highlights = result }
     }
 
     @ViewBuilder
@@ -50,13 +108,16 @@ struct DiffPane: View {
                 ContentUnavailableView("No Differences", systemImage: "equal.circle")
             } else {
                 GeometryReader { geo in
+                    // Lazy stacks don't report the width of rows that aren't on screen yet, so give
+                    // the content an explicit width; otherwise long lines can't be scrolled to.
+                    let width = max(geo.size.width, Self.contentWidth(of: diff, staged: staging != nil))
                     ScrollView([.vertical, .horizontal]) {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(diff.lines) { line in
                                 if line.kind == .hunkHeader {
-                                    HunkHeaderRow(line: line, minWidth: geo.size.width, staging: staging, confirmDiscard: confirmDiscard)
+                                    HunkHeaderRow(line: line, minWidth: width, staging: staging, confirmDiscard: confirmDiscard)
                                 } else {
-                                    DiffLineRow(line: line, minWidth: geo.size.width, staging: staging)
+                                    DiffLineRow(line: line, minWidth: width, staging: staging, highlight: highlights[line.id])
                                 }
                             }
                             if diff.isTruncated {
@@ -65,6 +126,7 @@ struct DiffPane: View {
                             }
                             Color.clear.frame(height: 60)
                         }
+                        .frame(width: width, alignment: .leading)
                     }
                     .defaultScrollAnchor(.topLeading)
                 }
@@ -161,6 +223,7 @@ private struct DiffLineRow: View {
     let line: DiffLine
     let minWidth: CGFloat
     let staging: DiffStaging?
+    var highlight: AttributedString?
     @State private var hovering = false
 
     private var selected: Bool { staging?.selection.contains(line.id) ?? false }
@@ -189,7 +252,10 @@ private struct DiffLineRow: View {
             }
 
             Text(marker).frame(width: 22).foregroundStyle(markerColor)
-            Text(line.text.isEmpty ? " " : line.text).lineLimit(1).fixedSize().textSelection(.enabled)
+            Group {
+                if let highlight { Text(highlight) } else { Text(line.text.isEmpty ? " " : line.text) }
+            }
+            .lineLimit(1).fixedSize().textSelection(.enabled)
             Spacer(minLength: 0)
         }
         .font(.system(size: 12, design: .monospaced))
@@ -218,5 +284,38 @@ private struct DiffLineRow: View {
         default: base = .clear
         }
         return selected ? Theme.brand.opacity(0.22) : base
+    }
+}
+
+/// Syntax colours (Xcode-like), adapting to light and dark appearance.
+enum SyntaxPalette {
+    private static func dynamic(light: UInt32, dark: UInt32) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let hex = isDark ? dark : light
+            return NSColor(
+                srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+        })
+    }
+
+    static let keyword = dynamic(light: 0xAD3DA4, dark: 0xFF7AB2)
+    static let type = dynamic(light: 0x0B6E99, dark: 0x5DD8FF)
+    static let string = dynamic(light: 0xC41A16, dark: 0xFF8170)
+    static let comment = dynamic(light: 0x6C7986, dark: 0x7F8C98)
+    static let number = dynamic(light: 0x1C00CF, dark: 0xD9C97C)
+    static let function = dynamic(light: 0x4B21B0, dark: 0xB48CFF)
+    static let attribute = dynamic(light: 0x9B2393, dark: 0xFFA14F)
+
+    static func color(_ kind: SyntaxKind) -> Color {
+        switch kind {
+        case .keyword: keyword
+        case .type: type
+        case .string: string
+        case .comment: comment
+        case .number: number
+        case .function: function
+        case .attribute: attribute
+        }
     }
 }

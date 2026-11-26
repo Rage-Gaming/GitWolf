@@ -210,3 +210,34 @@ import Testing
         #expect(status.unstaged.isEmpty && status.staged.map(\.path) == ["f.txt"])
     }
 }
+
+// MARK: - Syntax highlighting
+
+@Suite struct SyntaxTests {
+    private func kinds(_ text: String, _ ext: String = "swift") -> [(String, SyntaxKind)] {
+        var state = SyntaxHighlighter.State()
+        let lang = SyntaxHighlighter.Language.forPath("f.\(ext)")!
+        let chars = Array(text)
+        return SyntaxHighlighter.tokenize(text, lang, &state).map { (String(chars[$0.start..<$0.end]), $0.kind) }
+    }
+
+    @Test func swiftBasics() {
+        let t = kinds("let name: String = \"hi // not a comment\" // real foo(42)")
+        #expect(t.contains { $0 == ("let", .keyword) })
+        #expect(t.contains { $0 == ("String", .type) })
+        #expect(t.contains { $0.1 == .string && $0.0.contains("not a comment") })
+        #expect(t.last?.1 == .comment && t.last?.0.hasPrefix("// real") == true)
+        #expect(!t.contains { $0.0 == "foo" })  // swallowed by the trailing comment
+    }
+
+    @Test func blockCommentsSpanLines() {
+        let diff = DiffParser.parse(Data("diff --git a/f.c b/f.c\n--- a/f.c\n+++ b/f.c\n@@ -1,3 +1,3 @@\n /* start\n+middle\n end */ int x;\n".utf8), maxLines: 100)
+        let tokens = SyntaxHighlighter.tokens(for: diff, path: "f.c")
+        let middle = diff.lines.first { $0.text == "middle" }!
+        #expect(tokens[middle.id]?.first?.kind == .comment)
+    }
+
+    @Test func unknownExtensionIsPlain() {
+        #expect(SyntaxHighlighter.Language.forPath("notes.xyz") == nil)
+    }
+}
