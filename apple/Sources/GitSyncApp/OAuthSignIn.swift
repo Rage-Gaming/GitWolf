@@ -37,7 +37,10 @@ enum OAuthClients {
             "On \(host): Preferences → Applications. Redirect URI \(OAuthLoopback.redirectURI), untick “Confidential”, scopes read_api, read_repository, write_repository."
         case .gitea:
             "On \(host): Settings → Applications → Manage OAuth2 applications. Redirect URI \(OAuthLoopback.redirectURI), untick “Confidential client”."
-        default: ""
+        case .bitbucket:
+            "On bitbucket.org: Workspace settings → OAuth consumers → Add consumer. Callback URL \(OAuthLoopback.redirectURI), tick “This is a private consumer”, permissions Account (read), Repositories (read, write), Pull requests (read). Paste the Key here and the Secret below."
+        case .azure:
+            "In the Microsoft Entra admin center: App registrations → New registration. Add a “Mobile and desktop applications” redirect URI \(OAuthLoopback.redirectURI), turn on “Allow public client flows”, and under API permissions add Azure DevOps → user_impersonation. Paste the Application (client) ID."
         }
     }
 }
@@ -137,11 +140,11 @@ final class OAuthSession {
 
     var isActive: Bool { phase != .idle }
 
-    func start(account: ProviderAccount, clientID: String,
+    func start(account: ProviderAccount, clientID: String, clientSecret: String? = nil,
                done: @escaping @MainActor (ProviderAccount, OAuthTokens) -> Void,
                failed: @escaping @MainActor (String) -> Void) {
         guard let flow = account.kind.oauthFlow else { return }
-        let client = OAuthClient(kind: account.kind, origin: account.origin, clientID: clientID)
+        let client = OAuthClient(kind: account.kind, origin: account.origin, clientID: clientID, clientSecret: clientSecret)
         task = Task {
             do {
                 let tokens: OAuthTokens

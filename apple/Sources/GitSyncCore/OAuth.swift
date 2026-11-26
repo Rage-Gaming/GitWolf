@@ -6,11 +6,15 @@ public struct OAuthTokens: Codable, Sendable, Equatable {
     public var accessToken: String
     public var refreshToken: String?
     public var expiresAt: Date?
+    /// For providers whose OAuth needs a client secret (Bitbucket Cloud). Kept with the tokens, in the
+    /// credential store, so refreshes work later.
+    public var clientSecret: String?
 
-    public init(accessToken: String, refreshToken: String? = nil, expiresAt: Date? = nil) {
+    public init(accessToken: String, refreshToken: String? = nil, expiresAt: Date? = nil, clientSecret: String? = nil) {
         self.accessToken = accessToken
         self.refreshToken = refreshToken
         self.expiresAt = expiresAt
+        self.clientSecret = clientSecret
     }
 
     /// True when the access token should be refreshed before use (with a minute of slack).
@@ -55,16 +59,23 @@ public extension ProviderKind {
     var oauthFlow: OAuthFlow? {
         switch self {
         case .github: .device
-        case .gitlab, .gitea: .pkce
-        case .bitbucket, .azure: nil
+        case .gitlab, .gitea, .bitbucket, .azure: .pkce
         }
     }
+
+    /// OAuth is offered for Bitbucket Cloud only (Data Center uses access tokens).
+    func supportsOAuth(host: String) -> Bool {
+        self != .bitbucket || host == "bitbucket.org"
+    }
+
+    /// Bitbucket Cloud's authorization-code grant has no PKCE and requires the consumer's secret.
+    var oauthNeedsClientSecret: Bool { self == .bitbucket }
+    var oauthUsesPKCE: Bool { self != .bitbucket }
 
     /// Why browser sign-in isn't offered for this provider.
     var oauthUnavailableReason: String? {
         switch self {
-        case .bitbucket: "Bitbucket needs a client secret for OAuth, so use an app password or access token."
-        case .azure: "Azure DevOps sign-in goes through Microsoft Entra; use a personal access token."
+        case .bitbucket: "Browser sign-in is only available for Bitbucket Cloud. Use an HTTP access token for Data Center."
         default: nil
         }
     }
@@ -74,6 +85,8 @@ public extension ProviderKind {
         switch self {
         case .github: "repo"
         case .gitlab: "read_api read_repository write_repository"
+        // Azure DevOps resource id (user_impersonation) plus a refresh token.
+        case .azure: "499b84ac-1321-427f-aa17-267ca6975798/user_impersonation offline_access"
         default: ""
         }
     }
@@ -112,30 +125,41 @@ public struct OAuthClient: Sendable {
     public let kind: ProviderKind
     public let origin: String
     public let clientID: String
+    public let clientSecret: String?
     private let transport: HTTPTransport
     private let sleep: @Sendable (Int) async throws -> Void
 
     public init(
-        kind: ProviderKind, origin: String, clientID: String,
+        kind: ProviderKind, origin: String, clientID: String, clientSecret: String? = nil,
         transport: @escaping HTTPTransport = ProviderClient.urlSessionTransport,
         sleep: @escaping @Sendable (Int) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
     ) {
         self.kind = kind
         self.origin = origin
         self.clientID = clientID
+        self.clientSecret = clientSecret
         self.transport = transport
         self.sleep = sleep
     }
 
     // MARK: Endpoints
 
+    /// Microsoft Entra tenant used for Azure DevOps (work and school accounts).
+    static let azureAuthority = "https://login.microsoftonline.com/organizations/oauth2/v2.0"
+
     var authorizeURL: String {
-        kind == .gitea ? "\(origin)/login/oauth/authorize" : "\(origin)/oauth/authorize"
+        switch kind {
+        case .gitea: "\(origin)/login/oauth/authorize"
+        case .bitbucket: "https://bitbucket.org/site/oauth2/authorize"
+        case .azure: "\(Self.azureAuthority)/authorize"
+        default: "\(origin)/oauth/authorize"
+        }
     }
     var tokenURL: String {
         switch kind {
-        case .gitea: "\(origin)/login/oauth/access_token"
-        case .github: "\(origin)/login/oauth/access_token"
+        case .gitea, .github: "\(origin)/login/oauth/access_token"
+        case .bitbucket: "https://bitbucket.org/site/oauth2/access_token"
+        case .azure: "\(Self.azureAuthority)/token"
         default: "\(origin)/oauth/token"
         }
     }
@@ -150,24 +174,29 @@ public struct OAuthClient: Sendable {
             URLQueryItem(name: "redirect_uri", value: redirectURI),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "code_challenge", value: challenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
         ]
+        if kind.oauthUsesPKCE {
+            items.append(URLQueryItem(name: "code_challenge", value: challenge))
+            items.append(URLQueryItem(name: "code_challenge_method", value: "S256"))
+        }
+        if kind == .azure { items.append(URLQueryItem(name: "response_mode", value: "query")) }
         if !kind.oauthScopes.isEmpty { items.append(URLQueryItem(name: "scope", value: kind.oauthScopes)) }
         c?.queryItems = items
         return c?.url
     }
 
     public func exchange(code: String, verifier: String, redirectURI: String) async throws -> OAuthTokens {
-        try await tokenRequest([
-            "client_id": clientID, "grant_type": "authorization_code", "code": code,
-            "code_verifier": verifier, "redirect_uri": redirectURI,
-        ])
+        var form = ["client_id": clientID, "grant_type": "authorization_code", "code": code, "redirect_uri": redirectURI]
+        if kind.oauthUsesPKCE { form["code_verifier"] = verifier }
+        if kind == .azure { form["scope"] = kind.oauthScopes }
+        return try await tokenRequest(form)
     }
 
     public func refresh(_ tokens: OAuthTokens) async throws -> OAuthTokens {
         guard let refresh = tokens.refreshToken else { throw OAuthError.expired }
-        var fresh = try await tokenRequest(["client_id": clientID, "grant_type": "refresh_token", "refresh_token": refresh])
+        var form = ["client_id": clientID, "grant_type": "refresh_token", "refresh_token": refresh]
+        if kind == .azure { form["scope"] = kind.oauthScopes }
+        var fresh = try await tokenRequest(form)
         if fresh.refreshToken == nil { fresh.refreshToken = refresh }
         return fresh
     }
@@ -214,7 +243,9 @@ public struct OAuthClient: Sendable {
         if let error = json["error"] as? String {
             throw OAuthError.server(json["error_description"] as? String ?? error)
         }
-        return try Self.tokens(from: json)
+        var tokens = try Self.tokens(from: json)
+        if kind.oauthNeedsClientSecret { tokens.clientSecret = clientSecret }
+        return tokens
     }
 
     static func tokens(from json: [String: Any], now: Date = Date()) throws -> OAuthTokens {
@@ -232,6 +263,10 @@ public struct OAuthClient: Sendable {
         r.setValue("application/json", forHTTPHeaderField: "Accept")
         r.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         r.setValue("GitSync", forHTTPHeaderField: "User-Agent")
+        if kind.oauthNeedsClientSecret, let clientSecret, !clientSecret.isEmpty {
+            let basic = Data("\(clientID):\(clientSecret)".utf8).base64EncodedString()
+            r.setValue("Basic \(basic)", forHTTPHeaderField: "Authorization")
+        }
         r.httpBody = Data(Self.encode(form).utf8)
         let (data, _) = try await transport(r)
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw OAuthError.invalidResponse }
@@ -253,6 +288,7 @@ public extension GitCredential {
         switch kind {
         case .gitlab: "oauth2"
         case .github: "x-access-token"
+        case .bitbucket: "x-token-auth"
         default: fallback
         }
     }

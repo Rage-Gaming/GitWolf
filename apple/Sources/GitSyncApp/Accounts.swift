@@ -80,7 +80,8 @@ enum AccountStorage {
         let user = account.usesOAuth
             ? GitCredential.oauthUsername(kind: account.kind, fallback: account.username)
             : account.username
-        return GitCredential(host: account.hostName, username: user, token: secret)
+        return GitCredential(host: account.hostName, username: user, token: secret,
+                             useBearerHeader: account.usesOAuth && account.kind == .azure)
     }
 
     static func account(forHost host: String) -> ProviderAccount? {
@@ -121,7 +122,7 @@ actor OAuthRefresher {
         if let running = inFlight[account.id] { return await running.value }
         let task = Task<String?, Never> {
             guard let clientID = account.oauthClientID else { return tokens.accessToken }
-            let client = OAuthClient(kind: account.kind, origin: account.origin, clientID: clientID)
+            let client = OAuthClient(kind: account.kind, origin: account.origin, clientID: clientID, clientSecret: tokens.clientSecret)
             guard let fresh = try? await client.refresh(tokens) else { return tokens.accessToken }
             if let data = try? JSONEncoder().encode(fresh), let json = String(data: data, encoding: .utf8) {
                 try? Keychain.save(json, for: account.id)

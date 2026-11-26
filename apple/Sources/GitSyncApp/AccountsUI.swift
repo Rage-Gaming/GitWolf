@@ -106,6 +106,7 @@ struct AddAccountSheet: View {
     @State private var token = ""
     @State private var method = Method.browser
     @State private var clientID = ""
+    @State private var clientSecret = ""
     @State private var working = false
     @State private var error: String?
     @State private var session = OAuthSession()
@@ -121,7 +122,7 @@ struct AddAccountSheet: View {
     private var scheme: String? {
         host.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("http://") ? "http" : nil
     }
-    private var oauthAvailable: Bool { kind.oauthFlow != nil }
+    private var oauthAvailable: Bool { kind.oauthFlow != nil && kind.supportsOAuth(host: cleanHost) }
     private var effectiveMethod: Method { method == .browser && !oauthAvailable ? .token : method }
     private var needsClientID: Bool { effectiveMethod == .browser && !OAuthClients.hasBuiltIn(host: cleanHost) }
     private var resolvedClientID: String {
@@ -131,7 +132,8 @@ struct AddAccountSheet: View {
     private var canAdd: Bool {
         guard !cleanHost.isEmpty, !working, !session.isActive else { return false }
         switch effectiveMethod {
-        case .browser: return !resolvedClientID.isEmpty
+        case .browser:
+            return !resolvedClientID.isEmpty && (!kind.oauthNeedsClientSecret || !clientSecret.trimmingCharacters(in: .whitespaces).isEmpty)
         case .token: return !token.trimmingCharacters(in: .whitespaces).isEmpty
                 && (!kind.needsUsername || !username.trimmingCharacters(in: .whitespaces).isEmpty)
         case .password: return !token.trimmingCharacters(in: .whitespaces).isEmpty
@@ -254,6 +256,11 @@ struct AddAccountSheet: View {
                     }
                     Text(OAuthClients.setupHint(kind, host: cleanHost))
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if kind.oauthNeedsClientSecret {
+                        field("CLIENT SECRET") {
+                            SecureField("Paste the consumer’s Secret", text: $clientSecret).textFieldStyle(.plain)
+                        }
+                    }
                     if kind.oauthFlow == .pkce {
                         field("REDIRECT URI") {
                             HStack {
@@ -320,7 +327,7 @@ struct AddAccountSheet: View {
         error = nil
         let id = resolvedClientID
         let account = ProviderAccount(kind: kind, host: cleanHost, username: "", scheme: scheme, oauthClientID: id)
-        session.start(account: account, clientID: id) { account, tokens in
+        session.start(account: account, clientID: id, clientSecret: kind.oauthNeedsClientSecret ? clientSecret.trimmingCharacters(in: .whitespaces) : nil) { account, tokens in
             Task { await finishOAuth(account, tokens) }
         } failed: { message in
             error = message

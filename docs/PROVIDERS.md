@@ -49,7 +49,8 @@ Only **public-client** flows are used, so GitSync never needs (or ships) a clien
 | GitHub (and Enterprise) | Device flow | `POST <origin>/login/device/code`, poll `POST <origin>/login/oauth/access_token` (`grant_type=urn:ietf:params:oauth:grant-type:device_code`); handle `authorization_pending`, `slow_down` (+5 s), `access_denied`, `expired_token` |
 | GitLab (and self-managed) | Authorization code + PKCE (S256), loopback redirect | `<origin>/oauth/authorize`, `<origin>/oauth/token` |
 | Gitea / Forgejo / Codeberg | Authorization code + PKCE, loopback redirect | `<origin>/login/oauth/authorize`, `<origin>/login/oauth/access_token` |
-| Bitbucket, Azure DevOps | not offered | Bitbucket Cloud needs a client secret; Azure needs Microsoft Entra. Use tokens. |
+| Bitbucket Cloud | Authorization code, **no PKCE, needs the consumer secret** | authorize `https://bitbucket.org/site/oauth2/authorize`; token `POST https://bitbucket.org/site/oauth2/access_token` with HTTP Basic `client_id:secret`. The user registers their own *private consumer* (callback URL = loopback URI) and enters Key + Secret; the secret is stored with the tokens in the credential store and never bundled. Tokens last 2 h and refresh. Data Center: not offered. |
+| Azure DevOps | Authorization code + PKCE via Microsoft Entra | `https://login.microsoftonline.com/organizations/oauth2/v2.0/{authorize,token}`, scope `499b84ac-1321-427f-aa17-267ca6975798/user_impersonation offline_access` (sent on refresh too), `response_mode=query`. Public client: register a "Mobile and desktop" redirect URI and allow public client flows. Signed-in user from `GET https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1`. |
 
 - **Loopback redirect** is fixed: `http://127.0.0.1:53682/callback` (`OAuthLoopback`). GitLab and
   Gitea require the exact redirect URI to be registered. Listen on the loopback interface only,
@@ -66,8 +67,10 @@ Only **public-client** flows are used, so GitSync never needs (or ships) a clien
   and write the new tokens back. Serialise refreshes per account (rotating refresh tokens break if two
   run at once). GitHub OAuth-app tokens do not expire; GitLab's last 2 hours.
 - **Using the token.** API: `Authorization: Bearer <access>` for every provider. Git: through
-  `GIT_ASKPASS` with username `oauth2` for GitLab, `x-access-token` for GitHub, the real username
-  otherwise.
+  `GIT_ASKPASS` with username `oauth2` for GitLab, `x-access-token` for GitHub, `x-token-auth` for
+  Bitbucket, the real username otherwise. **Azure DevOps** Entra tokens are sent as
+  `Authorization: Bearer` through `http.extraheader` set with `GIT_CONFIG_COUNT/KEY_1/VALUE_1`
+  (environment only, never the command line).
 
 ## API usage (listing + verification)
 

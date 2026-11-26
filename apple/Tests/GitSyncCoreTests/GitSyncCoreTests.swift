@@ -546,7 +546,7 @@ import Testing
     }
 
     @Test func oauthAccountsUseBearerAndProviderFlows() async throws {
-        #expect(ProviderKind.github.oauthFlow == .device && ProviderKind.gitlab.oauthFlow == .pkce && ProviderKind.bitbucket.oauthFlow == nil)
+        #expect(ProviderKind.github.oauthFlow == .device && ProviderKind.gitlab.oauthFlow == .pkce && ProviderKind.bitbucket.oauthFlow == .pkce && ProviderKind.azure.oauthFlow == .pkce)
         #expect(GitCredential.oauthUsername(kind: .gitlab, fallback: "me") == "oauth2")
         let account = ProviderAccount(kind: .gitlab, host: "gitlab.com", username: "me", oauthClientID: "cid")
         #expect(account.usesOAuth)
@@ -628,5 +628,71 @@ import Testing
         _ = try await c.collab(.pullRequest, repoPath: "o/r", filter: .open, page: 1)
         #expect(log.requests[0].value(forHTTPHeaderField: "Authorization") == nil)
         #expect(ProviderKind.azure.supportsCollab(.issue, host: "dev.azure.com") == false)
+    }
+}
+
+@Suite struct OAuthBitbucketAzureTests {
+    private final class Log: @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [URLRequest] = []
+        var requests: [URLRequest] { lock.withLock { items } }
+        func add(_ r: URLRequest) { lock.withLock { items.append(r) } }
+    }
+
+    private func client(_ kind: ProviderKind, secret: String? = nil, log: Log, body: String) -> OAuthClient {
+        OAuthClient(kind: kind, origin: "https://\(kind.defaultHost)", clientID: "cid", clientSecret: secret, transport: { r in
+            log.add(r)
+            return (Data(body.utf8), HTTPURLResponse(url: r.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+    }
+
+    @Test func bitbucketUsesClientSecretWithoutPKCE() async throws {
+        let log = Log()
+        let c = client(.bitbucket, secret: "shh", log: log, body: #"{"access_token":"bb","refresh_token":"br","expires_in":7200}"#)
+        let url = c.authorizationURL(redirectURI: OAuthLoopback.redirectURI, state: "s", challenge: "ch")?.absoluteString ?? ""
+        #expect(url.hasPrefix("https://bitbucket.org/site/oauth2/authorize?") && !url.contains("code_challenge"))
+        let tokens = try await c.exchange(code: "c", verifier: "v", redirectURI: OAuthLoopback.redirectURI)
+        #expect(tokens.accessToken == "bb" && tokens.clientSecret == "shh")
+        let r = log.requests[0]
+        #expect(r.url?.absoluteString == "https://bitbucket.org/site/oauth2/access_token")
+        #expect(r.value(forHTTPHeaderField: "Authorization") == "Basic " + Data("cid:shh".utf8).base64EncodedString())
+        let body = String(decoding: r.httpBody ?? Data(), as: UTF8.self)
+        #expect(!body.contains("code_verifier") && body.contains("grant_type=authorization_code"))
+        let fresh = try await c.refresh(tokens)
+        #expect(fresh.clientSecret == "shh")
+        #expect(GitCredential.oauthUsername(kind: .bitbucket, fallback: "me") == "x-token-auth")
+        #expect(ProviderKind.bitbucket.supportsOAuth(host: "bitbucket.org") && !ProviderKind.bitbucket.supportsOAuth(host: "bb.acme.com"))
+    }
+
+    @Test func azureUsesEntraPKCEWithScope() async throws {
+        let log = Log()
+        let c = client(.azure, log: log, body: #"{"access_token":"az","refresh_token":"zr","expires_in":3600}"#)
+        let url = c.authorizationURL(redirectURI: OAuthLoopback.redirectURI, state: "s", challenge: "ch")?.absoluteString ?? ""
+        #expect(url.hasPrefix("https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?"))
+        #expect(url.contains("code_challenge=ch") && url.contains("user_impersonation") && url.contains("offline_access"))
+        _ = try await c.exchange(code: "c", verifier: "v", redirectURI: OAuthLoopback.redirectURI)
+        let body = String(decoding: log.requests[0].httpBody ?? Data(), as: UTF8.self)
+        #expect(body.contains("code_verifier=v") && body.contains("scope="))
+        #expect(log.requests[0].value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    @Test func bearerHeaderCredentialStaysOffTheCommandLine() {
+        let c = GitCredential(host: "dev.azure.com", username: "u", token: "tok", useBearerHeader: true)
+        let env = c.environment(askpassPath: "/x")
+        #expect(env["GIT_CONFIG_COUNT"] == "2" && env["GIT_CONFIG_KEY_1"] == "http.extraheader")
+        #expect(env["GIT_CONFIG_VALUE_1"] == "Authorization: Bearer tok")
+        #expect(GitCredential(host: "h", username: "u", token: "t").environment(askpassPath: "/x")["GIT_CONFIG_COUNT"] == "1")
+    }
+
+    @Test func azureProfileVerifiesSignedInUser() async throws {
+        let log = Log()
+        let account = ProviderAccount(kind: .azure, host: "dev.azure.com", username: "", oauthClientID: "cid")
+        let c = ProviderClient(account: account, token: "az") { r in
+            log.add(r)
+            return (Data(#"{"displayName":"Dee","emailAddress":"dee@acme.com"}"#.utf8), HTTPURLResponse(url: r.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        #expect(try await c.currentUser() == "dee@acme.com")
+        #expect(log.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer az")
+        #expect(log.requests[0].url?.host == "app.vssps.visualstudio.com")
     }
 }

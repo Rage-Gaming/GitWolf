@@ -117,6 +117,14 @@ public struct ProviderClient: Sendable {
 
     /// Returns the username the token belongs to; throws `unauthorized` for a bad token.
     public func currentUser() async throws -> String {
+        if account.kind == .azure, account.usesOAuth {
+            // The Visual Studio profile service identifies the signed-in Entra user.
+            let (data, _) = try await fetch("https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1")
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let name = json["emailAddress"] as? String ?? json["displayName"] as? String, !name.isEmpty
+            else { throw ProviderError.invalidResponse }
+            return name
+        }
         guard account.kind.supportsRepositoryListing else {
             throw ProviderError.unsupported("Azure DevOps tokens can’t be verified here; they are used when you clone, fetch and push.")
         }

@@ -118,11 +118,15 @@ public struct GitCredential: Sendable, Equatable {
     public var host: String
     public var username: String
     public var token: String
+    /// Send the token as `Authorization: Bearer` (Microsoft Entra tokens for Azure DevOps) instead of
+    /// answering git's password prompt.
+    public var useBearerHeader: Bool
 
-    public init(host: String, username: String, token: String) {
+    public init(host: String, username: String, token: String, useBearerHeader: Bool = false) {
         self.host = host
         self.username = username.isEmpty ? "git" : username
         self.token = token
+        self.useBearerHeader = useBearerHeader
     }
 
     /// POSIX `GIT_ASKPASS` helper: answers git's username/password prompts from the environment, so
@@ -138,7 +142,7 @@ public struct GitCredential: Sendable, Equatable {
     /// Environment that makes git use this credential and nothing else (other helpers, such as a
     /// stale keychain entry, are disabled for the call).
     public func environment(askpassPath: String) -> [String: String] {
-        [
+        var env = [
             "GIT_ASKPASS": askpassPath,
             "GITSYNC_ASKPASS_USER": username,
             "GITSYNC_ASKPASS_TOKEN": token,
@@ -146,6 +150,13 @@ public struct GitCredential: Sendable, Equatable {
             "GIT_CONFIG_KEY_0": "credential.helper",
             "GIT_CONFIG_VALUE_0": "",
         ]
+        if useBearerHeader {
+            // Passed through the environment, never the command line or a config file.
+            env["GIT_CONFIG_COUNT"] = "2"
+            env["GIT_CONFIG_KEY_1"] = "http.extraheader"
+            env["GIT_CONFIG_VALUE_1"] = "Authorization: Bearer \(token)"
+        }
+        return env
     }
 }
 
