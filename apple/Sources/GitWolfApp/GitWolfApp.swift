@@ -170,6 +170,10 @@ struct GitWolfApp: App {
 
         // A regular window (not the `Settings` scene) so it gets the same hidden-title-bar chrome
         // as the main window; the Settings scene re-applies its own opaque title bar.
+        Window("Contributors", id: "contributors") { ContributorsView().modifier(AppearanceModifier()) }
+            .windowResizability(.contentSize)
+            .defaultPosition(.center)
+
         Window("Settings", id: "settings") { SettingsView() }
             .windowStyle(.hiddenTitleBar)
             .windowResizability(.contentSize)
@@ -248,7 +252,8 @@ struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
-        CommandGroup(after: .appInfo) {
+        CommandGroup(replacing: .appInfo) {
+            Button("About GitWolf") { AboutPanel.show() }
             Button("Check for Updates…") { UpdateManager.checkForUpdates() }
         }
         CommandGroup(replacing: .appSettings) {
@@ -263,6 +268,7 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .sidebar) {}
         CommandGroup(replacing: .textFormatting) {}
         CommandGroup(replacing: .help) {
+            Button("Contributors") { openWindow(id: "contributors") }
             Link("GitWolf Documentation", destination: URL(string: "https://github.com/ipuppyyt/GitWolf/tree/main/docs")!)
             Link("Report an Issue", destination: URL(string: "https://github.com/ipuppyyt/GitWolf/issues")!)
         }

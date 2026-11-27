@@ -2631,3 +2631,24 @@ private func makeTempDir() throws -> URL {
         #expect(Appcast.render([feed[0]]).contains("a?b=1&amp;c=2"))
     }
 }
+
+
+@Suite struct ContributorsTests {
+    @Test func parsesSortsAndDropsBots() {
+        let json = """
+        [{"login":"rage","type":"User","contributions":9,"avatar_url":"https://a/1","html_url":"https://github.com/rage"},
+         {"login":"dependabot[bot]","type":"Bot","contributions":50},
+         {"login":"ipuppyyt","type":"User","contributions":300,"avatar_url":"https://a/2","html_url":"https://github.com/ipuppyyt"}]
+        """
+        let people = Contributors.parse(Data(json.utf8))
+        #expect(people.map(\.login) == ["ipuppyyt", "rage"])
+        #expect(people[1].contributions == 9 && people[1].profileURL?.absoluteString == "https://github.com/rage")
+    }
+
+    @Test func theMaintainerIsAlwaysListed() {
+        let people = Contributors.parse(Data(#"[{"login":"rage","type":"User","contributions":4}]"#.utf8))
+        #expect(people.map(\.login) == ["rage", "ipuppyyt"])
+        #expect(Contributors.isMaintainer(people[1]))
+        #expect(Contributors.parse(Data("not json".utf8)).map(\.login) == ["ipuppyyt"])
+    }
+}

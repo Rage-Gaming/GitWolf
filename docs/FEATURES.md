@@ -429,6 +429,11 @@ Rail: each repository's tile shows the result of its checked-out commit in the t
   No network access happens in development builds.
 - Releases are produced by `Scripts/release.sh` / `docs/RELEASING.md` (self-signed, free; no notarisation).
 
+- **Contributors** [core `Contributors`; ui `ContributorsView`]. Help > Contributors. `GET /repos/ipuppyyt/GitWolf/contributors?per_page=100`
+  with no credentials or cookies; bots are dropped, people are sorted by commits then name, and the maintainer (`ipuppyyt`)
+  is always listed, labelled *Maintainer*. Refreshed at most once a day, last answer cached for offline use; each row opens the
+  GitHub profile.
+
 ## 9b. Accessibility and localisation
 
 - Every interactive element has a spoken label; icon-only buttons use their tooltip text. Rows that
