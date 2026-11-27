@@ -4,6 +4,9 @@ import SwiftUI
 // MARK: - Design tokens
 
 enum Theme {
+    /// Height of every control in the top bar.
+    static let barControlHeight: CGFloat = 36
+
     /// User-selectable accent (Settings). Views re-render when it changes via `AppearanceModifier`.
     static var brand: Color { AccentChoice.current.primary }
 
@@ -78,14 +81,31 @@ private struct PanelStyle: ViewModifier {
 }
 
 private struct PillStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content.padding(.horizontal, 11).padding(.vertical, 6).barSurface()
+    }
+}
+
+/// Every control in the top bar: one height, one surface. Icon-only controls are circles.
+private struct ToolbarControlStyle: ViewModifier {
+    let square: Bool
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: 13, weight: .medium))
+            .padding(.horizontal, square ? 0 : 14)
+            .frame(width: square ? Theme.barControlHeight : nil, height: Theme.barControlHeight)
+            .barSurface()
+    }
+}
+
+private struct BarSurface: ViewModifier {
     @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         let light = scheme == .light
         content
-            .padding(.horizontal, 11).padding(.vertical, 6)
             .background(light ? Color.white.opacity(0.8) : Color.primary.opacity(0.09), in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(light ? 0.12 : 0.12)))
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12)))
             .shadow(color: .black.opacity(light ? 0.05 : 0), radius: 2, y: 1)
     }
 }
@@ -95,6 +115,12 @@ extension View {
     func panel() -> some View { modifier(PanelStyle()) }
 
     func pill() -> some View { modifier(PillStyle()) }
+
+    /// The shared capsule fill, border and shadow of the top bar.
+    func barSurface() -> some View { modifier(BarSurface()) }
+
+    /// A top bar control at the shared height; `square` makes an icon-only circle.
+    func toolbarControl(square: Bool = false) -> some View { modifier(ToolbarControlStyle(square: square)) }
 
     /// Exposes a tap-to-select row to VoiceOver and Full Keyboard Access as a button with a spoken label.
     func selectableRow(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {

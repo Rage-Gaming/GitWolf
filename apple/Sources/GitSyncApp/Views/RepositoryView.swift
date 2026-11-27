@@ -164,8 +164,7 @@ struct TopBar: View {
                     Text("Jump to…").foregroundStyle(.secondary)
                     Kbd(text: "⌘K")
                 }
-                .font(.callout)
-                .pill()
+                .toolbarControl()
             }
             .buttonStyle(.plain)
             .help("Jump to a repository, branch or action")
@@ -204,7 +203,7 @@ struct TopBar: View {
                 Text(store.status.branchDisplay).fontWeight(.semibold).lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
             }
-            .pill()
+            .toolbarControl()
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
         .fixedSize()
@@ -222,7 +221,7 @@ struct TopBar: View {
                 ForEach(actions) { action in Button(action.name, systemImage: "play") { store.run(action) } }
             }
         } label: {
-            Image(systemName: "square.and.arrow.up.on.square").pill()
+            Image(systemName: "square.and.arrow.up.on.square").toolbarControl(square: true)
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
         .fixedSize()
@@ -240,8 +239,8 @@ struct TopBar: View {
             if store.supports(.issue) { tab("Issues", "smallcircle.filled.circle", .issues, badge: nil) }
         }
         .padding(3)
-        .background(Color.primary.opacity(0.07), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10)))
+        .frame(height: Theme.barControlHeight)
+        .barSurface()
     }
 
     private func tab(_ title: String, _ icon: String, _ mode: RepositoryStore.Mode, badge: Int?) -> some View {
@@ -260,7 +259,7 @@ struct TopBar: View {
                 }
             }
             .foregroundStyle(selected ? .primary : .secondary)
-            .padding(.horizontal, 13).padding(.vertical, 6)
+            .padding(.horizontal, 13).frame(maxHeight: .infinity)
             .background {
                 if selected {
                     Capsule().fill(Color(nsColor: .textBackgroundColor))
@@ -278,8 +277,7 @@ struct TopBar: View {
         return Button { store.sheet = .notifications } label: {
             Image(systemName: count > 0 ? "bell.badge.fill" : "bell")
                 .symbolRenderingMode(count > 0 ? .multicolor : .monochrome)
-                .font(.callout)
-                .pill()
+                .toolbarControl(square: true)
         }
         .buttonStyle(.plain)
         .help(count > 0 ? "\(count) notification\(count == 1 ? "" : "s")" : "Notifications")
@@ -314,9 +312,9 @@ struct TopBar: View {
             SyncButton(icon: "tray.and.arrow.down", count: 0, help: "Stash changes") { store.sheet = .stash }
                 .disabled(store.status.isClean)
         }
-        .background(Color.primary.opacity(0.07), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10)))
+        .frame(height: Theme.barControlHeight)
         .clipShape(Capsule())
+        .barSurface()
     }
 }
 
@@ -367,7 +365,7 @@ private struct SyncButton: View {
                     Text("\(count)").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(Theme.brand)
                 }
             }
-            .frame(minWidth: 40, minHeight: 30)
+            .frame(minWidth: 40, maxHeight: .infinity)
             .padding(.horizontal, 4)
             .background(hovering && enabled ? Color.primary.opacity(0.07) : .clear)
             .opacity(enabled ? 1 : 0.4)
