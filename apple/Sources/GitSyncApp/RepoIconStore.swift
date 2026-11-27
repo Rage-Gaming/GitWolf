@@ -73,13 +73,21 @@ struct RepoIconPicker: View {
     let current: RepoIcon?
     let choose: (RepoIcon?) -> Void
     let importURL: (URL) -> Void
-    let chooseImage: () -> Void
     @State private var targeted = false
+    @State private var browsing = false
     @Environment(\.dismiss) private var dismiss
 
     private let columns = Array(repeating: GridItem(.fixed(40), spacing: 8), count: 5)
 
     var body: some View {
+        if browsing {
+            ImageFileBrowser(pick: { importURL($0); dismiss() }, back: { browsing = false })
+        } else {
+            pickerBody
+        }
+    }
+
+    private var pickerBody: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Repository Icon").font(.headline)
             ScrollView {
@@ -122,7 +130,7 @@ struct RepoIconPicker: View {
                 } isTargeted: { targeted = $0 }
             HStack {
                 Button("Paste") { pasteImage() }
-                Button("Choose Image…") { dismiss(); chooseImage() }
+                Button("Choose Image…") { browsing = true }
                 Button("Use Initials") { choose(nil); dismiss() }.disabled(current == nil)
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
@@ -144,5 +152,97 @@ struct RepoIconPicker: View {
         dismiss()
         // The import reads the file in the background; remove the copy afterwards.
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { try? FileManager.default.removeItem(at: temp) }
+    }
+}
+
+
+/// A small file browser for picking a picture. The system open panel hangs inside this app on some
+/// Macs, so the picker brings its own: places on the left, folders and images in the list.
+struct ImageFileBrowser: View {
+    let pick: (URL) -> Void
+    let back: () -> Void
+    @State private var folder = ImageFileBrowser.start
+    @State private var entries: [URL] = []
+    @State private var selected: URL?
+    @State private var failed = false
+
+    private static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
+    private static var start: URL {
+        let pictures = home.appendingPathComponent("Pictures")
+        return FileManager.default.fileExists(atPath: pictures.path) ? pictures : home
+    }
+    private var places: [(String, String, URL)] {
+        let h = Self.home
+        return [("Home", "house", h), ("Desktop", "menubar.dock.rectangle", h.appendingPathComponent("Desktop")),
+                ("Documents", "doc", h.appendingPathComponent("Documents")),
+                ("Downloads", "arrow.down.circle", h.appendingPathComponent("Downloads")),
+                ("Pictures", "photo", h.appendingPathComponent("Pictures"))]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Choose an Image").font(.headline)
+            HStack(spacing: 6) {
+                ForEach(places, id: \.0) { name, icon, url in
+                    Button { go(url) } label: { Image(systemName: icon).frame(width: 26, height: 22) }
+                        .help(name).accessibilityLabel(name)
+                }
+                Spacer()
+                Button { go(folder.deletingLastPathComponent()) } label: { Image(systemName: "chevron.up") }
+                    .help("Enclosing folder").disabled(folder.path == "/")
+            }
+            Text(folder.path.replacingOccurrences(of: Self.home.path, with: "~"))
+                .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+            List(entries, id: \.self, selection: $selected) { url in
+                HStack(spacing: 8) {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 20, height: 20)
+                    Text(url.lastPathComponent).lineLimit(1)
+                    Spacer()
+                    if isFolder(url) { Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { open(url) }
+                .onTapGesture { if isFolder(url) { go(url) } else { selected = url } }
+            }
+            .frame(maxWidth: .infinity).frame(height: 280)
+            .overlay {
+                if failed { ContentUnavailableView("Can’t Open This Folder", systemImage: "lock", description: Text("macOS didn’t allow access to it.")) }
+                else if entries.isEmpty { Text("No images or folders here").foregroundStyle(.secondary) }
+            }
+            HStack {
+                Button("Back") { back() }
+                Spacer()
+                Button("Choose") { if let selected { pick(selected) } }
+                    .keyboardShortcut(.defaultAction).disabled(selected == nil || isFolder(selected!))
+            }
+        }
+        .padding(18)
+        .frame(width: 420)
+        .task(id: folder) { await load() }
+    }
+
+    private func isFolder(_ url: URL) -> Bool { (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+    private func go(_ url: URL) { selected = nil; folder = url }
+    private func open(_ url: URL) { if isFolder(url) { go(url) } else { pick(url) } }
+
+    private func load() async {
+        let dir = folder
+        let found: [URL]? = await Task.detached {
+            guard let all = try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.isDirectoryKey, .contentTypeKey], options: [.skipsHiddenFiles]) else { return nil }
+            let shown = all.filter { url in
+                let v = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentTypeKey, .isPackageKey])
+                if v?.isDirectory == true { return v?.isPackage != true }
+                return v?.contentType?.conforms(to: .image) == true
+            }
+            return shown.sorted { a, b in
+                let da = (try? a.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+                let db = (try? b.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+                if da != db { return da }
+                return a.lastPathComponent.localizedStandardCompare(b.lastPathComponent) == .orderedAscending
+            }
+        }.value
+        failed = found == nil
+        entries = found ?? []
     }
 }

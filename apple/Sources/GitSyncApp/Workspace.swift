@@ -103,22 +103,6 @@ final class Workspace {
         RepoIconStore.save(repoIcons)
     }
 
-    /// Asks for a picture to use as the tile icon. Same kind of panel as Open Repository; it runs after
-    /// the picker sheet has closed, never on top of it.
-    func chooseIconImage(for path: String) {
-        let panel = NSOpenPanel()
-        panel.title = "Choose an Icon Image"
-        panel.message = "The picture is cropped to a square."
-        panel.prompt = "Choose"
-        panel.allowedContentTypes = [.image]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        setIconImage(from: url, for: path)
-    }
-
-    /// Uses a picture file as the repository's tile icon. The picture is decoded off the main thread.
     func setIconImage(from url: URL, for path: String) {
         Task {
             let name = await Task.detached(priority: .userInitiated) { () -> String? in
