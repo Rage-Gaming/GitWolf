@@ -259,15 +259,17 @@ struct ImageFileBrowser: View {
     private func loadPreview() async {
         preview = nil
         guard let url = selected, !isFolder(url) else { return }
-        let image: NSImage? = await Task.detached {
+        let thumbnail: CGImageBox? = await Task.detached {
             guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
                   let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [
                     kCGImageSourceCreateThumbnailFromImageAlways: true,
                     kCGImageSourceCreateThumbnailWithTransform: true,
                     kCGImageSourceThumbnailMaxPixelSize: 132] as CFDictionary) else { return nil }
-            return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+            return CGImageBox(image: cg)
         }.value
-        if !Task.isCancelled { preview = image }
+        if !Task.isCancelled, let cg = thumbnail?.image {
+            preview = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        }
     }
 
     private func load() async {
@@ -309,3 +311,6 @@ extension RepoTint {
         }
     }
 }
+
+/// Carries a decoded thumbnail between tasks. The image is created once and never mutated.
+private struct CGImageBox: @unchecked Sendable { let image: CGImage }

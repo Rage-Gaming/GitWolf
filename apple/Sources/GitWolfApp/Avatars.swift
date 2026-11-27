@@ -9,7 +9,7 @@ import SwiftUI
 final class AvatarImages {
     static let shared = AvatarImages()
     private let memory = NSCache<NSURL, NSImage>()
-    private var inflight: [URL: Task<NSImage?, Never>] = [:]
+    private var inflight: [URL: Task<Data?, Never>] = [:]
     private let folder: URL = {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
@@ -25,27 +25,29 @@ final class AvatarImages {
 
     func image(for url: URL) async -> NSImage? {
         if let hit = memory.object(forKey: url as NSURL) { return hit }
-        if let task = inflight[url] { return await task.value }
+        if let task = inflight[url] { return await task.value.flatMap { NSImage(data: $0) } }
         let path = file(for: url)
-        let task = Task<NSImage?, Never> {
+        // The task carries the encoded bytes (Sendable); the image is built back on the main actor.
+        let task = Task<Data?, Never> {
             // A picture fetched in the last week is good enough.
             if let attrs = try? FileManager.default.attributesOfItem(atPath: path.path),
                let modified = attrs[.modificationDate] as? Date, Date().timeIntervalSince(modified) < 7 * 86_400,
-               let data = try? Data(contentsOf: path), let image = NSImage(data: data) { return image }
+               let data = try? Data(contentsOf: path), NSImage(data: data) != nil { return data }
             var request = URLRequest(url: url)
             request.timeoutInterval = 15
             request.setValue("GitWolf", forHTTPHeaderField: "User-Agent")
             request.httpShouldHandleCookies = false
             guard let (data, response) = try? await URLSession.shared.data(for: request),
                   (response as? HTTPURLResponse)?.statusCode == 200, data.count < 2_000_000,
-                  let image = NSImage(data: data) else { return nil }
+                  NSImage(data: data) != nil else { return nil }
             try? data.write(to: path, options: .atomic)
-            return image
+            return data
         }
         inflight[url] = task
-        let image = await task.value
+        let bytes = await task.value
         inflight[url] = nil
-        if let image { memory.setObject(image, forKey: url as NSURL) }
+        guard let bytes, let image = NSImage(data: bytes) else { return nil }
+        memory.setObject(image, forKey: url as NSURL)
         return image
     }
 }
