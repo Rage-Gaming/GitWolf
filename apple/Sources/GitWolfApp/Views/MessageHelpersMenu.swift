@@ -40,6 +40,9 @@ struct MessageHelpersMenu: View {
                     }
                 }
             }
+            Toggle("Breaking Change", isOn: Binding(
+                get: { CommitMessage.isBreaking(store.draftMessage) },
+                set: { store.draftMessage = CommitMessage.setBreaking($0, in: store.draftMessage) }))
             if let template {
                 Button("Use Repository Template") { store.draftMessage = template }
             }

@@ -827,21 +827,44 @@ final class RepositoryStore: Identifiable {
         }
     }
 
-    /// Moves HEAD back to where it was before the last reflog entry, keeping uncommitted work
-    /// (git refuses rather than overwrite it).
+    /// Undoes the last thing that moved HEAD: a commit, merge, pull or whole rebase goes back, a checkout switches
+    /// back. Uncommitted changes are kept (git refuses rather than overwrite them).
     func undoLastChange() {
         Task {
-            guard let log = try? await repo.reflog(limit: 2), log.count > 1 else {
+            guard let log = try? await repo.reflog(limit: 200), let plan = UndoPlan.plan(for: log) else {
                 errorMessage = "There is nothing to undo."; return
             }
             let alert = NSAlert()
-            alert.messageText = "Undo “\(log[0].message)”?"
-            alert.informativeText = "HEAD moves back to \(log[1].shortHash). Uncommitted changes are kept; if they would be overwritten, nothing happens."
-            alert.addButton(withTitle: "Undo")
-            alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-            let target = log[1].hash
-            perform("Undoing…") { try await $0.reset(to: target, mode: .keep) }
+            switch plan {
+            case let .reset(target, label, _):
+                alert.messageText = "Undo “\(label)”?"
+                alert.informativeText = "HEAD moves back to \(target.prefix(7)). Uncommitted changes are kept; if they would be overwritten, nothing happens."
+                alert.addButton(withTitle: "Undo"); alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                perform("Undoing…") { try await $0.reset(to: target, mode: .keep) }
+            case let .switchBack(name, detached, from):
+                alert.messageText = "Undo switching to “\(from)”?"
+                alert.informativeText = "Go back to \(detached ? String(name.prefix(7)) : "“\(name)”"). Uncommitted changes come along if Git allows it."
+                alert.addButton(withTitle: "Switch Back"); alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                perform("Switching back…") { try await $0.switchBack(to: name, detached: detached) }
+            }
+        }
+    }
+
+    /// Copies release notes for the commits on the current branch since `base` (a tag or commit) to the clipboard.
+    func copyChangelog(since base: String) {
+        Task {
+            do {
+                let subjects = try await repo.commitSubjects(since: base)
+                guard !subjects.isEmpty else { errorMessage = "There are no commits since \(base)."; return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(CommitMessage.changelog(from: subjects), forType: .string)
+                let done = NSAlert()
+                done.messageText = "Release notes copied"
+                done.informativeText = "\(subjects.count) commit\(subjects.count == 1 ? "" : "s") since \(base), grouped by type. Paste them into a release or CHANGELOG."
+                done.runModal()
+            } catch { errorMessage = error.localizedDescription }
         }
     }
 

@@ -66,3 +66,38 @@ extension GitRepository {
                            modifiedFiles: status.staged.count + status.unstaged.count)
     }
 }
+
+/// What "Undo" should do, worked out from the reflog.
+public enum UndoPlan: Equatable, Sendable {
+    /// Move HEAD back to this commit, keeping uncommitted work.
+    case reset(to: String, label: String, from: String)
+    /// Switch back to where a checkout came from (a branch name, or a commit when detached).
+    case switchBack(to: String, detached: Bool, from: String)
+
+    /// Chooses the undo for the newest reflog entries (newest first); nil when there is nothing to undo.
+    public static func plan(for log: [ReflogEntry]) -> UndoPlan? {
+        guard log.count > 1 else { return nil }
+        let newest = log[0].message
+        if newest.hasPrefix("checkout: moving from "), let range = newest.range(of: " to ", options: .backwards) {
+            let from = String(newest[newest.index(newest.startIndex, offsetBy: "checkout: moving from ".count)..<range.lowerBound])
+            let detached = from.count >= 40 && from.allSatisfy(\.isHexDigit)
+            return .switchBack(to: from, detached: detached, from: String(newest[range.upperBound...]))
+        }
+        // A rebase is many entries; undo the whole thing back to before it started.
+        if newest.hasPrefix("rebase") {
+            if let before = log.first(where: { !$0.message.hasPrefix("rebase") }) {
+                return .reset(to: before.hash, label: "rebase", from: newest)
+            }
+            return nil
+        }
+        return .reset(to: log[1].hash, label: newest, from: newest)
+    }
+}
+
+public extension GitRepository {
+    /// Switches to a branch, or detaches at a commit.
+    func switchBack(to name: String, detached: Bool) async throws {
+        if detached { try await git.run(["checkout", "--detach", name, "--"]) }
+        else { try await git.run(["switch", name, "--"]) }
+    }
+}

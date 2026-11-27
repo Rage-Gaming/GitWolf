@@ -2684,3 +2684,72 @@ private func makeTempDir() throws -> URL {
         #expect(RepositoryScanner.find(in: root, limit: 2).count == 2)
     }
 }
+
+@Suite struct EverydayWorkflowTests {
+    private func entry(_ i: Int, _ hash: String, _ msg: String) -> ReflogEntry {
+        ReflogEntry(index: i, hash: hash, message: msg, date: Date())
+    }
+
+    @Test func undoingACheckoutSwitchesBack() {
+        let plan = UndoPlan.plan(for: [entry(0, "b", "checkout: moving from main to feature/x"), entry(1, "a", "commit: hi")])
+        #expect(plan == .switchBack(to: "main", detached: false, from: "feature/x"))
+        let hash = String(repeating: "a", count: 40)
+        let detached = UndoPlan.plan(for: [entry(0, "b", "checkout: moving from \(hash) to main"), entry(1, "a", "x")])
+        #expect(detached == .switchBack(to: hash, detached: true, from: "main"))
+    }
+
+    @Test func undoingARebaseGoesBackToBeforeItStarted() {
+        let log = [entry(0, "n3", "rebase (finish): returning to refs/heads/x"), entry(1, "n2", "rebase (pick): two"),
+                   entry(2, "n1", "rebase (pick): one"), entry(3, "onto", "rebase (start): checkout main"),
+                   entry(4, "orig", "commit: original")]
+        #expect(UndoPlan.plan(for: log) == .reset(to: "orig", label: "rebase", from: "rebase (finish): returning to refs/heads/x"))
+    }
+
+    @Test func undoingAnythingElseStepsBackOneEntry() {
+        let plan = UndoPlan.plan(for: [entry(0, "m", "merge dev: Merge made"), entry(1, "p", "commit: x")])
+        #expect(plan == .reset(to: "p", label: "merge dev: Merge made", from: "merge dev: Merge made"))
+        #expect(UndoPlan.plan(for: [entry(0, "a", "commit (initial): x")]) == nil)
+    }
+
+    @Test func switchingBackWorksAgainstRealGit() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try await t.commit("one", text: "1\n")
+        try await t.git.run(["switch", "-c", "other"])
+        let log = try await t.repo.reflog(limit: 5)
+        guard case let .switchBack(to, detached, _)? = UndoPlan.plan(for: log) else { Issue.record("no plan"); return }
+        try await t.repo.switchBack(to: to, detached: detached)
+        let branch = try await t.git.runString(["rev-parse", "--abbrev-ref", "HEAD"], readOnly: true)
+        #expect(branch.trimmingCharacters(in: .whitespacesAndNewlines) == "main")
+    }
+
+    @Test func breakingChangeIsMarkedAndUnmarked() {
+        let marked = CommitMessage.setBreaking(true, in: "feat(api): drop v1")
+        #expect(marked == "feat(api)!: drop v1\n\nBREAKING CHANGE: ")
+        #expect(CommitMessage.setBreaking(true, in: marked) == marked)
+        #expect(CommitMessage.isBreaking(marked))
+        #expect(CommitMessage.setBreaking(false, in: marked) == "feat(api): drop v1")
+        #expect(!CommitMessage.isBreaking("feat: x"))
+    }
+
+    @Test func changelogGroupsByType() {
+        let notes = CommitMessage.changelog(from: ["feat(ui): add tabs", "fix: crash", "feat!: new format", "random words", "chore: bump"])
+        #expect(notes == """
+        ### Breaking changes
+        - new format
+
+        ### Features
+        - **ui:** add tabs
+        - new format
+
+        ### Fixes
+        - crash
+
+        ### Chores
+        - bump
+
+        ### Other
+        - random words
+        """)
+    }
+}

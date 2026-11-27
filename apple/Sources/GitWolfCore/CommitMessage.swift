@@ -91,3 +91,68 @@ public extension GitRepository {
         return result
     }
 }
+
+public extension CommitMessage {
+    /// Marks the first line as a breaking change (`feat!: …`) and adds the `BREAKING CHANGE:` footer. Applied twice
+    /// it does nothing more; `breaking: false` removes both again.
+    static func setBreaking(_ breaking: Bool, in message: String) -> String {
+        var lines = message.components(separatedBy: "\n")
+        let first = lines.first ?? ""
+        let hasBang = first.range(of: #"^[a-z]+(\([^)\n]*\))?!:"#, options: .regularExpression) != nil
+        let footer = "BREAKING CHANGE: "
+        if breaking {
+            if !hasBang, let colon = first.range(of: #"^[a-z]+(\([^)\n]*\))?:"#, options: .regularExpression) {
+                lines[0].insert("!", at: first.index(before: colon.upperBound))
+            }
+            if !lines.contains(where: { $0.hasPrefix(footer) }) {
+                while lines.last?.isEmpty == true { lines.removeLast() }
+                lines += ["", footer]
+            }
+        } else {
+            if hasBang, let bang = lines[0].firstIndex(of: "!") { lines[0].remove(at: bang) }
+            lines.removeAll { $0.hasPrefix(footer) }
+            while lines.last?.isEmpty == true { lines.removeLast() }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Whether the message is already marked as a breaking change.
+    static func isBreaking(_ message: String) -> Bool {
+        message.components(separatedBy: "\n").contains { $0.hasPrefix("BREAKING CHANGE:") }
+            || (message.components(separatedBy: "\n").first ?? "").range(of: #"^[a-z]+(\([^)\n]*\))?!:"#, options: .regularExpression) != nil
+    }
+
+    /// Markdown release notes from commit subjects, grouped by conventional type (breaking changes first).
+    /// Subjects that are not conventional go under "Other".
+    static func changelog(from subjects: [String]) -> String {
+        let titles: [(String, String)] = [("feat", "Features"), ("fix", "Fixes"), ("perf", "Performance"), ("docs", "Documentation"),
+                                          ("refactor", "Refactoring"), ("test", "Tests"), ("build", "Build"), ("ci", "CI"),
+                                          ("style", "Style"), ("chore", "Chores"), ("revert", "Reverts")]
+        var breaking: [String] = [], groups: [String: [String]] = [:], other: [String] = []
+        for subject in subjects {
+            guard let m = subject.range(of: #"^([a-z]+)(\(([^)\n]*)\))?(!)?:\s*"#, options: .regularExpression) else {
+                other.append(subject); continue
+            }
+            let head = String(subject[m])
+            let type = String(head.prefix(while: { $0.isLetter }))
+            let text = String(subject[m.upperBound...])
+            let scope = head.firstIndex(of: "(").flatMap { s in head.firstIndex(of: ")").map { String(head[head.index(after: s)..<$0]) } }
+            let line = "- " + (scope.map { "**\($0):** " } ?? "") + text
+            if head.contains("!:") { breaking.append(line) }
+            if titles.contains(where: { $0.0 == type }) { groups[type, default: []].append(line) } else { other.append(subject) }
+        }
+        var out: [String] = []
+        if !breaking.isEmpty { out += ["### Breaking changes"] + breaking + [""] }
+        for (type, title) in titles { if let items = groups[type] { out += ["### \(title)"] + items + [""] } }
+        if !other.isEmpty { out += ["### Other"] + other.map { "- " + $0 } + [""] }
+        return out.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+public extension GitRepository {
+    /// Subjects of the non-merge commits reachable from HEAD but not from `base` (a tag or commit), newest first.
+    func commitSubjects(since base: String) async throws -> [String] {
+        let out = try await git.runString(["log", "--no-merges", "--format=%s", "\(base)..HEAD", "--"], readOnly: true)
+        return out.split(separator: "\n").map(String.init)
+    }
+}

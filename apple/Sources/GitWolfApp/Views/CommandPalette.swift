@@ -22,6 +22,7 @@ struct CommandPalette: View {
                 workspace.select(store.id)
             }
         }
+        all.append(Item(id: "all-prs", title: "Pull Requests Across Repositories…", subtitle: "Hosting", icon: "arrow.triangle.pull") { workspace.sheet = .pullRequests })
         if let s = workspace.selected {
             all += CustomActionStore.load().filter(\.isValid).map { action in
                 Item(id: "action-\(action.id)", title: action.name, subtitle: "Custom action", icon: "play") { s.run(action) }

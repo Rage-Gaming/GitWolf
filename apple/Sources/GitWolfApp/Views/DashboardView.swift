@@ -55,6 +55,10 @@ struct DashboardView: View {
                         homeLabel { Label("New", systemImage: "plus.rectangle.on.folder") }
                     }
                     .buttonStyle(.bordered)
+                    Button { workspace.sheet = .pullRequests } label: {
+                        homeLabel { Label("Pull Requests", systemImage: "arrow.triangle.pull") }
+                    }
+                    .buttonStyle(.bordered)
                     Button { workspace.showPalette = true } label: {
                         homeLabel { HStack(spacing: 8) { Text("Jump to…"); Kbd(text: "⌘K") } }
                     }

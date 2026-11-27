@@ -3,7 +3,7 @@ import GitWolfCore
 import SwiftUI
 
 enum WorkspaceSheet: String, Identifiable {
-    case clone, create, account, welcome
+    case clone, create, account, welcome, pullRequests
     var id: String { rawValue }
 }
 

@@ -225,6 +225,7 @@ struct RootView: View {
             case .create: CreateRepositorySheet(workspace: workspace)
             case .account: AddAccountSheet()
             case .welcome: WelcomeSheet(workspace: workspace).tint(Theme.brand)
+            case .pullRequests: PullRequestOverviewSheet(workspace: workspace)
             }
         }
         .focusedSceneValue(\.workspace, workspace)
@@ -301,6 +302,17 @@ struct AppCommands: Commands {
                 .keyboardShortcut("w", modifiers: [.command, .shift])
                 .disabled(workspace?.selected == nil)
         }
+        CommandMenu("Hosting") {
+            Button("Pull Requests Across Repositories…") { workspace?.sheet = .pullRequests }
+                .keyboardShortcut("p", modifiers: [.command, .option])
+            Divider()
+            Button("New Pull Request…") { workspace?.selected?.sheet = .newCollab(.pullRequest) }
+                .disabled(workspace?.selected?.providerTitle == nil)
+            Button("New Issue…") { workspace?.selected?.sheet = .newCollab(.issue) }
+                .disabled(workspace?.selected?.providerTitle == nil)
+            Button("Notifications…") { workspace?.selected?.sheet = .notifications }.disabled(workspace?.selected == nil)
+            Button("Fork Repository…") { workspace?.selected?.sheet = .fork }.disabled(workspace?.selected?.canFork != true)
+        }
         CommandMenu("Repository") {
             Button("Jump To…") { workspace?.showPalette.toggle() }
                 .keyboardShortcut("k")
@@ -357,12 +369,6 @@ struct AppCommands: Commands {
             }.disabled(workspace?.selected == nil)
             Divider()
             Button("Manage Remotes…") { workspace?.selected?.sheet = .remotes }.disabled(workspace?.selected == nil)
-            Button("Fork Repository…") { workspace?.selected?.sheet = .fork }.disabled(workspace?.selected?.canFork != true)
-            Button("Notifications…") { workspace?.selected?.sheet = .notifications }.disabled(workspace?.selected == nil)
-            Button("New Pull Request…") { workspace?.selected?.sheet = .newCollab(.pullRequest) }
-                .disabled(workspace?.selected?.providerTitle == nil)
-            Button("New Issue…") { workspace?.selected?.sheet = .newCollab(.issue) }
-                .disabled(workspace?.selected?.providerTitle == nil)
             Divider()
             Button("Clean Up Branches…") { workspace?.selected?.sheet = .cleanup }.disabled(workspace?.selected == nil)
             Button("Reflog…") { workspace?.selected?.sheet = .reflog }.disabled(workspace?.selected == nil)

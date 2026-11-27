@@ -91,6 +91,8 @@ struct SidebarView: View {
                                 ForEach(store.remotes, id: \.self) { remote in
                                     Button("Delete on \(remote)…", role: .destructive) { store.confirmDeleteRemoteTag(tag.name, remote: remote) }
                                 }
+                                Button("Copy Release Notes Since This Tag") { store.copyChangelog(since: tag.name) }
+                                Divider()
                                 Button("Delete Local Tag", role: .destructive) { store.deleteTag(tag.name) }
                             }
                     }

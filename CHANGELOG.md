@@ -6,6 +6,11 @@ All notable changes are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+- **Pull Requests Across Repositories:** one sheet (Home button, Help menu, command palette) listing open pull requests from every open repository, split into Mine, Others and CI failing.
+- **Undo now handles checkouts and whole rebases.** *Undo Last Change* switches back after a checkout and rewinds a complete rebase in one step, instead of moving the branch by one reflog entry.
+- **Breaking Change** toggle in the commit message helpers (adds `!` and a `BREAKING CHANGE:` footer), and **Copy Release Notes Since This Tag** on a tag, which groups commit subjects by conventional type.
+
 ### Changed
 - **GitSync is now GitWolf** on macOS and Windows: the app name, bundle identifier (`org.gitwolf.GitWolf`), modules, projects, environment variables (`GITWOLF_*`) and documentation. On first launch, settings, open repositories, repository icons and saved account tokens from the old name are carried over (macOS: preferences, the Application Support folder and the Keychain; Windows: the `%LOCALAPPDATA%` folder).
 - Smoother diff scrolling: diff rows only track hover when a line can be staged, instead of one tracking area per row.
