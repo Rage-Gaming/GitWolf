@@ -103,13 +103,10 @@ final class Workspace {
         RepoIconStore.save(repoIcons)
     }
 
-    /// Asks for a picture and uses it as the repository's tile icon.
-    func chooseIconImage(for path: String) {
-        let panel = NSOpenPanel()
-        panel.title = "Choose an Icon Image"
-        panel.allowedContentTypes = [.image]
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    /// Uses a picture file as the repository's tile icon.
+    func setIconImage(from url: URL, for path: String) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard let name = RepoIconStore.importImage(from: url) else {
             errorMessage = "That file couldn’t be read as an image."
             return

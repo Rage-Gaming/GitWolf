@@ -7,6 +7,10 @@ import SwiftUI
 /// shown by a solid tile plus an edge marker; nothing scales or moves on hover.
 struct RepoRail: View {
     let workspace: Workspace
+    /// The repository whose icon image is being chosen; the file dialog is a sheet on the window,
+    /// because a panel opened from inside a popover can end up behind the app.
+    @State private var importFor: String?
+    @State private var showImporter = false
 
     fileprivate static let width: CGFloat = 64
     fileprivate static let tile: CGFloat = 40
@@ -29,7 +33,12 @@ struct RepoRail: View {
                                  close: { workspace.close(store) },
                                  icon: workspace.repoIcons.icon(for: store.id),
                                  setIcon: { workspace.setIcon($0, for: store.id) },
-                                 chooseImage: { workspace.chooseIconImage(for: store.id) })
+                                 chooseImage: {
+                                     importFor = store.id
+                                     // Let the popover finish closing before the sheet opens.
+                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showImporter = true }
+                                 },
+                                 dropImage: { workspace.setIconImage(from: $0, for: store.id) })
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -41,6 +50,10 @@ struct RepoRail: View {
         .frame(width: Self.width)
         .background(.black.opacity(0.04))
         .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.07)).frame(width: 1) }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.image]) { result in
+            if case .success(let url) = result, let path = importFor { workspace.setIconImage(from: url, for: path) }
+            importFor = nil
+        }
     }
 }
 
@@ -89,6 +102,7 @@ private struct RepoTile: View {
     let icon: RepoIcon?
     let setIcon: (RepoIcon?) -> Void
     let chooseImage: () -> Void
+    let dropImage: (URL) -> Void
     @State private var hovering = false
     @State private var picking = false
 
@@ -121,6 +135,11 @@ private struct RepoTile: View {
         .accessibilityValue("\(store.status.branchDisplay), " + (changes == 0 ? "no changes" : "\(changes) changes"))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first, NSImage(contentsOf: url) != nil else { return false }
+            dropImage(url)
+            return true
+        }
         .contextMenu {
             Button("Change Icon…") { picking = true }
             if icon != nil { Button("Remove Icon") { setIcon(nil) } }
