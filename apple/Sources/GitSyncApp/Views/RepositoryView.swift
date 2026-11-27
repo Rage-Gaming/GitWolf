@@ -164,8 +164,7 @@ struct TopBar: View {
                     Text("Jump to…").foregroundStyle(.secondary)
                     Kbd(text: "⌘K")
                 }
-                .font(.callout)
-                .pill()
+                .toolbarControl()
             }
             .buttonStyle(.plain)
             .help("Jump to a repository, branch or action")
@@ -204,7 +203,7 @@ struct TopBar: View {
                 Text(store.status.branchDisplay).fontWeight(.semibold).lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
             }
-            .pill()
+            .toolbarControl()
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
         .fixedSize()
@@ -222,7 +221,7 @@ struct TopBar: View {
                 ForEach(actions) { action in Button(action.name, systemImage: "play") { store.run(action) } }
             }
         } label: {
-            Image(systemName: "square.and.arrow.up.on.square").pill()
+            Image(systemName: "square.and.arrow.up.on.square").toolbarControl(square: true)
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
         .fixedSize()
@@ -240,8 +239,8 @@ struct TopBar: View {
             if store.supports(.issue) { tab("Issues", "smallcircle.filled.circle", .issues, badge: nil) }
         }
         .padding(3)
-        .background(Color.primary.opacity(0.07), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10)))
+        .frame(height: Theme.barControlHeight)
+        .barSurface()
     }
 
     private func tab(_ title: String, _ icon: String, _ mode: RepositoryStore.Mode, badge: Int?) -> some View {
@@ -260,7 +259,7 @@ struct TopBar: View {
                 }
             }
             .foregroundStyle(selected ? .primary : .secondary)
-            .padding(.horizontal, 13).padding(.vertical, 6)
+            .padding(.horizontal, 13).frame(maxHeight: .infinity)
             .background {
                 if selected {
                     Capsule().fill(Color(nsColor: .textBackgroundColor))
@@ -278,8 +277,7 @@ struct TopBar: View {
         return Button { store.sheet = .notifications } label: {
             Image(systemName: count > 0 ? "bell.badge.fill" : "bell")
                 .symbolRenderingMode(count > 0 ? .multicolor : .monochrome)
-                .font(.callout)
-                .pill()
+                .toolbarControl(square: true)
         }
         .buttonStyle(.plain)
         .help(count > 0 ? "\(count) notification\(count == 1 ? "" : "s")" : "Notifications")
@@ -287,16 +285,16 @@ struct TopBar: View {
 
     private var syncCluster: some View {
         HStack(spacing: 0) {
-            SyncButton(icon: "arrow.triangle.2.circlepath", count: 0, help: "Fetch (⇧⌘F)") { store.fetch() }
+            SyncButton(icon: "arrow.triangle.2.circlepath", motion: store.busyLabel?.hasPrefix("Fetching") == true ? .spin : nil, count: 0, help: "Fetch (⇧⌘F)") { store.fetch() }
             Divider().frame(height: 16)
-            SyncButton(icon: "arrow.down", count: store.status.behind, help: "Pull (⇧⌘L). Right-click for more") { store.pull() }
+            SyncButton(icon: "arrow.down", motion: store.busyLabel?.hasPrefix("Pulling") == true ? .down : nil, count: store.status.behind, help: "Pull (⇧⌘L). Right-click for more") { store.pull() }
                 .contextMenu {
                     ForEach(PullStrategy.allCases, id: \.self) { strategy in
                         Button(strategy.title) { store.pull(strategy: strategy) }
                     }
                 }
             Divider().frame(height: 16)
-            SyncButton(icon: "arrow.up", count: store.status.ahead, help: "Push (⇧⌘P). Right-click for more") { store.push() }
+            SyncButton(icon: "arrow.up", motion: store.busyLabel?.hasSuffix("ushing…") == true || store.busyLabel?.hasPrefix("Pushing") == true ? .up : nil, count: store.status.ahead, help: "Push (⇧⌘P). Right-click for more") { store.push() }
                 .contextMenu {
                     Button("Push") { store.push() }
                     Button("Push with Tags") { store.push(options: PushOptions(includeTags: true)) }
@@ -314,14 +312,45 @@ struct TopBar: View {
             SyncButton(icon: "tray.and.arrow.down", count: 0, help: "Stash changes") { store.sheet = .stash }
                 .disabled(store.status.isClean)
         }
-        .background(Color.primary.opacity(0.07), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10)))
+        .frame(height: Theme.barControlHeight)
         .clipShape(Capsule())
+        .barSurface()
+    }
+}
+
+/// How a sync icon moves while its operation runs.
+private enum SyncMotion { case spin, down, up }
+
+/// The sync icon; it animates while its operation is running and sits still otherwise.
+private struct SyncIcon: View {
+    let name: String
+    let motion: SyncMotion?
+
+    var body: some View {
+        // A timeline only while running, so an idle toolbar costs nothing.
+        TimelineView(.animation(paused: motion == nil)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let image = Image(systemName: name).font(.system(size: 13, weight: .semibold))
+            switch motion {
+            case .spin:
+                image.rotationEffect(.degrees((t * 360 / 1.1).truncatingRemainder(dividingBy: 360)))
+            case .down, .up:
+                // The arrow slides out of the button in its direction and fades back in from the other side.
+                let phase = (t / 0.9).truncatingRemainder(dividingBy: 1)
+                let travel: Double = 9
+                let offset = (phase < 0.5 ? phase * 2 : phase * 2 - 2) * travel * (motion == .down ? 1 : -1)
+                image.offset(y: offset).opacity(1 - abs(offset) / travel * 0.85)
+            case nil:
+                image
+            }
+        }
+        .frame(width: 16, height: 16).clipped()
     }
 }
 
 private struct SyncButton: View {
     let icon: String
+    var motion: SyncMotion?
     let count: Int
     let help: String
     let action: () -> Void
@@ -330,14 +359,19 @@ private struct SyncButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 13, weight: .semibold))
-                if count > 0 {
-                    Text("\(count)").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(Theme.brand)
+            // The icon stays centred; the count is a badge on its corner, so it never pushes the icon aside.
+            SyncIcon(name: icon, motion: motion)
+                .overlay(alignment: .topTrailing) {
+                    if count > 0 {
+                        Text("\(count)").font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4).frame(minWidth: 14, minHeight: 14)
+                            .background(Theme.brand, in: Capsule())
+                            .offset(x: 10, y: -7)
+                    }
                 }
-            }
-            .frame(minWidth: 40, minHeight: 30)
-            .padding(.horizontal, 4)
+                .frame(width: 44)
+                .frame(maxHeight: .infinity)
             .background(hovering && enabled ? Color.primary.opacity(0.07) : .clear)
             .opacity(enabled ? 1 : 0.4)
             .contentShape(Rectangle())

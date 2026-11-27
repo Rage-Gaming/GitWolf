@@ -183,16 +183,34 @@ final class RepositoryStore: Identifiable {
     /// CI results by commit, fetched from the hosting provider. Commits the server doesn't know stay absent.
     private(set) var checksBySHA: [String: CIStatus] = [:]
     private var checksRequested: [String: Date] = [:]
+    /// Commits just pushed: their runs may not exist on the server yet, so they are looked up for a few minutes.
+    private var checksWatchedUntil: [String: Date] = [:]
 
-    func loadChecks(sha: String) {
+    func watchChecks(sha: String?) {
+        guard let sha else { return }
+        checksWatchedUntil[sha] = Date().addingTimeInterval(5 * 60)
+        loadChecks(sha: sha, force: true)
+    }
+
+    /// Whether the checks of this commit should be polled: a run is going, or it was just pushed.
+    func shouldPollChecks(sha: String, committed: Date? = nil) -> Bool {
+        if checksBySHA[sha]?.overall == .pending { return true }
+        // A recent commit may have been pushed from a terminal; look for its run until it has one.
+        if checksBySHA[sha] == nil, let committed, Date().timeIntervalSince(committed) < 30 * 60 { return true }
+        return (checksWatchedUntil[sha] ?? .distantPast) > Date()
+    }
+
+    func loadChecks(sha: String, force: Bool = false) {
         guard !sha.isEmpty else { return }
-        // Pending runs change, so a result is reused for a minute at most.
-        if let at = checksRequested[sha], Date().timeIntervalSince(at) < 60 { return }
+        // Pending runs change, so a result is reused for a minute at most (`force` is the poll while one is running).
+        if !force, let at = checksRequested[sha], Date().timeIntervalSince(at) < 60 { return }
         guard providerKind != nil, remoteLocation != nil else { return }
         checksRequested[sha] = Date()
         Task {
             guard let (client, path) = await providerClient() else { return }
-            if let status = try? await client.ciStatus(repoPath: path, sha: sha), !status.isEmpty { checksBySHA[sha] = status }
+            if let status = try? await client.ciStatus(repoPath: path, sha: sha), !status.isEmpty {
+                withAnimation(.snappy(duration: 0.2)) { checksBySHA[sha] = status }
+            }
         }
     }
 
@@ -325,6 +343,8 @@ final class RepositoryStore: Identifiable {
 
     private func apply(_ s: RepositorySnapshot) {
         // Only assign what changed so SwiftUI doesn't re-render (and flicker) needlessly.
+        // The branch just got fully pushed (from here or from a terminal): its CI run is about to appear.
+        if status.ahead > 0, s.status.ahead == 0, s.status.branch == status.branch { watchChecks(sha: s.status.headOID) }
         if status != s.status { status = s.status }
         if commits != s.commits { commits = s.commits; graph = s.graph }
         if localBranches != s.localBranches { localBranches = s.localBranches }
@@ -785,6 +805,7 @@ final class RepositoryStore: Identifiable {
     func rebase(onto target: String) { perform("Rebasing…") { try await $0.rebase(onto: target) } }
     func push(options: PushOptions = PushOptions()) {
         let (s, r) = (status, remotes)
+        watchChecks(sha: s.headOID)
         perform(options.forceWithLease ? "Force pushing…" : "Pushing…", pushOptions: options) {
             try await $0.push(status: s, remotes: r, options: options)
         }
