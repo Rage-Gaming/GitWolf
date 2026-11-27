@@ -287,16 +287,16 @@ struct TopBar: View {
 
     private var syncCluster: some View {
         HStack(spacing: 0) {
-            SyncButton(icon: "arrow.triangle.2.circlepath", count: 0, help: "Fetch (⇧⌘F)") { store.fetch() }
+            SyncButton(icon: "arrow.triangle.2.circlepath", motion: store.busyLabel?.hasPrefix("Fetching") == true ? .spin : nil, count: 0, help: "Fetch (⇧⌘F)") { store.fetch() }
             Divider().frame(height: 16)
-            SyncButton(icon: "arrow.down", count: store.status.behind, help: "Pull (⇧⌘L). Right-click for more") { store.pull() }
+            SyncButton(icon: "arrow.down", motion: store.busyLabel?.hasPrefix("Pulling") == true ? .down : nil, count: store.status.behind, help: "Pull (⇧⌘L). Right-click for more") { store.pull() }
                 .contextMenu {
                     ForEach(PullStrategy.allCases, id: \.self) { strategy in
                         Button(strategy.title) { store.pull(strategy: strategy) }
                     }
                 }
             Divider().frame(height: 16)
-            SyncButton(icon: "arrow.up", count: store.status.ahead, help: "Push (⇧⌘P). Right-click for more") { store.push() }
+            SyncButton(icon: "arrow.up", motion: store.busyLabel?.hasSuffix("ushing…") == true || store.busyLabel?.hasPrefix("Pushing") == true ? .up : nil, count: store.status.ahead, help: "Push (⇧⌘P). Right-click for more") { store.push() }
                 .contextMenu {
                     Button("Push") { store.push() }
                     Button("Push with Tags") { store.push(options: PushOptions(includeTags: true)) }
@@ -320,8 +320,39 @@ struct TopBar: View {
     }
 }
 
+/// How a sync icon moves while its operation runs.
+private enum SyncMotion { case spin, down, up }
+
+/// The sync icon; it animates while its operation is running and sits still otherwise.
+private struct SyncIcon: View {
+    let name: String
+    let motion: SyncMotion?
+
+    var body: some View {
+        // A timeline only while running, so an idle toolbar costs nothing.
+        TimelineView(.animation(paused: motion == nil)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let image = Image(systemName: name).font(.system(size: 13, weight: .semibold))
+            switch motion {
+            case .spin:
+                image.rotationEffect(.degrees((t * 360 / 1.1).truncatingRemainder(dividingBy: 360)))
+            case .down, .up:
+                // The arrow slides out of the button in its direction and fades back in from the other side.
+                let phase = (t / 0.9).truncatingRemainder(dividingBy: 1)
+                let travel: Double = 9
+                let offset = (phase < 0.5 ? phase * 2 : phase * 2 - 2) * travel * (motion == .down ? 1 : -1)
+                image.offset(y: offset).opacity(1 - abs(offset) / travel * 0.85)
+            case nil:
+                image
+            }
+        }
+        .frame(width: 16, height: 16).clipped()
+    }
+}
+
 private struct SyncButton: View {
     let icon: String
+    var motion: SyncMotion?
     let count: Int
     let help: String
     let action: () -> Void
@@ -331,7 +362,7 @@ private struct SyncButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                SyncIcon(name: icon, motion: motion)
                 if count > 0 {
                     Text("\(count)").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(Theme.brand)
                 }
