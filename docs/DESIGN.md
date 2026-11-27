@@ -17,8 +17,9 @@ GitWolf should feel like a calm, modern, native app: premium but never "AI-gener
    vertical TextField instead of a text editor with an overlay).
 7. Light and dark are both first-class and must switch live, completely, together. Apply the
    appearance at application level, never per view.
-8. Accent colour is user-selectable (8 presets) and used sparingly: selection, primary actions,
-   focus, the local-branch chip.
+8. Accent colour is user-selectable (9 presets) and used sparingly: selection, primary actions,
+   focus, the local-branch chip. The default, *GitWolf*, is the logo blue `#012AA5` (a lighter `#3366FF` in dark mode so it
+   stays readable on dark surfaces).
 9. Content scrolls horizontally when it must (diff lines); never silently clip.
 
 ## Layout

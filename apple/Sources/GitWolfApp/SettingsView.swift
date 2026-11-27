@@ -191,7 +191,7 @@ private struct PillPicker<Value: Hashable>: View {
 
 private struct GeneralSettings: View {
     @AppStorage(SettingsKey.appearance) private var appearance = AppearanceChoice.system.rawValue
-    @AppStorage(SettingsKey.accent) private var accent = AccentChoice.indigo.rawValue
+    @AppStorage(SettingsKey.accent) private var accent = AccentChoice.wolf.rawValue
     @AppStorage(SettingsKey.autoFetchMinutes) private var autoFetch = 5
     @AppStorage(SettingsKey.commitPageSize) private var pageSize = 1000
     @AppStorage(SettingsKey.pullRebase) private var pullRebase = false

@@ -326,7 +326,7 @@ Tags [`FileIcons.tagIcon(named:isAnnotated:)`], first match wins: `nightly`/`dai
 | Key | Values |
 |---|---|
 | appearance | system / light / dark (applied app-wide, not per view) |
-| accent | indigo, blue, purple, pink, red, orange, green, teal |
+| accent | wolf (default, logo blue `#012AA5`, `#3366FF` in dark mode), indigo, blue, purple, pink, red, orange, green, teal |
 | autoFetchMinutes | 0 (never) / 1 / 5 (default) / 15 / 30 |
 | commitPageSize | 500 / 1000 (default) / 2000 / 5000 |
 | diffContext | 1 / 3 / 4 (default) / 6 / 10 lines |

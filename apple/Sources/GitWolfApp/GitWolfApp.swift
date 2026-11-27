@@ -184,7 +184,7 @@ struct GitWolfApp: App {
 struct AppearanceModifier: ViewModifier {
     @AppStorage(SettingsKey.appearance) private var appearance = AppearanceChoice.system.rawValue
 
-    @AppStorage(SettingsKey.accent) private var accent = AccentChoice.indigo.rawValue
+    @AppStorage(SettingsKey.accent) private var accent = AccentChoice.wolf.rawValue
 
     func body(content: Content) -> some View {
         content

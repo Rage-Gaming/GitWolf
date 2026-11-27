@@ -20,6 +20,7 @@ All notable changes are documented here. Format based on
 - Removed menu items that don't apply: File > New Window, the View menu's toolbar and sidebar toggles, the Format menu, and the empty Help book (replaced by links to the documentation and issue tracker).
 
 ### Added
+- A *GitWolf* accent colour, the blue of the logo (a lighter shade in dark mode), is now the default. Anyone who chose an accent keeps it.
 - Help > Contributors lists everyone who has contributed (names, pictures, commit counts, links to their profiles), starting with the maintainer. Read from GitHub's public contributors list without sending anything about you, cached for a day and shown offline from the last copy.
 - A proper About GitWolf window with the logo, version, licence and links.
 - When GitHub or GitLab refuses a change such as re-running a check, the error now shows the server's own reason. For accounts signed in with the browser it offers *Sign In Again*, which re-authorises with the current permissions (GitLab sign-in now asks for the `api` scope, which re-running and cancelling jobs needs).

@@ -19,12 +19,20 @@ enum AppearanceChoice: String, CaseIterable, Identifiable {
 
 /// Accent colour presets.
 enum AccentChoice: String, CaseIterable, Identifiable {
-    case indigo, blue, purple, pink, red, orange, green, teal
+    /// The blue of the logo and the default accent.
+    case wolf, indigo, blue, purple, pink, red, orange, green, teal
     var id: String { rawValue }
-    var title: String { rawValue.capitalized }
+    var title: String { self == .wolf ? "GitWolf" : rawValue.capitalized }
 
     var primary: Color {
         switch self {
+        // #012AA5 on light backgrounds; the same hue, lighter, on dark ones where the logo blue would sink into the surface.
+        case .wolf:
+            Color(nsColor: NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor(srgbRed: 0.20, green: 0.40, blue: 1.0, alpha: 1)
+                    : NSColor(srgbRed: 1 / 255, green: 42 / 255, blue: 165 / 255, alpha: 1)
+            })
         case .indigo: Color(red: 0.42, green: 0.38, blue: 0.98)
         case .blue: Color(red: 0.12, green: 0.50, blue: 1.0)
         case .purple: Color(red: 0.66, green: 0.36, blue: 0.96)
@@ -36,7 +44,7 @@ enum AccentChoice: String, CaseIterable, Identifiable {
         }
     }
     static var current: AccentChoice {
-        AccentChoice(rawValue: UserDefaults.standard.string(forKey: SettingsKey.accent) ?? "") ?? .indigo
+        AccentChoice(rawValue: UserDefaults.standard.string(forKey: SettingsKey.accent) ?? "") ?? .wolf
     }
 }
 
