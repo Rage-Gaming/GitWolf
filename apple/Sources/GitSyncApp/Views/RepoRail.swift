@@ -49,10 +49,7 @@ struct RepoRail: View {
         .sheet(item: $pickerFor) { target in
             RepoIconPicker(current: workspace.repoIcons.icon(for: target.id),
                            choose: { workspace.setIcon($0, for: target.id) },
-                           chooseImage: {
-                               // The picker sheet has to close before the file dialog can open on the window.
-                               DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { workspace.chooseIconImage(for: target.id) }
-                           })
+                           importImage: { workspace.setIconImage(from: $0, for: target.id) })
         }
     }
 }

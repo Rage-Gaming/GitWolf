@@ -103,28 +103,6 @@ final class Workspace {
         RepoIconStore.save(repoIcons)
     }
 
-    /// Asks for a picture to use as the tile icon. The dialog is a sheet on the main window, so it can
-    /// never open behind the app.
-    func chooseIconImage(for path: String) {
-        let panel = NSOpenPanel()
-        panel.title = "Choose an Icon Image"
-        panel.message = "The picture is cropped to a square."
-        panel.allowedContentTypes = [.image]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        NSApp.activate(ignoringOtherApps: true)
-        let handle: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor in self?.setIconImage(from: url, for: path) }
-        }
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) {
-            window.makeKeyAndOrderFront(nil)
-            panel.beginSheetModal(for: window, completionHandler: handle)
-        } else {
-            handle(panel.runModal())
-        }
-    }
-
     /// Uses a picture file as the repository's tile icon.
     func setIconImage(from url: URL, for path: String) {
         let scoped = url.startAccessingSecurityScopedResource()

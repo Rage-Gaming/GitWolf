@@ -222,6 +222,10 @@ struct RootView: View {
             await workspace.bootstrap()
             #if DEBUG
             if let name = ProcessInfo.processInfo.environment["GITSYNC_SHEET"] { workspace.sheet = WorkspaceSheet(rawValue: name) }
+            // GITSYNC_ICON_IMPORT=/path/to/image imports it as the selected repository's icon.
+            if let file = ProcessInfo.processInfo.environment["GITSYNC_ICON_IMPORT"] {
+                workspace.setIconImage(from: URL(fileURLWithPath: file), for: workspace.selectedID ?? "/Users/dhanush/Work/GitSync")
+            }
             #endif
         }
         .alert("Couldn’t Open Repository", isPresented: Binding(
