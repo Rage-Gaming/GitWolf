@@ -18,8 +18,9 @@ internal sealed class Workspace : IDisposable
     private const int MaxRestored = 20;
     private const int MaxRecents = 12;
 
-    private static readonly string StatePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GitWolf", "workspace.json");
+    private static readonly string DataFolder = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GitWolf");
+    private static readonly string StatePath = Path.Combine(DataFolder, "workspace.json");
 
     private readonly List<RepositoryStore> _repos = [];
     private List<string> _recents = [];
@@ -40,6 +41,20 @@ internal sealed class Workspace : IDisposable
     {
         foreach (var store in _repos) store.AccountsChanged();
     }
+
+    /// <summary>Each repository's tile icon and colour.</summary>
+    public RepoIconStore IconStore { get; } = new(DataFolder);
+
+    /// <returns>False when the change couldn't be saved.</returns>
+    public bool SetIcon(RepositoryStore store, RepoIcon? icon)
+    {
+        var saved = IconStore.Set(store.Id, icon);
+        Changed?.Invoke();
+        return saved;
+    }
+
+    /// <summary>Called after <see cref="IconStore"/> was changed directly.</summary>
+    public void IconsChanged() => Changed?.Invoke();
 
     public IReadOnlyList<RepositoryStore> Repos => _repos;
     public RepositoryStore? Selected { get; private set; }

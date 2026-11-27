@@ -50,7 +50,7 @@ Provider features: OAuth sign-in (`OAuth.cs`, `OAuthLoopback.cs`), pull requests
 (`Collab.cs`, `CollabActions.cs`), CI checks (`CiStatus.cs`), notifications (`Notifications.cs`),
 fork (`Fork.cs`) and a Markdown subset (`Markdown.cs`).
 
-383 tests pass against real git and stubbed HTTP.
+390 tests pass against real git and stubbed HTTP.
 
 Differences from macOS, all deliberately stricter:
 
@@ -116,6 +116,7 @@ UI (`src/GitWolf.App/`):
       buttons need a connected account
 - [x] After a push, an offer to open a pull request for the branch (needs a connected account)
 - [x] Notifications, with an unread count in the top bar
+- [x] Repository icons: a symbol or a picture and a tile colour (right-click a tile, or drop a picture on it)
 - [x] Fork a repository from the jump palette
 - [x] Profile pictures for private GitHub repositories, using the github.com account
 - [x] Force push with lease, rejected-push handling, push with tags or to a chosen remote,

@@ -47,6 +47,7 @@ public sealed partial class MainWindow : Window
         Dashboard.PathsRequested += paths => _ = OpenAllAsync(paths);
         Diff.LayoutChanged += split => _workspace.SplitDiff = split;
         Rail.SettingsRequested += Settings.Open;
+        AttachRepoIcons();
         Settings.Attach(this, _settings, _workspace);
         Settings.SplitChanged += split => _workspace.SplitDiff = Diff.IsSplit = split;
         _settings.Changed += OnSettingsChanged;

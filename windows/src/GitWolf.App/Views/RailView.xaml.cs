@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace GitWolf.App.Views;
 
@@ -20,6 +21,10 @@ public sealed partial class RailView : UserControl
 
     internal event Action<FrameworkElement>? AddRequested;
     internal event Action? SettingsRequested;
+    /// <summary>The user asked to change a repository's icon.</summary>
+    internal event Action<RepositoryStore>? IconRequested;
+    /// <summary>A picture was dropped on a repository's tile.</summary>
+    internal event Action<RepositoryStore, DataPackageView>? ImageDropped;
 
     internal void Attach(Workspace workspace)
     {
@@ -48,6 +53,7 @@ public sealed partial class RailView : UserControl
             var selected = ReferenceEquals(store, workspace.Selected);
             tile.Marker.Visibility = selected ? Visibility.Visible : Visibility.Collapsed;
             tile.Button.CornerRadius = new CornerRadius(selected ? 14 : 18);
+            ShowLook(workspace, store, tile);
             Update(store, tile);
         }
         if (workspace.Selected is null) HomeButton.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
@@ -60,34 +66,46 @@ public sealed partial class RailView : UserControl
     }
 
     private sealed record Tile(
-        Grid Root, Button Button, Border Marker, Border Badge, TextBlock Count, Border Ci);
-
-    private static Tile Create(Workspace workspace, RepositoryStore store)
+        Grid Root, Button Button, Border Marker, Border Badge, TextBlock Count, Border Ci,
+        MenuFlyoutItem RemoveIcon)
     {
-        var colour = Palette.Avatar(store.Name);
+        /// <summary>The icon and colour on screen, so the button is only redrawn when they change.</summary>
+        public (RepoIcon?, RepoTint?)? Look { get; set; }
+    }
+
+    private Tile Create(Workspace workspace, RepositoryStore store)
+    {
         var button = new Button
         {
             Width = 46, Height = 46, Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Center,
-            Content = new TextBlock
-            {
-                Text = Initials(store.Name), FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-                Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
-            },
-            Background = colour,
+            AllowDrop = true,
         };
-        // Keep the repository colour while hovered and pressed.
-        foreach (var key in new[] { "ButtonBackgroundPointerOver", "ButtonBackgroundPressed" })
-            button.Resources[key] = colour;
+        button.DragOver += (_, e) =>
+        {
+            if (!e.DataView.Contains(StandardDataFormats.StorageItems)
+                && !e.DataView.Contains(StandardDataFormats.Bitmap)) return;
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.Handled = true;
+        };
+        button.Drop += (_, e) =>
+        {
+            e.Handled = true;
+            ImageDropped?.Invoke(store, e.DataView);
+        };
         AutomationProperties.SetName(button, store.Name);
         button.Click += (_, _) => workspace.Select(store);
 
         var menu = new MenuFlyout();
-        void Add(string text, Action action)
+        MenuFlyoutItem Add(string text, Action action)
         {
             var item = new MenuFlyoutItem { Text = text };
             item.Click += (_, _) => action();
             menu.Items.Add(item);
+            return item;
         }
+        Add("Change icon…", () => IconRequested?.Invoke(store));
+        var removeIcon = Add("Remove icon", () => workspace.SetIcon(store, null));
+        menu.Items.Add(new MenuFlyoutSeparator());
         Add("Show in File Explorer", () => Reveal(store.Id));
         Add("Copy path", () => Dialogs.Copy(store.Id));
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -123,7 +141,35 @@ public sealed partial class RailView : UserControl
             Margin = new Thickness(0, -5, 8, 0),
         };
         var root = new Grid { Width = 75, Height = 46, Children = { button, marker, badge, ci } };
-        return new Tile(root, button, marker, badge, count, ci);
+        return new Tile(root, button, marker, badge, count, ci, removeIcon);
+    }
+
+    /// <summary>Draws the tile's symbol, image or initials on its colour.</summary>
+    private static void ShowLook(Workspace workspace, RepositoryStore store, Tile tile)
+    {
+        var icons = workspace.IconStore;
+        var look = (icons.Icons.Icon(store.Id), icons.Icons.Tint(store.Id));
+        if (tile.Look == look) return;
+        tile.Look = look;
+        var (icon, tint) = look;
+        tile.RemoveIcon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
+
+        Brush background = tint is { } named ? RepoIconArt.Colour(named) : Palette.Avatar(store.Name);
+        var image = icon?.Image is { } file ? RepoIconArt.Image(icons, file) : null;
+        var symbol = icon?.Symbol is { } name ? RepoIconArt.Symbol(name, 20) : null;
+        object? content = image is not null ? null : symbol is not null ? symbol : new TextBlock
+        {
+            Text = Initials(store.Name), FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+        };
+        if (image is not null) background = image;
+        var white = new SolidColorBrush(Microsoft.UI.Colors.White);
+        // Resources keep the look while hovered and pressed.
+        var resources = tile.Button.Resources;
+        resources["ButtonBackgroundPointerOver"] = resources["ButtonBackgroundPressed"] = background;
+        resources["ButtonForegroundPointerOver"] = resources["ButtonForegroundPressed"] = white;
+        tile.Button.Background = background;
+        tile.Button.Foreground = white;
+        tile.Button.Content = content;
     }
 
     private static string Initials(string name)
