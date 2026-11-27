@@ -7,7 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Changed
-- **GitSync is now GitWolf** on macOS and Windows: the app name, bundle identifier (`org.gitwolf.GitWolf`), modules, projects, environment variables (`GITWOLF_*`) and documentation. On first launch, settings, open repositories, repository icons and saved account tokens from the old name are carried over (macOS: preferences, the Application Support folder and the Keychain; Windows: the `%LOCALAPPDATA%` folder). The GitHub repository is still `ipuppyyt/git-sync` until it is renamed there.
+- **GitSync is now GitWolf** on macOS and Windows: the app name, bundle identifier (`org.gitwolf.GitWolf`), modules, projects, environment variables (`GITWOLF_*`) and documentation. On first launch, settings, open repositories, repository icons and saved account tokens from the old name are carried over (macOS: preferences, the Application Support folder and the Keychain; Windows: the `%LOCALAPPDATA%` folder).
 - Smoother diff scrolling: diff rows only track hover when a line can be staged, instead of one tracking area per row.
 - Smoother scrolling: panels draw their shadow on a background shape instead of the scrolling content, and history rows share one relative-date formatter.
 - More smoothing: syntax highlighting fades in instead of popping, the file-history diff keeps the old one until the next arrives, and pull request / issue lists and comments fade in.

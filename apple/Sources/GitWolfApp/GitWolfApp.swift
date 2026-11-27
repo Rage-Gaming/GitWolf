@@ -261,8 +261,8 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .sidebar) {}
         CommandGroup(replacing: .textFormatting) {}
         CommandGroup(replacing: .help) {
-            Link("GitWolf Documentation", destination: URL(string: "https://github.com/ipuppyyt/git-sync/tree/main/docs")!)
-            Link("Report an Issue", destination: URL(string: "https://github.com/ipuppyyt/git-sync/issues")!)
+            Link("GitWolf Documentation", destination: URL(string: "https://github.com/ipuppyyt/GitWolf/tree/main/docs")!)
+            Link("Report an Issue", destination: URL(string: "https://github.com/ipuppyyt/GitWolf/issues")!)
         }
         CommandGroup(replacing: .newItem) {
             Button("Open Repository…") { workspace?.openPanel() }

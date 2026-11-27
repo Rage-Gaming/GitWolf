@@ -11,7 +11,7 @@ public sealed class ProviderTests
     [Fact]
     public void ParsesRemoteUrls()
     {
-        Assert.Equal(new RemoteLocation("github.com", "ipuppyyt/git-sync"), RemoteLocation.Parse("https://github.com/ipuppyyt/git-sync.git"));
+        Assert.Equal(new RemoteLocation("github.com", "ipuppyyt/GitWolf"), RemoteLocation.Parse("https://github.com/ipuppyyt/GitWolf.git"));
         Assert.Equal(new RemoteLocation("gitlab.com", "group/sub/proj"), RemoteLocation.Parse("git@gitlab.com:group/sub/proj.git"));
         Assert.Equal(new RemoteLocation("bitbucket.org", "team/repo"), RemoteLocation.Parse("ssh://git@bitbucket.org:22/team/repo.git"));
         Assert.Equal(new RemoteLocation("example.com", "a/b"), RemoteLocation.Parse("https://user:secret@Example.COM/a/b/"));

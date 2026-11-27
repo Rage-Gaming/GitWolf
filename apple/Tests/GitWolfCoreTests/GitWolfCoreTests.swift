@@ -267,7 +267,7 @@ import Testing
 
 @Suite struct CreateRepositoryTests {
     @Test func suggestsNamesFromCloneURLs() {
-        #expect(GitRepository.suggestedName(forCloneURL: "https://github.com/ipuppyyt/git-sync.git") == "git-sync")
+        #expect(GitRepository.suggestedName(forCloneURL: "https://github.com/ipuppyyt/GitWolf.git") == "GitWolf")
         #expect(GitRepository.suggestedName(forCloneURL: "git@github.com:org/repo") == "repo")
         #expect(GitRepository.suggestedName(forCloneURL: "https://host/a/b/") == "b")
         #expect(GitRepository.suggestedName(forCloneURL: "  /tmp/local/proj.git  ") == "proj")
@@ -304,7 +304,7 @@ import Testing
 
 @Suite struct ProviderTests {
     @Test func parsesRemoteURLs() {
-        #expect(RemoteLocation.parse("https://github.com/ipuppyyt/git-sync.git") == RemoteLocation(host: "github.com", path: "ipuppyyt/git-sync"))
+        #expect(RemoteLocation.parse("https://github.com/ipuppyyt/GitWolf.git") == RemoteLocation(host: "github.com", path: "ipuppyyt/GitWolf"))
         #expect(RemoteLocation.parse("git@gitlab.com:group/sub/proj.git") == RemoteLocation(host: "gitlab.com", path: "group/sub/proj"))
         #expect(RemoteLocation.parse("ssh://git@bitbucket.org:22/team/repo.git") == RemoteLocation(host: "bitbucket.org", path: "team/repo"))
         #expect(RemoteLocation.parse("https://user:secret@Example.COM/a/b/") == RemoteLocation(host: "example.com", path: "a/b"))

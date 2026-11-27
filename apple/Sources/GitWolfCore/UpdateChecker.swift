@@ -49,7 +49,7 @@ public struct UpdateChecker: Sendable {
     public let repository: String
     private let transport: HTTPTransport
 
-    public init(repository: String = "ipuppyyt/git-sync", transport: @escaping HTTPTransport = ProviderClient.urlSessionTransport) {
+    public init(repository: String = "ipuppyyt/GitWolf", transport: @escaping HTTPTransport = ProviderClient.urlSessionTransport) {
         self.repository = repository
         self.transport = transport
     }

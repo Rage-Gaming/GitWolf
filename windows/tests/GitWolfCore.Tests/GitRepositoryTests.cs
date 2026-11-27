@@ -51,7 +51,7 @@ public sealed class GitRepositoryTests
     }
 
     [Theory]
-    [InlineData("https://github.com/ipuppyyt/git-sync.git", "git-sync")]
+    [InlineData("https://github.com/ipuppyyt/GitWolf.git", "GitWolf")]
     [InlineData("git@github.com:org/repo", "repo")]
     [InlineData("https://host/a/b/", "b")]
     [InlineData("  /tmp/local/proj.git  ", "proj")]
