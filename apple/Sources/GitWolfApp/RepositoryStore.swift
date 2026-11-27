@@ -117,6 +117,9 @@ final class RepositoryStore: Identifiable {
     private(set) var isBusy = false
     private(set) var busyLabel: String?
     var errorMessage: String?
+    /// Set with `errorMessage` when a browser-signed-in account was refused a change; the alert then offers to sign in again.
+    var reauthAccount: ProviderAccount?
+    let reauth = OAuthSession()
 
     private var commitLimit = AppSettings.shared.commitPageSize
     private var refreshing = false
@@ -248,7 +251,23 @@ final class RepositoryStore: Identifiable {
                 checksWatchedUntil[sha] = Date().addingTimeInterval(5 * 60)
                 try? await Task.sleep(for: .seconds(3))
                 loadChecks(sha: sha, force: true)
-            } catch { errorMessage = error.localizedDescription }
+            } catch {
+                errorMessage = error.localizedDescription
+                if case ProviderError.forbidden = error, client.account.oauthClientID != nil { reauthAccount = client.account }
+            }
+        }
+    }
+
+    /// Runs the browser sign-in again for an account so it is granted the scopes the app asks for today.
+    func reauthorize() {
+        guard let account = reauthAccount, let clientID = account.oauthClientID else { return }
+        reauthAccount = nil
+        errorMessage = nil
+        reauth.start(account: account, clientID: clientID) { account, tokens in
+            do { try AccountStore.shared.addOAuth(account, tokens: tokens) }
+            catch { self.errorMessage = error.localizedDescription }
+        } failed: { message in
+            self.errorMessage = message
         }
     }
 

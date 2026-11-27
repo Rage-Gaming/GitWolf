@@ -20,6 +20,9 @@ public enum ProviderError: Error, LocalizedError, Sendable {
     case http(Int)
     /// A rejected request with the server's own explanation (for example "a pull request already exists").
     case api(Int, String)
+    /// A write the server refused for lack of permission (401/403), with its own explanation. Signing in again
+    /// with the current scopes can fix it for a browser sign-in.
+    case forbidden(Int, String)
     case invalidResponse
     case unsupported(String)
 
@@ -28,6 +31,7 @@ public enum ProviderError: Error, LocalizedError, Sendable {
         case .unauthorized: "The server rejected this token. Check that it is valid and has repository access."
         case .http(let code): "The server returned an error (HTTP \(code))."
         case .api(_, let message): message
+        case .forbidden(_, let message): message + ". This account may not be allowed to do that."
         case .invalidResponse: "The server sent a response GitWolf couldn’t understand."
         case .unsupported(let what): what
         }
@@ -125,15 +129,21 @@ public struct ProviderClient: Sendable {
     private func send(_ r: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let (data, response) = try await transport(r)
         let isRead = r.httpMethod == nil || r.httpMethod == "GET"
-        switch response.statusCode {
-        case 200..<300: return (data, response)
+        if (200..<300).contains(response.statusCode) { return (data, response) }
+        let code = response.statusCode
+        // A refused write says why (for example "Resource not accessible by personal access token"), and that is
+        // what the user needs: reading with a token can work while changing something is not allowed.
+        if !isRead, code == 401 || code == 403, let message = Self.errorMessage(data) {
+            throw ProviderError.forbidden(code, message.hasSuffix(".") ? String(message.dropLast()) : message)
+        }
+        switch code {
         case 401: throw ProviderError.unauthorized
         case 403 where isRead: throw ProviderError.unauthorized
         default:
             // Writes report the server's own reason; reads keep plain codes so callers can react to 404.
-            if !isRead, let message = Self.errorMessage(data) { throw ProviderError.api(response.statusCode, message) }
-            if response.statusCode == 403 { throw ProviderError.unauthorized }
-            throw ProviderError.http(response.statusCode)
+            if !isRead, let message = Self.errorMessage(data) { throw ProviderError.api(code, message) }
+            if code == 403 { throw ProviderError.unauthorized }
+            throw ProviderError.http(code)
         }
     }
 

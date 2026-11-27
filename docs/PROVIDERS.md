@@ -59,7 +59,7 @@ Only **public-client** flows are used, so GitWolf never needs (or ships) a clien
   ships none by default (`OAuthClients.builtIn` is empty; maintainers add IDs for github.com,
   gitlab.com, codeberg.org). Otherwise the user pastes their own client ID, remembered per host, with
   an inline hint on how to register the app (public client, redirect URI, scopes: GitHub `repo`;
-  GitLab `read_api read_repository write_repository`).
+  GitLab `api read_repository write_repository`).
 - **Storage.** The credential-store secret for an OAuth account is a JSON `OAuthTokens`
   `{accessToken, refreshToken?, expiresAt?}`; the account carries `oauthClientID`.
 - **Refresh.** Before any network git command or API call, if the access token expires within a

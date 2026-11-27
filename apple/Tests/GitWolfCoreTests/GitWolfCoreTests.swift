@@ -500,7 +500,7 @@ import Testing
         let url = gl.authorizationURL(redirectURI: OAuthLoopback.redirectURI, state: "s1", challenge: "ch")?.absoluteString ?? ""
         #expect(url.hasPrefix("https://gitlab.acme.com/oauth/authorize?"))
         #expect(url.contains("client_id=cid") && url.contains("code_challenge=ch") && url.contains("code_challenge_method=S256"))
-        #expect(url.contains("state=s1") && url.contains("response_type=code") && url.contains("scope=read_api"))
+        #expect(url.contains("state=s1") && url.contains("response_type=code") && url.contains("scope=api"))
         let gitea = client(.gitea, Script(["{}"]), origin: "https://codeberg.org")
         #expect(gitea.authorizationURL(redirectURI: "r", state: "s", challenge: "c")?.absoluteString.hasPrefix("https://codeberg.org/login/oauth/authorize?") == true)
     }
@@ -2520,6 +2520,18 @@ private func makeTempDir() throws -> URL {
         let json = #"{"check_runs":[{"name":"macos","status":"in_progress","html_url":"https://github.com/o/r/actions/runs/123/job/456"}]}"#
         let checks = try ProviderClient.parseGitHubCheckRuns(Data(json.utf8))
         #expect(checks[0].runID == "123" && checks[0].jobID == "456")
+    }
+
+    @Test func aRefusedRerunReportsTheServersReason() async throws {
+        let body = #"{"message":"Resource not accessible by personal access token"}"#
+        let gh = ProviderClient(account: ProviderAccount(kind: .github, host: "github.com", username: "me"), token: "t", transport: { r in
+            (Data(body.utf8), HTTPURLResponse(url: r.url!, statusCode: 403, httpVersion: nil, headerFields: nil)!)
+        })
+        let check = CICheck(name: "a", state: .failure, url: nil, runID: "1", jobID: "2")
+        do { try await gh.perform(.rerun, on: check, repoPath: "o/r"); Issue.record("should have thrown") }
+        catch let ProviderError.forbidden(code, message) {
+            #expect(code == 403 && message == "Resource not accessible by personal access token")
+        }
     }
 
     @Test func rerunAndCancelHitTheRightEndpoints() async throws {

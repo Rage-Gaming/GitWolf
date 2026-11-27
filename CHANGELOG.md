@@ -20,6 +20,7 @@ All notable changes are documented here. Format based on
 - Removed menu items that don't apply: File > New Window, the View menu's toolbar and sidebar toggles, the Format menu, and the empty Help book (replaced by links to the documentation and issue tracker).
 
 ### Added
+- When GitHub or GitLab refuses a change such as re-running a check, the error now shows the server's own reason. For accounts signed in with the browser it offers *Sign In Again*, which re-authorises with the current permissions (GitLab sign-in now asks for the `api` scope, which re-running and cancelling jobs needs).
 - In-app updates with Sparkle, free of any Apple Developer account: updates are signed with an EdDSA key, the app is signed with a stable self-signed certificate (so Keychain access and permissions survive updates), archives ship on GitHub Releases and the feed on GitHub Pages. First install needs macOS's *Open Anyway* once; updates never do. See `docs/RELEASING.md`. Replaces the old check-and-open-the-release-page flow.
 - Sync buttons animate while they run: Fetch spins, Pull and Push slide their arrow in the direction of travel.
 - CI checks update on their own: a commit with a running check is polled every 15 seconds, and a just-pushed commit (from the app or a terminal) or one made in the last 30 minutes is looked up every 15 seconds until its run appears. The running state shows an indeterminate ring spinner (the arc stretches and shrinks as it turns) instead of a clock.

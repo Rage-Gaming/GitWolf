@@ -51,9 +51,20 @@ struct RepositoryView: View {
             get: { store.errorMessage != nil },
             set: { if !$0 { store.errorMessage = nil } })
         ) {
-            Button("OK", role: .cancel) {}
+            if store.reauthAccount != nil { Button("Sign In Again") { store.reauthorize() } }
+            Button(store.reauthAccount == nil ? "OK" : "Cancel", role: .cancel) { store.reauthAccount = nil }
         } message: {
             Text(store.errorMessage ?? "")
+        }
+        .alert("Finish Signing In", isPresented: Binding(
+            get: { if case .device = store.reauth.phase { true } else { false } },
+            set: { if !$0 { store.reauth.cancel() } })
+        ) {
+            Button("Cancel", role: .cancel) { store.reauth.cancel() }
+        } message: {
+            if case .device(let code, _) = store.reauth.phase {
+                Text("Your browser opened GitHub. Enter the code \(code) there (it is copied to the clipboard) and approve access.")
+            }
         }
         .sheet(item: $store.sheet) { sheet in
             switch sheet {

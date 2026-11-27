@@ -84,7 +84,8 @@ public extension ProviderKind {
     var oauthScopes: String {
         switch self {
         case .github: "repo"
-        case .gitlab: "read_api read_repository write_repository"
+        // `api` covers re-running and cancelling jobs, merge requests and comments, which the narrower scopes do not.
+        case .gitlab: "api read_repository write_repository"
         // Azure DevOps resource id (user_impersonation) plus a refresh token.
         case .azure: "499b84ac-1321-427f-aa17-267ca6975798/user_impersonation offline_access"
         default: ""
