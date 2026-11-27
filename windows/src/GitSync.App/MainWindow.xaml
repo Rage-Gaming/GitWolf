@@ -66,14 +66,35 @@
         </Grid>
 
         <ProgressRing x:Name="Loading" Grid.Column="1" Width="40" Height="40" IsActive="False" />
-        <Border x:Name="BusyPill" Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,20"
-                CornerRadius="18" Padding="16,8" Background="{ThemeResource PanelBrush}"
-                BorderBrush="{ThemeResource PillBorderBrush}" BorderThickness="1" IsHitTestVisible="False">
-            <StackPanel Orientation="Horizontal" Spacing="10">
-                <ProgressRing x:Name="Busy" Width="16" Height="16" />
-                <TextBlock x:Name="BusyText" />
-            </StackPanel>
-        </Border>
+        <!-- Short notices above the progress pill, at the bottom of the window. -->
+        <StackPanel Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,20"
+                    Spacing="8" IsHitTestVisible="False">
+            <StackPanel.Resources>
+                <Storyboard x:Name="CopiedNotice">
+                    <DoubleAnimationUsingKeyFrames Storyboard.TargetName="CopiedPill" Storyboard.TargetProperty="Opacity">
+                        <LinearDoubleKeyFrame KeyTime="0:0:0.15" Value="1" />
+                        <LinearDoubleKeyFrame KeyTime="0:0:1.6" Value="1" />
+                        <LinearDoubleKeyFrame KeyTime="0:0:1.9" Value="0" />
+                    </DoubleAnimationUsingKeyFrames>
+                </Storyboard>
+            </StackPanel.Resources>
+            <Border x:Name="CopiedPill" HorizontalAlignment="Center" Opacity="0"
+                    CornerRadius="18" Padding="16,8" Background="{ThemeResource PanelBrush}"
+                    BorderBrush="{ThemeResource PillBorderBrush}" BorderThickness="1">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <FontIcon Glyph="&#xE73E;" FontSize="14" Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                    <TextBlock Text="Copied" />
+                </StackPanel>
+            </Border>
+            <Border x:Name="BusyPill" HorizontalAlignment="Center"
+                    CornerRadius="18" Padding="16,8" Background="{ThemeResource PanelBrush}"
+                    BorderBrush="{ThemeResource PillBorderBrush}" BorderThickness="1" IsHitTestVisible="False">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <ProgressRing x:Name="Busy" Width="16" Height="16" />
+                    <TextBlock x:Name="BusyText" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
         <InfoBar x:Name="Error" Grid.Column="1" VerticalAlignment="Bottom" Margin="16" Severity="Error" IsOpen="False"
                  Title="Something went wrong" Closed="OnErrorClosed" Background="{ThemeResource PanelBrush}">
             <!-- Git output can run to many lines, so the message scrolls instead of growing the banner. -->

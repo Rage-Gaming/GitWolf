@@ -42,6 +42,9 @@ public sealed partial class CommitDetailView : UserControl
         if (_shownHash != commit.Hash)
         {
             _shownHash = commit.Hash;
+            // The tick belongs to the commit that was copied.
+            CopiedAnimation.Stop();
+            CopiedPlayer.Stop();
             Author.Text = commit.AuthorName;
             var date = commit.Date.LocalDateTime;
             Date.Text = string.Create(CultureInfo.CurrentCulture, $"{date:d MMM yyyy} at {date:t}");
@@ -140,7 +143,21 @@ public sealed partial class CommitDetailView : UserControl
 
     private void OnCopy(object sender, RoutedEventArgs e)
     {
-        if (_store?.SelectedCommit is { } commit) Dialogs.Copy(commit.Hash);
+        if (_store?.SelectedCommit is not { } commit) return;
+        Dialogs.Copy(commit.Hash);
+        ShowCopied();
+    }
+
+    /// <summary>Draws a tick over the copy icon. Starts over when clicked again.</summary>
+    private void ShowCopied()
+    {
+        // The success colour of the current theme.
+        CopiedTick.SetColorProperty("Foreground", ActualTheme == ElementTheme.Light
+            ? Windows.UI.Color.FromArgb(255, 0x0F, 0x7B, 0x0F)
+            : Windows.UI.Color.FromArgb(255, 0x6C, 0xCB, 0x5F));
+        CopiedAnimation.Begin();
+        _ = CopiedPlayer.PlayAsync(
+            CopiedTick.Markers["NormalOffToNormalOn_Start"], CopiedTick.Markers["NormalOffToNormalOn_End"], false);
     }
 
     private void OnFileSelected(object sender, SelectionChangedEventArgs e)

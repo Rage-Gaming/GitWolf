@@ -60,6 +60,8 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) => _workspace.Dispose();
         SetUpPanels();
+        // Starts over when something else is copied before it has faded.
+        Dialogs.Copied += () => CopiedNotice.Begin();
         Bind();
     }
 

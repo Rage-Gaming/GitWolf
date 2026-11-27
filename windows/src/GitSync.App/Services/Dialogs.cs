@@ -154,11 +154,15 @@ internal static class Dialogs
             await store.AbortOperationAsync();
     }
 
+    /// <summary>Raised after text reaches the clipboard, so the window can say so.</summary>
+    public static event Action? Copied;
+
     public static void Copy(string text)
     {
         var package = new DataPackage();
         package.SetText(text);
         Clipboard.SetContent(package);
+        Copied?.Invoke();
     }
 
     /// <summary>Returns the trimmed text, or null when cancelled.</summary>
