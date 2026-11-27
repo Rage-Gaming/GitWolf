@@ -365,3 +365,26 @@ struct PromptSheet: View {
         dismiss()
     }
 }
+
+/// A button that puts `text` on the clipboard and shows "copied" for a moment. `label` gets whether it just copied,
+/// so the caller decides how the confirmation looks (a tick, a word).
+struct CopyButton<Label: View>: View {
+    let text: String
+    @ViewBuilder var label: (_ copied: Bool) -> Label
+    @State private var copied = false
+    @State private var reset: Task<Void, Never>?
+
+    var body: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            withAnimation(.snappy(duration: 0.18)) { copied = true }
+            reset?.cancel()
+            reset = Task {
+                try? await Task.sleep(for: .seconds(1.6))
+                if !Task.isCancelled { withAnimation(.snappy(duration: 0.18)) { copied = false } }
+            }
+        } label: { label(copied) }
+        .onDisappear { reset?.cancel() }
+    }
+}

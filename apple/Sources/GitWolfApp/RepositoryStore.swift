@@ -206,17 +206,29 @@ final class RepositoryStore: Identifiable {
         return (checksWatchedUntil[sha] ?? .distantPast) > Date()
     }
 
+    /// Hosts that refused a checks lookup (rate limit or a bad token), and until when to leave them alone. Shared by every
+    /// repository on the host, since a rate limit belongs to the network or token, not to one repository.
+    private static var checksPausedUntil: [String: Date] = [:]
+
     func loadChecks(sha: String, force: Bool = false) {
         guard !sha.isEmpty else { return }
         // Pending runs change, so a result is reused for a minute at most (`force` is the poll while one is running).
         if !force, let at = checksRequested[sha], Date().timeIntervalSince(at) < 60 { return }
-        guard providerKind != nil, remoteLocation != nil else { return }
+        guard providerKind != nil, let host = remoteLocation?.host else { return }
+        // Without an account GitHub allows only 60 requests an hour, which polling uses up in minutes. After a refusal,
+        // wait five minutes instead of asking every few seconds.
+        if let until = Self.checksPausedUntil[host], until > Date() { return }
         checksRequested[sha] = Date()
         Task {
             guard let (client, path) = await providerClient() else { return }
-            if let status = try? await client.ciStatus(repoPath: path, sha: sha), !status.isEmpty {
-                withAnimation(.snappy(duration: 0.2)) { checksBySHA[sha] = status }
-            }
+            do {
+                let status = try await client.ciStatus(repoPath: path, sha: sha)
+                if !status.isEmpty { withAnimation(.snappy(duration: 0.2)) { checksBySHA[sha] = status } }
+            } catch ProviderError.unauthorized {
+                Self.checksPausedUntil[host] = Date().addingTimeInterval(5 * 60)
+            } catch ProviderError.http(let code) where code == 403 || code == 429 {
+                Self.checksPausedUntil[host] = Date().addingTimeInterval(5 * 60)
+            } catch {}
         }
     }
 

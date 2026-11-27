@@ -24,9 +24,8 @@ struct HookOutputSheet: View {
             .frame(height: 260)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             HStack {
-                Button("Copy Output") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(failure.output, forType: .string)
+                CopyButton(text: failure.output) { copied in
+                    Text(copied ? "Copied" : "Copy Output")
                 }
                 Button("Commit Without Hooks") { dismiss(); commitWithoutHooks() }
                     .help("Runs git commit --no-verify")
