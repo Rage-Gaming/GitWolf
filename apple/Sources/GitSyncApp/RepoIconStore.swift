@@ -72,8 +72,7 @@ enum RepoIconImages {
 struct RepoIconPicker: View {
     let current: RepoIcon?
     let choose: (RepoIcon?) -> Void
-    let importImage: (URL) -> Void
-    @State private var showImporter = false
+    let chooseImage: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     private let columns = Array(repeating: GridItem(.fixed(40), spacing: 8), count: 5)
@@ -108,7 +107,7 @@ struct RepoIconPicker: View {
             .frame(height: 300)
             Divider()
             HStack {
-                Button("Choose Image…") { showImporter = true }
+                Button("Choose Image…") { dismiss(); chooseImage() }
                 Button("Use Initials") { choose(nil); dismiss() }.disabled(current == nil)
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
@@ -116,9 +115,5 @@ struct RepoIconPicker: View {
         }
         .padding(18)
         .frame(width: 5 * 40 + 4 * 8 + 36)
-        // The file dialog slides down from this sheet, so it stays attached to the window.
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.image]) { result in
-            if case .success(let url) = result { importImage(url); dismiss() }
-        }
     }
 }
