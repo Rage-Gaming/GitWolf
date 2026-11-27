@@ -72,7 +72,9 @@ enum RepoIconImages {
 struct RepoIconPicker: View {
     let current: RepoIcon?
     let choose: (RepoIcon?) -> Void
+    let importURL: (URL) -> Void
     let chooseImage: () -> Void
+    @State private var targeted = false
     @Environment(\.dismiss) private var dismiss
 
     private let columns = Array(repeating: GridItem(.fixed(40), spacing: 8), count: 5)
@@ -106,7 +108,20 @@ struct RepoIconPicker: View {
             }
             .frame(height: 300)
             Divider()
+            // Dropping a file or pasting a copied picture works without the system file dialog.
+            Label("Drop an image here, or paste one", systemImage: "square.and.arrow.down")
+                .font(.callout).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(targeted ? Theme.brand.opacity(0.16) : Color.primary.opacity(0.05),
+                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(targeted ? Theme.brand : Color.primary.opacity(0.14), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                .dropDestination(for: URL.self) { urls, _ in
+                    guard let url = urls.first else { return false }
+                    importURL(url); dismiss(); return true
+                } isTargeted: { targeted = $0 }
             HStack {
+                Button("Paste") { pasteImage() }
                 Button("Choose Image…") { dismiss(); chooseImage() }
                 Button("Use Initials") { choose(nil); dismiss() }.disabled(current == nil)
                 Spacer()
@@ -115,5 +130,19 @@ struct RepoIconPicker: View {
         }
         .padding(18)
         .frame(width: 5 * 40 + 4 * 8 + 36)
+    }
+
+    private func pasteImage() {
+        let board = NSPasteboard.general
+        if let url = (board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL])?.first {
+            importURL(url); dismiss(); return
+        }
+        guard let data = board.data(forType: .png) ?? board.data(forType: .tiff) else { NSSound.beep(); return }
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
+        guard (try? data.write(to: temp)) != nil else { return }
+        importURL(temp)
+        dismiss()
+        // The import reads the file in the background; remove the copy afterwards.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { try? FileManager.default.removeItem(at: temp) }
     }
 }

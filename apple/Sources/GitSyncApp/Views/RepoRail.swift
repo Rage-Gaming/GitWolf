@@ -47,6 +47,7 @@ struct RepoRail: View {
         .sheet(item: $pickerFor) { target in
             RepoIconPicker(current: workspace.repoIcons.icon(for: target.id),
                            choose: { workspace.setIcon($0, for: target.id) },
+                           importURL: { workspace.setIconImage(from: $0, for: target.id) },
                            chooseImage: {
                                // Wait for the sheet to finish closing, then open the panel on its own.
                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { workspace.chooseIconImage(for: target.id) }
@@ -130,7 +131,7 @@ private struct RepoTile: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
         .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first, NSImage(contentsOf: url) != nil else { return false }
+            guard let url = urls.first else { return false }
             dropImage(url)
             return true
         }
