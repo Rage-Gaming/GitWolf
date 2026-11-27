@@ -28,8 +28,8 @@ Engine ported so far (see the file map in PORTING.md for the full list and order
 - [x] `GitRepository.swift` -> `GitRepository.cs`
 - [x] `Providers.swift` -> `Providers.cs` (askpass is the same POSIX `sh` script as Swift, run by
       Git for Windows' `sh`; deliberately not a `.cmd`, which would let a crafted remote URL
-      inject commands). Unlike Swift, it answers only for the account's own host; the accounts
-      layer must set `GitCredential.Scheme` to `http` for plain-HTTP accounts
+      inject commands). Unlike Swift, it answers only for the account's own server: host, port and
+      scheme
 - [x] `ProviderClient.swift` -> `ProviderClient.cs` (`HttpClient` in place of `URLSession`,
       `System.Text.Json` in place of `JSONSerialization`)
 
@@ -41,10 +41,37 @@ Store layer:
 - [x] `RepositoryStore.swift` -> `src/GitWolf.Store/` (UI-framework independent). Use it from the
       UI thread only, and call `RequestRefresh()` when a window is activated.
 - [x] `AppSettings.swift` -> `src/GitWolf.App/Services/AppSettings.cs`
-- [ ] `Accounts.swift` -> Credential Manager, writing the askpass script with LF endings and no BOM
+- [x] `Accounts.swift` -> `src/GitWolfCore/Accounts.cs`, with secrets in Windows Credential Manager
+      (`WindowsCredentialStore.cs`, split across entries when long) and the askpass script written
+      with LF endings and no BOM
 - [x] `Workspace.swift` (open and recent repositories) -> `src/GitWolf.App/Services/Workspace.cs`
 
-201 tests pass against real git and stubbed HTTP.
+Provider features: OAuth sign-in (`OAuth.cs`, `OAuthLoopback.cs`), pull requests and issues
+(`Collab.cs`, `CollabActions.cs`), CI checks (`CiStatus.cs`), notifications (`Notifications.cs`),
+fork (`Fork.cs`) and a Markdown subset (`Markdown.cs`).
+
+333 tests pass against real git and stubbed HTTP.
+
+Differences from macOS, all deliberately stricter:
+
+- A bearer token for git over HTTP is sent only to the origin it belongs to.
+- An account token is used only for a remote whose every address is the account's scheme, host and
+  port. Fetch runs one process per remote when a token is involved, without submodules for that
+  remote; other remotes keep your own sign-in.
+- A repository that sets its own `http.*` option (other than transfer tuning) or
+  `remote.<name>.proxy` never gets the account token; a failed command says why.
+- Fetch, pull and push refuse `ext::` remotes, and fetch runs no repository hooks.
+- A force push first fetches, lists the commits it would remove, and is tied to the commit that was
+  shown, so a later background fetch can't widen what gets overwritten.
+- Server links open only over https, or http for an account on a plain-HTTP server.
+- The OAuth loopback listener ignores a callback with the wrong `state` and keeps waiting.
+- Server names and clone URLs from a provider are validated, and a credential is never chosen from a
+  guessed provider.
+- Markdown is drawn with native controls: only `http` and `https` links work, and images are never
+  downloaded.
+
+Browser (OAuth) sign-in is covered by tests with stubbed HTTP but has not been tried against a real
+provider.
 
 UI (`src/GitWolf.App/`):
 
@@ -79,11 +106,34 @@ UI (`src/GitWolf.App/`):
       spell check, light-theme file icons
 - [x] Settings (Ctrl+,): theme, accent colour, background fetch, history and diff options, git path
       (`%LOCALAPPDATA%\GitWolf\settings.json`)
-- [ ] Provider accounts
+- [x] Provider accounts (Settings > Accounts): token, password or browser sign-in; account
+      repositories in the clone dialog
+- [x] Pull request and issue tabs: filter, search, read with Markdown, comment, create, label,
+      close, reopen and merge, as far as the provider supports each
+- [x] Issue references from the commit message menu
+- [x] CI checks in commit and pull request details
+- [x] Notifications, with an unread count in the top bar
+- [x] Fork a repository from the jump palette
+- [x] Profile pictures for private GitHub repositories, using the github.com account
+- [x] Force push with lease, rejected-push handling, push with tags or to a chosen remote,
+      fast-forward-only pull (right-click Pull or Push, or the jump palette)
+- [x] Manage remotes: add, edit, rename, remove, fetch and push one remote
+- [x] Diff: changed words, ignore whitespace, whole file with folding, image previews
 
-Opening a repository runs git inside it, so its `.git/config` can execute commands (for example
-`core.fsmonitor`). Only open folders you trust: they are reopened, and git runs in them, on every launch until
-closed from the rail.
+### Trusting a repository
+
+A folder's `.git/config` (or a submodule's) can make git run programs, for example through
+`core.fsmonitor`, filters, `diff.external`, `gpg.program` or `remote.<name>.uploadpack`. GitWolf
+reads the configuration first, and if it holds such a setting, or an HTTP or proxy option, runs no
+other git command there until you agree to the listed settings. It asks again when they change.
+Answers are kept in `%LOCALAPPDATA%\GitWolf\trusted.json`. `git lfs install --local` is one
+ordinary reason to be asked.
+
+Known limits:
+
+- Hooks in a repository still run on commit, checkout, merge, pull and push, and pull and push hooks
+  can read the account token. Only use those on folders you trust.
+- A trusted repository's settings run with your rights, including during pull and push.
 
 ## Building
 

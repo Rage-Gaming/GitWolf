@@ -12,7 +12,7 @@ public static class SideBySide
     /// of changes, deletions (left) are lined up with additions (right) in order, and whichever
     /// side is shorter is left blank.
     /// </summary>
-    public static List<SplitRow> Rows(FileDiff diff)
+    public static List<SplitRow> Rows(FileDiff diff, IReadOnlyList<DiffLine>? lines = null)
     {
         var rows = new List<SplitRow>();
         var deletions = new List<DiffLine>();
@@ -30,7 +30,7 @@ public static class SideBySide
             additions.Clear();
         }
 
-        foreach (var line in diff.Lines)
+        foreach (var line in lines ?? diff.Lines)
         {
             switch (line.Kind)
             {
@@ -51,6 +51,10 @@ public static class SideBySide
                     additions.Add(line);
                     break;
                 case DiffLineKind.Note:
+                    // Folded lines take a row of their own; git's notes are left out.
+                    if (!line.IsFold) break;
+                    Flush();
+                    Add(header: line);
                     break;
             }
         }

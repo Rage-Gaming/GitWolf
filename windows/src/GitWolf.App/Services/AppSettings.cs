@@ -18,7 +18,9 @@ internal sealed record SettingsState(
     int DiffContext = 4,
     bool SyntaxHighlighting = true,
     string GitPath = "", bool PullRebase = false, bool ProfilePictures = true,
-    bool SpellCheck = true, double SidebarWidth = 248, double ListShare = 0.45);
+    bool IgnoreWhitespace = false, bool FullFileDiffs = false,
+    bool SpellCheck = true, double SidebarWidth = 248, double ListShare = 0.45,
+    double MessageHeight = 90, double FilesHeight = 0);
 
 /// <summary>
 /// User settings, kept in %LOCALAPPDATA%\GitWolf\settings.json and read on every use so changes
@@ -30,7 +32,16 @@ internal sealed class AppSettings : IStoreSettings
     private static readonly string StatePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GitWolf", "settings.json");
 
-    public AppSettings() => State = Load();
+    internal static readonly string Folder = Path.GetDirectoryName(StatePath)!;
+
+    public AppSettings()
+    {
+        State = Load();
+        Accounts = new AccountStore(Path.Combine(Folder, "accounts.json"), new WindowsCredentialStore());
+    }
+
+    /// <summary>Saved provider accounts; their secrets are in Windows Credential Manager.</summary>
+    public AccountStore Accounts { get; }
 
     public SettingsState State { get; private set; }
 
@@ -46,11 +57,22 @@ internal sealed class AppSettings : IStoreSettings
 
     public GitRepository Configure(GitRepository repo) => new(repo.Root, CustomGitPath, State.DiffContext)
     {
-        Credentials = repo.Credentials,
-        AskpassPath = repo.AskpassPath,
+        // git gets the account matching a remote's server; others use the user's own sign-in.
+        Credentials = Accounts.CredentialForRemoteAsync,
+        IgnoreWhitespace = State.IgnoreWhitespace,
+        FullFileDiffs = State.FullFileDiffs,
+        Trust = Trust,
+        AskpassPath = AccountStore.WriteAskpass(Folder),
     };
 
-    public ProviderKind? AccountKindForHost(string host) => null;
+    /// <summary>Repositories allowed to run what their own configuration asks for.</summary>
+    private RepositoryTrust Trust { get; } = new(Path.Combine(Folder, "trusted.json"));
+
+    public void TrustRepository(string root, string fingerprint) => Trust.Trust(root, fingerprint);
+
+    public ProviderAccount? AccountForHost(string host) => Accounts.ForHost(host);
+
+    public Task<string?> SecretAsync(ProviderAccount account) => Accounts.SecretAsync(account);
 
     /// <summary>
     /// A full path to a local .exe. Relative and network paths are refused: the app runs this file.
@@ -79,8 +101,11 @@ internal sealed class AppSettings : IStoreSettings
         CommitPageSize = Math.Clamp(s.CommitPageSize, 100, 20000),
         DiffContext = Math.Clamp(s.DiffContext, 0, 50),
         GitPath = (s.GitPath ?? "").Trim().Trim('"'),
-        SidebarWidth = double.IsFinite(s.SidebarWidth) ? Math.Clamp(s.SidebarWidth, 180, 480) : 248,
-        ListShare = double.IsFinite(s.ListShare) ? Math.Clamp(s.ListShare, 0.2, 0.8) : 0.45,
+        SidebarWidth = double.IsFinite(s.SidebarWidth) ? Math.Clamp(s.SidebarWidth, 160, 600) : 248,
+        ListShare = double.IsFinite(s.ListShare) ? Math.Clamp(s.ListShare, 0.15, 0.85) : 0.45,
+        MessageHeight = double.IsFinite(s.MessageHeight) ? Math.Clamp(s.MessageHeight, 60, 600) : 90,
+        // Zero means the list fits its files.
+        FilesHeight = double.IsFinite(s.FilesHeight) && s.FilesHeight > 0 ? Math.Clamp(s.FilesHeight, 52, 800) : 0,
     };
 
     private static SettingsState Load()

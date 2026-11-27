@@ -69,7 +69,7 @@ public sealed partial class GitRepository
     public async Task<List<Commit>> FileHistoryAsync(string path, ISet<string> remotes, int limit = 300)
     {
         var data = await Git.RunAsync(
-            ["--literal-pathspecs", "log", "--follow", "-z", "-n", $"{limit}", $"--format={LogParser.Format}", "--", path],
+            ["--literal-pathspecs", "log", "--no-show-signature", "--follow", "-z", "-n", $"{limit}", $"--format={LogParser.Format}", "--", path],
             readOnly: true);
         return LogParser.Parse(data, remotes);
     }
@@ -81,7 +81,7 @@ public sealed partial class GitRepository
     public async Task<FileDiff> FileDiffAsync(string path, string commit, int maxLines = 6000)
     {
         var names = await Git.RunStringAsync(
-            ["--literal-pathspecs", "-c", "core.quotepath=off", "log", "--follow", "--name-status",
+            ["--literal-pathspecs", "-c", "core.quotepath=off", "log", "--no-show-signature", "--follow", "--name-status",
                 "--format=%x01%H", "--", path], readOnly: true);
         string[] paths = [path];
         foreach (var block in names.Split('\u0001', StringSplitOptions.RemoveEmptyEntries))
@@ -93,7 +93,7 @@ public sealed partial class GitRepository
             break;
         }
         var data = await Git.RunAsync(
-            ["--literal-pathspecs", "show", "--format=", "-M", "--no-color", "--no-ext-diff", "--no-textconv",
+            ["--literal-pathspecs", "show", "--no-show-signature", "--format=", "-M", "--no-color", "--no-ext-diff", "--no-textconv",
                 "--src-prefix=a/", "--dst-prefix=b/", $"-U{ContextLines}", Operand(commit), "--", .. paths],
             readOnly: true);
         return DiffParser.Parse(data, maxLines);

@@ -68,7 +68,7 @@ public sealed partial class GitRepository
     public async Task UpdateSubmodulesAsync(string? path = null)
     {
         // Hooks are disabled so none can read the credential in the environment.
-        var net = await NetworkGitAsync(disableHooks: true);
+        var net = await SubmoduleGitAsync();
         string[] only = path is null ? [] : ["--", path];
         await net.RunAsync(["submodule", "update", "--init", "--recursive", .. only]);
     }
@@ -76,7 +76,7 @@ public sealed partial class GitRepository
     /// <summary>Moves every submodule to the newest commit of its tracked branch.</summary>
     public async Task UpdateSubmodulesToLatestAsync()
     {
-        var net = await NetworkGitAsync(disableHooks: true);
+        var net = await SubmoduleGitAsync();
         await net.RunAsync(["submodule", "update", "--init", "--recursive", "--remote"]);
     }
 
@@ -84,7 +84,7 @@ public sealed partial class GitRepository
     {
         Operand(url);
         Operand(path);
-        var net = await NetworkGitAsync(disableHooks: true);
+        var net = await SubmoduleGitAsync();
         await net.RunAsync(["submodule", "add", "--", url, path]);
     }
 }

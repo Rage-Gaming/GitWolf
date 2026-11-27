@@ -32,6 +32,13 @@ internal sealed class Workspace : IDisposable
     {
         _settings = settings;
         _openUri = openUri;
+        settings.Accounts.Changed += OnAccountsChanged;
+    }
+
+    /// <summary>Accounts are only changed from the UI thread.</summary>
+    private void OnAccountsChanged()
+    {
+        foreach (var store in _repos) store.AccountsChanged();
     }
 
     public IReadOnlyList<RepositoryStore> Repos => _repos;
@@ -165,6 +172,7 @@ internal sealed class Workspace : IDisposable
 
     public void Dispose()
     {
+        _settings.Accounts.Changed -= OnAccountsChanged;
         foreach (var store in _repos) store.Dispose();
         _repos.Clear();
         Selected = null;

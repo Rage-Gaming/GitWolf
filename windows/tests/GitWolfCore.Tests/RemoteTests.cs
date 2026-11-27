@@ -3,7 +3,7 @@ using Xunit;
 
 namespace GitWolfCore.Tests;
 
-public sealed class RemoteTests : IDisposable
+public sealed partial class RemoteTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), $"gitwolf-remote-{Guid.NewGuid()}");
     private string Server => Path.Combine(_dir, "server.git");

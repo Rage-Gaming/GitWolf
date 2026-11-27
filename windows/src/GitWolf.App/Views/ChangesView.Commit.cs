@@ -14,6 +14,14 @@ namespace GitWolf.App.Views;
 // The commit box: signing, message helpers and ignore rules.
 public sealed partial class ChangesView
 {
+    internal PanelSplitter HeightSplitter => MessageSplitter;
+
+    internal double MessageHeight
+    {
+        get => Message.ActualHeight;
+        set => Message.Height = value;
+    }
+
     internal bool SpellCheck { set => Message.IsSpellCheckEnabled = value; }
 
     private SigningConfig? _signing;
@@ -115,12 +123,48 @@ public sealed partial class ChangesView
                 reuse.Items.Add(Item(subject, () => Message.Text = message));
             }
             menu.Items.Add(reuse);
+            if (store.Supports(CollabKind.Issue)) menu.Items.Add(ReferenceMenu(store));
             menu.ShowAt(anchor);
         }
         catch (Exception error)
         {
             // An event handler can't pass the failure on.
             Trace.TraceWarning($"The message menu failed: {error.GetType().Name}");
+        }
+    }
+
+    /// <summary>"Closes #12" and the like. The menu opens at once; the issues arrive after it.</summary>
+    private MenuFlyoutSubItem ReferenceMenu(RepositoryStore store)
+    {
+        var menu = new MenuFlyoutSubItem { Text = "Reference issue" };
+        menu.Items.Add(new MenuFlyoutItem { Text = "Loading…", IsEnabled = false });
+        _ = FillReferenceMenuAsync(store, menu);
+        return menu;
+    }
+
+    private async Task FillReferenceMenuAsync(RepositoryStore store, MenuFlyoutSubItem menu)
+    {
+        try
+        {
+            var issues = await store.OpenIssuesAsync();
+            menu.Items.Clear();
+            if (issues.Count == 0) menu.Items.Add(new MenuFlyoutItem { Text = "No open issues", IsEnabled = false });
+            foreach (var issue in issues)
+            {
+                var title = issue.Title.Length > 60 ? issue.Title[..60] + "…" : issue.Title;
+                var entry = new MenuFlyoutSubItem { Text = $"#{issue.Number} {title}" };
+                foreach (var keyword in new[] { "Closes", "Fixes", "Refs" })
+                    entry.Items.Add(Item($"{keyword} #{issue.Number}", () =>
+                    {
+                        if (ReferenceEquals(store, _store)) store.AddIssueReference(keyword, issue.Number);
+                    }));
+                menu.Items.Add(entry);
+            }
+        }
+        catch (Exception e)
+        {
+            // Fire-and-forget: the menu says there is nothing to offer.
+            Trace.TraceWarning($"Listing issues for the message failed: {e.GetType().Name}");
         }
     }
 

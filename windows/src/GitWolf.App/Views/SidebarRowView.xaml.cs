@@ -9,7 +9,8 @@ internal enum SidebarKind { Header, LocalBranch, RemoteBranch, Tag, Stash, Remot
 
 internal sealed record SidebarRow(
     SidebarKind Kind, SidebarKind Section, string Title, string Trailing = "",
-    string? Hash = null, Branch? Branch = null, Stash? Stash = null, bool IsOpen = false, string? Tip = null);
+    string? Hash = null, Branch? Branch = null, Stash? Stash = null, bool IsOpen = false, string? Tip = null,
+    bool Annotated = false);
 
 /// <summary>
 /// A place in the list. Its row changes without the list being told, so the row stays on screen
@@ -93,17 +94,21 @@ public sealed partial class SidebarRowView : UserControl
             ? $"{branch.Name}\nDouble-click to check out" : header || note ? null : row.Tip ?? row.Title);
 
         CurrentMark.Visibility = row.Kind == SidebarKind.LocalBranch && current ? Visibility.Visible : Visibility.Collapsed;
-        if (row.Kind is SidebarKind.LocalBranch or SidebarKind.RemoteBranch)
+        // A remote branch's title already has the remote's name taken off.
+        var look = row.Kind switch
         {
-            // A remote branch's title already has the remote's name taken off.
-            var look = FileIcons.BranchNamed(row.Title);
+            SidebarKind.LocalBranch or SidebarKind.RemoteBranch => FileIcons.BranchNamed(row.Title),
+            SidebarKind.Tag => FileIcons.TagNamed(row.Title, row.Annotated),
+            _ => null,
+        };
+        if (look is not null)
+        {
             DrawnIcon.Content = FileIconView.Symbol(look.Value!, FileIconView.Brush(look.Color), 14);
             return;
         }
         var (shape, brush) = row.Kind switch
         {
             SidebarKind.RemoteGroup => (Icons.Cloud, Palette.Ref(RefKind.Remote)),
-            SidebarKind.Tag => (Icons.Tag, Palette.Ref(RefKind.Tag)),
             SidebarKind.Stash => (Icons.Stash, Palette.Ref(RefKind.Head)),
             _ => ((Icons.Shape?)null, Palette.Ref(RefKind.Head)),
         };

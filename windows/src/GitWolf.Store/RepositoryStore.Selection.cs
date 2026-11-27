@@ -16,6 +16,8 @@ public sealed partial class RepositoryStore
             ClearSelection();
             Notify(nameof(Mode));
             Notify(nameof(CanPatch));
+            if (value == StoreMode.PullRequests) _ = PullRequests.LoadIfNeededAsync();
+            if (value == StoreMode.Issues) _ = Issues.LoadIfNeededAsync();
         }
     }
 
@@ -32,6 +34,24 @@ public sealed partial class RepositoryStore
     /// <summary>The latest diff / commit-detail load, so callers can await it.</summary>
     public Task PendingLoad { get; private set; } = Task.CompletedTask;
 
+    private bool _detailPending;
+    private bool _diffPending;
+
+    /// <summary>
+    /// True while a newly picked commit, stash or file is still being read. Until it is false,
+    /// <see cref="Diff"/> and the commit's files can belong to what was picked before.
+    /// </summary>
+    public bool IsLoadingSelection => _detailPending || _diffPending;
+
+    private void SetPending(bool detail, bool diff)
+    {
+        var was = IsLoadingSelection;
+        (_detailPending, _diffPending) = (detail, diff);
+        if (was == IsLoadingSelection) return;
+        Notify(nameof(IsLoadingSelection));
+        Notify(nameof(CanPatch));
+    }
+
     private void ClearSelection()
     {
         _diffToken++;
@@ -42,6 +62,7 @@ public sealed partial class RepositoryStore
         SetDiff(null);
         SetCommitDetails([], "");
         ClearStash();
+        SetPending(false, false);
     }
 
     /// <summary>
@@ -87,6 +108,7 @@ public sealed partial class RepositoryStore
         _diffToken++;
         SetSelectedTarget(null);
         SetDiff(null);
+        SetPending(_detailPending, false);
     }
 
     public void SelectCommit(string? id)
@@ -94,12 +116,15 @@ public sealed partial class RepositoryStore
         if (id == SelectedCommitId) return;
         _diffToken++;
         _commitToken++;
+        var commit = Commits.FirstOrDefault(c => c.Id == id);
+        // Said first, so what follows is not drawn half done.
+        SetPending(commit is not null, false);
         SetSelectedCommit(id);
         SetSelectedTarget(null);
         SetDiff(null);
         SetCommitDetails([], "");
-        if (Commits.FirstOrDefault(c => c.Id == id) is { } commit)
-            PendingLoad = LoadCommitAsync(commit, _commitToken);
+        if (commit is not null) PendingLoad = LoadCommitAsync(commit, _commitToken);
+        if (id is not null) _ = LoadChecksAsync(id);
     }
 
     private async Task LoadCommitAsync(Commit commit, int token)
@@ -117,11 +142,9 @@ public sealed partial class RepositoryStore
 
         if (token != _commitToken) return;
         SetCommitDetails(files, message);
-        if (files.Count > 0)
-        {
-            SelectChange(files[0], DiffSource.ForCommit(commit.Hash));
-            await PendingLoad;
-        }
+        if (files.Count > 0) SelectChange(files[0], DiffSource.ForCommit(commit.Hash));
+        SetPending(false, _diffPending);
+        if (files.Count > 0) await PendingLoad;
     }
 
     public void Reveal(string hash)
@@ -137,6 +160,7 @@ public sealed partial class RepositoryStore
     {
         if (target == SelectedTarget) return;
         ClearLineSelection();
+        SetPending(_detailPending, target is not null);
         SetSelectedTarget(target);
         if (target is { } t)
         {
@@ -168,9 +192,13 @@ public sealed partial class RepositoryStore
             Trace.TraceWarning($"Loading diff failed: {e.GetType().Name}");
             result = FileDiff.Empty;
         }
-        if (token != _diffToken || Equals(Diff, result)) return;
-        ClearLineSelection();
-        SetDiff(result);
+        if (token != _diffToken) return;
+        if (!Equals(Diff, result))
+        {
+            ClearLineSelection();
+            SetDiff(result);
+        }
+        SetPending(_detailPending, false);
     }
 
     private async Task LoadHeadMessageAsync()
@@ -194,7 +222,7 @@ public sealed partial class RepositoryStore
     /// binaries, truncated or non-UTF-8 diffs, which can't be patched safely).
     /// </summary>
     public bool CanPatch =>
-        Mode == StoreMode.Changes && SelectedTarget is { OriginalPath: null } target && Diff?.CanPatch == true
+        !_diffPending && Mode == StoreMode.Changes && SelectedTarget is { OriginalPath: null } target && Diff?.CanPatch == true
         && (target.Source == DiffSource.Staged || target.Source == DiffSource.Unstaged);
 
     public void ClearLineSelection()

@@ -5,18 +5,25 @@ namespace GitWolf.Core;
 // Pulling, and setting local work aside to do it.
 public sealed partial class GitRepository
 {
-    public Task PullAsync() => PullAsync(rebase: false);
+    public Task PullAsync() => PullAsync(PullStrategy.Merge);
 
     /// <summary>Fetches and integrates the upstream branch, by merging or by rebasing.</summary>
-    public async Task PullAsync(bool rebase)
+    public Task PullAsync(bool rebase) => PullAsync(rebase ? PullStrategy.Rebase : PullStrategy.Merge);
+
+    public async Task PullAsync(PullStrategy strategy)
     {
-        var net = await NetworkGitAsync();
-        if (rebase)
+        var net = await RemoteGitAsync(await BranchRemoteAsync(await CurrentBranchAsync(), push: false));
+        if (strategy == PullStrategy.FastForwardOnly)
+        {
+            await net.RunAsync("pull", "--ff-only", "--no-edit");
+            return;
+        }
+        if (strategy == PullStrategy.Rebase)
         {
             var already = InProgressOperation() is not null;
             try
             {
-                await net.RunAsync(["pull", "--rebase", "--autostash", "--no-edit"]);
+                await net.RunAsync("pull", "--rebase", "--autostash", "--no-edit");
             }
             catch (GitException) when (!already && InProgressOperation() is not null)
             {
@@ -26,11 +33,11 @@ public sealed partial class GitRepository
         }
         try
         {
-            await net.RunAsync(["pull", "--no-edit"]);
+            await net.RunAsync("pull", "--no-edit");
         }
         catch (GitException error) when (error.Stderr.Contains("divergent branches"))
         {
-            await net.RunAsync(["pull", "--no-edit", "--no-rebase"]);
+            await net.RunAsync("pull", "--no-edit", "--no-rebase");
         }
     }
 
@@ -41,7 +48,10 @@ public sealed partial class GitRepository
     /// back when the pull fails as well. False means it couldn't be restored cleanly, in which case
     /// git keeps the stash.
     /// </summary>
-    public async Task<bool> PullWithStashAsync(bool rebase)
+    public Task<bool> PullWithStashAsync(bool rebase) =>
+        PullWithStashAsync(rebase ? PullStrategy.Rebase : PullStrategy.Merge);
+
+    public async Task<bool> PullWithStashAsync(PullStrategy strategy)
     {
         var before = await StashHashesAsync();
         await StashPushAsync("Changes set aside to pull");
@@ -49,7 +59,7 @@ public sealed partial class GitRepository
         var mine = (await StashHashesAsync()).Except(before).FirstOrDefault();
         try
         {
-            await PullAsync(rebase);
+            await PullAsync(strategy);
         }
         catch (Exception pullError)
         {
@@ -62,7 +72,7 @@ public sealed partial class GitRepository
     }
 
     private async Task<List<string>> StashHashesAsync() =>
-        (await Git.RunStringAsync(["stash", "list", "--format=%H"], readOnly: true))
+        (await Git.RunStringAsync(["stash", "list", "--no-show-signature", "--format=%H"], readOnly: true))
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     private async Task<bool> RestoreStashAsync(string hash)

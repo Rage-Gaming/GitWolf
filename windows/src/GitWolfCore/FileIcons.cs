@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace GitWolf.Core;
 
 public enum IconGlyph
@@ -18,8 +20,8 @@ public enum IconGlyph
 /// <param name="DarkText">Use dark text on the tile, for light colours such as JavaScript yellow.</param>
 public sealed record FileIcon(string Name, IconGlyph Glyph, string? Value, uint Color, bool DarkText = false);
 
-/// <summary>Icons for files, folders and branches. Ported from FileIcons.swift.</summary>
-public static class FileIcons
+/// <summary>Icons for files, folders, branches and tags. Ported from FileIcons.swift.</summary>
+public static partial class FileIcons
 {
     private static readonly FileIcon Generic = Symbol("File", "doc", 0x8E8E93);
     private static readonly FileIcon Env = Symbol("Environment", "key.fill", 0xECD53F);
@@ -123,6 +125,33 @@ public static class FileIcons
         // `123-fix-login` looks like an issue branch.
         return first.Length > 0 && first.All(char.IsDigit) ? BranchPrefixes["issue"] : BranchDefault;
     }
+
+    /// <summary>
+    /// The icon for a tag, from its name: releases, pre-releases and deploy markers, and a plain tag
+    /// otherwise (outlined when it is lightweight).
+    /// </summary>
+    public static FileIcon TagNamed(string name, bool annotated = true)
+    {
+        var lower = name.ToLowerInvariant();
+        bool Has(params string[] words) => words.Any(w => lower.Contains(w, StringComparison.Ordinal));
+        if (Has("nightly", "daily")) return Symbol("Nightly", "moon.stars.fill", 0x5C6BC0);
+        if (Has("-rc", ".rc", "rc.") || EndsWith(lower, "rc") && lower.Any(char.IsDigit))
+            return Symbol("Release candidate", "flag.checkered", 0x7E57C2);
+        if (Has("alpha", "beta", "preview", "snapshot", "-pre", "canary", "-dev"))
+            return Symbol("Pre-release", "testtube.2", 0xAB47BC);
+        if (lower is "latest" or "stable" or "current") return Symbol("Latest", "checkmark.seal.fill", 0x43A047);
+        if (Has("lts")) return Symbol("Long-term support", "shield.fill", 0x26A69A);
+        if (Has("deploy", "prod", "staging", "live")) return Symbol("Deploy", "paperplane.fill", 0x29B6F6);
+        if (Has("backup", "archive", "old", "legacy")) return Symbol("Archive", "archivebox.fill", 0x8E8E93);
+        if (MajorRelease().IsMatch(lower)) return Symbol("Major release", "star.circle.fill", 0xFFB300);
+        return Symbol(Version().IsMatch(lower) ? "Release" : "Tag", annotated ? "tag.fill" : "tag", 0xFF9800);
+    }
+
+    [GeneratedRegex(@"^v?[1-9][0-9]*\.0(\.0)?\z")]
+    private static partial Regex MajorRelease();
+
+    [GeneratedRegex(@"^v?[0-9]+(\.[0-9]+)+\z")]
+    private static partial Regex Version();
 
     private static bool StartsWith(string text, string prefix) => text.StartsWith(prefix, StringComparison.Ordinal);
     private static bool EndsWith(string text, string suffix) => text.EndsWith(suffix, StringComparison.Ordinal);

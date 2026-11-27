@@ -9,8 +9,8 @@ public sealed class AuthorAvatarTests
 {
     private static readonly RemoteLocation Repo = new("github.com", "owner/repo");
 
-    private static HttpTransport Reply(string body, HttpStatusCode status = HttpStatusCode.OK) =>
-        _ => Task.FromResult((Encoding.UTF8.GetBytes(body), status));
+    private static AvatarTransport Reply(string body, HttpStatusCode status = HttpStatusCode.OK) =>
+        _ => Task.FromResult(new AvatarResponse(Encoding.UTF8.GetBytes(body), status));
 
     [Fact]
     public void PrivateGitHubAddressesNameTheirPicture()
@@ -39,7 +39,7 @@ public sealed class AuthorAvatarTests
             ]
             """;
 
-        var found = await AuthorAvatars.FetchAsync(Repo, Reply(body));
+        var found = (await AuthorAvatars.FetchPageAsync(Repo, 1, Reply(body))).Found;
 
         Assert.Equal(["a@example.com", "c@example.com"], found.Keys.Order());
         Assert.Equal("https://avatars.githubusercontent.com/u/1?s=96", found["A@Example.com"].AbsoluteUri);
@@ -48,15 +48,21 @@ public sealed class AuthorAvatarTests
     [Fact]
     public async Task FailuresAndOtherHostsGiveNoPictures()
     {
-        Assert.Empty(await AuthorAvatars.FetchAsync(Repo, Reply("{}", HttpStatusCode.Forbidden)));
-        Assert.Empty(await AuthorAvatars.FetchAsync(Repo, Reply("not json")));
-        Assert.Empty(await AuthorAvatars.FetchAsync(Repo, _ => throw new HttpRequestException()));
+        foreach (var failing in new[]
+        {
+            Reply("{}", HttpStatusCode.Forbidden), Reply("not json"), _ => throw new HttpRequestException(),
+        })
+        {
+            var page = await AuthorAvatars.FetchPageAsync(Repo, 1, failing);
+            Assert.True(page.Failed);
+            Assert.Empty(page.Found);
+        }
 
         var asked = false;
-        HttpTransport never = _ => { asked = true; return Reply("[]")(_); };
-        await AuthorAvatars.FetchAsync(new("gitlab.com", "owner/repo"), never);
-        await AuthorAvatars.FetchAsync(new("github.com", "owner/.."), never);
-        await AuthorAvatars.FetchAsync(new("github.com", "owner/repo?x=1"), never);
+        AvatarTransport never = _ => { asked = true; return Reply("[]")(_); };
+        await AuthorAvatars.FetchPageAsync(new("gitlab.com", "owner/repo"), 1, never);
+        await AuthorAvatars.FetchPageAsync(new("github.com", "owner/.."), 1, never);
+        await AuthorAvatars.FetchPageAsync(new("github.com", "owner/repo?x=1"), 1, never);
         Assert.False(asked);
     }
 }

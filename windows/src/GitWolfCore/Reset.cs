@@ -32,7 +32,7 @@ public sealed partial class GitRepository
     public async Task<List<ReflogEntry>> ReflogAsync(int limit = 200)
     {
         var output = await Git.RunStringAsync(
-            ["reflog", "show", "-n", $"{limit}", "--format=%H%x1f%ct%x1f%gs", "HEAD", "--"], readOnly: true);
+            ["reflog", "show", "--no-show-signature", "-n", $"{limit}", "--format=%H%x1f%ct%x1f%gs", "HEAD", "--"], readOnly: true);
         var entries = new List<ReflogEntry>();
         foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {

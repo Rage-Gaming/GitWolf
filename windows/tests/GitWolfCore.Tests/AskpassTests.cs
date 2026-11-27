@@ -39,7 +39,6 @@ public sealed class AskpassTests : IDisposable
     [InlineData("https://example.invalid/o/r.git", "protocol=https\nhost=example.invalid\n", false)]
     [InlineData("git@example.invalid:o/r.git", "protocol=https\nhost=example.invalid\n", false)]
     [InlineData("https://me@Example.Invalid/o/r", "protocol=https\nhost=Example.Invalid\n", false)]
-    [InlineData("https://example.invalid:8443/o/r", "protocol=https\nhost=example.invalid:8443\n", false)]
     [InlineData("https://example.invalid/o/r", "protocol=https\nhost=example.invalid\npath=o/r\n", true)]
     public async Task AnswersForTheAccountsHost(string remoteUrl, string request, bool useHttpPath)
     {
@@ -48,6 +47,18 @@ public sealed class AskpassTests : IDisposable
 
         Assert.Contains("username=octo\n", text);
         Assert.Contains($"password={Token}\n", text);
+    }
+
+    [Fact]
+    public async Task ThePortIsTheAccountsNotTheRemotes()
+    {
+        const string other = "protocol=https\nhost=example.invalid:9999\n";
+        var account = new GitCredential("example.invalid:8443", "octo", Token);
+
+        var text = await FillAsync(account, "https://example.invalid:8443/o/r",
+            "protocol=https\nhost=example.invalid:8443\n");
+        Assert.Contains($"password={Token}\n", text);
+        await Assert.ThrowsAsync<GitException>(() => FillAsync(account, "https://example.invalid:9999/o/r", other));
     }
 
     [Theory]
@@ -71,7 +82,7 @@ public sealed class AskpassTests : IDisposable
     public async Task PlainHttpNeedsAnHttpAccount()
     {
         const string request = "protocol=http\nhost=nas.invalid:3000\n";
-        var secure = new GitCredential("nas.invalid", "me", "t");
+        var secure = new GitCredential("nas.invalid:3000", "me", "t");
 
         await Assert.ThrowsAsync<GitException>(() => FillAsync(secure, "http://nas.invalid:3000/o/r", request));
         var text = await FillAsync(secure with { Scheme = "http" }, "http://nas.invalid:3000/o/r", request);

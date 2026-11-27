@@ -11,9 +11,29 @@ public sealed partial class TopBarView : UserControl
 {
     private RepositoryStore? _store;
 
-    public TopBarView() => InitializeComponent();
+    public TopBarView()
+    {
+        InitializeComponent();
+        AddSyncMenus();
+    }
 
     internal event Action? JumpRequested;
+    internal event Action? NotificationsRequested;
+
+    /// <summary>The unread count beside the bell.</summary>
+    internal void ShowUnread(int count)
+    {
+        BellCount.Text = count > 99 ? "99+" : count.ToString();
+        BellCount.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>A tab for pull requests or issues, offered when the remote's provider has them.</summary>
+    private static void ShowTab(Button tab, Border selected, bool supported, bool current)
+    {
+        tab.Visibility = supported ? Visibility.Visible : Visibility.Collapsed;
+        selected.Visibility = current ? Visibility.Visible : Visibility.Collapsed;
+        tab.Opacity = current ? 1 : 0.6;
+    }
 
     /// <summary>The empty stretch that drags the window.</summary>
     internal UIElement DragRegion => DragArea;
@@ -30,6 +50,9 @@ public sealed partial class TopBarView : UserControl
         ChangesSelected.Visibility = changes ? Visibility.Visible : Visibility.Collapsed;
         HistoryTab.Opacity = history ? 1 : 0.6;
         ChangesTab.Opacity = changes ? 1 : 0.6;
+        ShowTab(PullsTab, PullsSelected, store.Supports(CollabKind.PullRequest), store.Mode == StoreMode.PullRequests);
+        ShowTab(IssuesTab, IssuesSelected, store.Supports(CollabKind.Issue), store.Mode == StoreMode.Issues);
+        PullsLabel.Text = store.PullRequestsTitle.StartsWith("Merge", StringComparison.Ordinal) ? "Merges" : "Pulls";
         Badge.Visibility = status.ChangeCount > 0 ? Visibility.Visible : Visibility.Collapsed;
         BadgeText.Text = status.ChangeCount.ToString();
         PullCount.Text = status.Behind > 0 ? status.Behind.ToString() : "";
@@ -82,8 +105,13 @@ public sealed partial class TopBarView : UserControl
     private void OnTab(object sender, RoutedEventArgs e)
     {
         if (_store is { } store)
-            store.Mode = ReferenceEquals(sender, ChangesTab) ? StoreMode.Changes : StoreMode.History;
+            store.Mode = ReferenceEquals(sender, ChangesTab) ? StoreMode.Changes
+                : ReferenceEquals(sender, PullsTab) ? StoreMode.PullRequests
+                : ReferenceEquals(sender, IssuesTab) ? StoreMode.Issues
+                : StoreMode.History;
     }
+
+    private void OnNotifications(object sender, RoutedEventArgs e) => NotificationsRequested?.Invoke();
 
     private void OnFetch(object sender, RoutedEventArgs e) => _ = _store?.FetchAsync();
     private void OnPull(object sender, RoutedEventArgs e) => _ = _store?.PullAsync();

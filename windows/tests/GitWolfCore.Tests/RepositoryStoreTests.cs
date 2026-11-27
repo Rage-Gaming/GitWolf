@@ -22,7 +22,6 @@ public sealed class RepositoryStoreTests : IDisposable
         public int CommitPageSize => 100;
         public int AutoFetchMinutes => 0;
         public GitRepository Configure(GitRepository repo) => repo;
-        public ProviderKind? AccountKindForHost(string host) => null;
     }
 
     private async Task<RepositoryStore> DirtyRepoStoreAsync()
@@ -129,7 +128,7 @@ public sealed class RepositoryStoreTests : IDisposable
     });
 
     /// <summary>Runs an async test on one thread, like the UI thread the store requires.</summary>
-    private static class SingleThread
+    internal static class SingleThread
     {
         public static void Run(Func<Task> test)
         {

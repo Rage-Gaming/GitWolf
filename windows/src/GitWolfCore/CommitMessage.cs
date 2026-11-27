@@ -37,6 +37,22 @@ public static partial class CommitMessage
         return length > SubjectLimit ? length : null;
     }
 
+    /// <summary>Adds a footer line such as `Closes #12` (after a blank line), unless it is already there.</summary>
+    public static string AddReference(string keyword, int number, string message)
+    {
+        var line = $"{keyword} #{number}";
+        var trimmed = message.ReplaceLineEndings("\n").Trim();
+        var lines = trimmed.Split('\n');
+        if (lines.Contains(line)) return message;
+        if (trimmed.Length == 0) return line;
+        // Join an existing footer block of references, otherwise start a new paragraph.
+        var gap = lines.Length > 1 && Reference().IsMatch(lines[^1]) ? "\n" : "\n\n";
+        return trimmed + gap + line;
+    }
+
+    [GeneratedRegex(@"^(Closes|Fixes|Resolves|Refs|Related to) #\d+$")]
+    private static partial Regex Reference();
+
     [GeneratedRegex(@"^[a-z]+(\([^)\n]*\))?!?:\s*")]
     private static partial Regex Prefix();
 }
@@ -71,7 +87,7 @@ public sealed partial class GitRepository
     {
         try
         {
-            var output = await Git.RunStringAsync(["log", "-n", $"{limit * 3}", "--format=%B%x00"], readOnly: true);
+            var output = await Git.RunStringAsync(["log", "--no-show-signature", "-n", $"{limit * 3}", "--format=%B%x00"], readOnly: true);
             return output.Split('\0').Select(m => m.Trim()).Where(m => m.Length > 0).Distinct().Take(limit).ToList();
         }
         catch (GitException)

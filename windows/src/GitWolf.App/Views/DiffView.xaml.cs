@@ -8,6 +8,9 @@ namespace GitWolf.App.Views;
 
 public sealed partial class DiffView : UserControl
 {
+    private sealed record Highlights(
+        Dictionary<int, List<SyntaxToken>> Tokens, Dictionary<int, IReadOnlyList<TextSpan>> Changes);
+
     /// <summary>Advance width of 13px Consolas.</summary>
     private const double CharWidth = 7.15;
     private const double GutterWidth = 112;
@@ -16,6 +19,8 @@ public sealed partial class DiffView : UserControl
     private FileDiff? _diff;
     private string _path = "";
     private Dictionary<int, List<SyntaxToken>> _tokens = [];
+    private IReadOnlyDictionary<int, IReadOnlyList<TextSpan>> _changes = NoChanges;
+    private static readonly Dictionary<int, IReadOnlyList<TextSpan>> NoChanges = [];
 
     public DiffView()
     {
@@ -45,6 +50,7 @@ public sealed partial class DiffView : UserControl
             if (_syntax == value) return;
             _syntax = value;
             _tokens = [];
+            _prepared = null;
             Repaint();
             if (value && _diff is { } diff) _ = HighlightAsync(diff, _path);
         }
@@ -76,12 +82,14 @@ public sealed partial class DiffView : UserControl
         var message = store.SelectedTarget is null ? "Select a file to see its changes"
             : diff is null ? ""
             : diff.IsBinary ? "Binary file"
-            : diff.Lines.Count == 0 ? "No textual changes"
+            : diff.Lines.Count == 0 ? (diff.IgnoresWhitespace ? "Only whitespace changed" : "No textual changes")
             : "";
-        Empty.Text = message;
+        Empty.Text = ShowImages(store, diff) ? "" : message;
 
         var shown = message.Length == 0 ? diff : null;
-        Tools.Visibility = shown is null ? Visibility.Collapsed : Visibility.Visible;
+        // The options stay reachable when ignoring whitespace leaves nothing to show.
+        Tools.Visibility = diff is null || (diff.IsBinary) || store.SelectedTarget is null
+            ? Visibility.Collapsed : Visibility.Visible;
         var staging = shown is not null && store.CanPatch ? Staging(store) : null;
         // Rows carry buttons and selection marks, so they are redrawn when either changes.
         var redraw = staging is null != _staging is null || staging?.Staged != _staging?.Staged
@@ -97,14 +105,19 @@ public sealed partial class DiffView : UserControl
         }
         _diff = shown;
         _path = path;
-        _tokens = [];
+        _unfolded.Clear();
+        // Colours worked out in advance are drawn with the text.
+        var done = Prepared(shown, path) is { IsCompletedSuccessfully: true } ready ? ready.Result : null;
+        _tokens = done?.Tokens ?? [];
+        _changes = done?.Changes ?? NoChanges;
         Added.Text = $"+{shown?.Lines.Count(l => l.Kind == DiffLineKind.Addition) ?? 0}";
         Removed.Text = $"\u2212{shown?.Lines.Count(l => l.Kind == DiffLineKind.Deletion) ?? 0}";
         // Every row gets the width of the longest line, so horizontal scrolling stays stable.
         var longest = shown is { Lines.Count: > 0 } ? shown.Lines.Max(DiffRowView.DisplayLength) : 0;
         _rowWidth = GutterWidth + longest * CharWidth;
         Rebind();
-        if (shown is not null && _syntax) _ = HighlightAsync(shown, path);
+        if (shown is not null && Prepared(shown, path) is not { IsCompletedSuccessfully: true })
+            _ = HighlightAsync(shown, path);
     }
 
     private void OnLayout(object sender, RoutedEventArgs e)
@@ -123,14 +136,35 @@ public sealed partial class DiffView : UserControl
         SplitSelected.Visibility = _split ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    private (FileDiff Diff, string Path, Task<Highlights> Work)? _prepared;
+
+    /// <summary>Starts colouring a diff that is about to be shown.</summary>
+    internal Task PrepareAsync(RepositoryStore store)
+    {
+        if (store.Diff is not { } diff || ReferenceEquals(diff, _diff)) return Task.CompletedTask;
+        return Start(diff, store.SelectedTarget?.Path ?? "");
+    }
+
+    private Task<Highlights> Start(FileDiff diff, string path)
+    {
+        var syntax = _syntax;
+        var work = Task.Run(() => new Highlights(
+            syntax ? SyntaxHighlighter.Tokens(diff, path) : [], diff.InlineRanges()));
+        _prepared = (diff, path, work);
+        return work;
+    }
+
+    private Task<Highlights>? Prepared(FileDiff? diff, string path) =>
+        _prepared is { } ready && ReferenceEquals(ready.Diff, diff) && ready.Path == path ? ready.Work : null;
+
     /// <summary>Tokenises off the UI thread; a result for a diff no longer shown is dropped.</summary>
     private async Task HighlightAsync(FileDiff diff, string path)
     {
         try
         {
-            var tokens = await Task.Run(() => SyntaxHighlighter.Tokens(diff, path));
-            if (!_syntax || !ReferenceEquals(_diff, diff) || path != _path || tokens.Count == 0) return;
-            _tokens = tokens;
+            var (tokens, changes) = await (Prepared(diff, path) ?? Start(diff, path));
+            if (!ReferenceEquals(_diff, diff) || path != _path || (tokens.Count == 0 && changes.Count == 0)) return;
+            (_tokens, _changes) = (_syntax ? tokens : [], changes);
             Repaint();
         }
         catch (Exception e)
@@ -152,7 +186,7 @@ public sealed partial class DiffView : UserControl
             foreach (var child in split.Children)
                 if (child is ListViewItem { ContentTemplateRoot: SplitRowView view } item
                     && Split.ItemFromContainer(item) is SplitRow row)
-                    view.Show(row, _tokens, _staging);
+                    view.Show(row, _tokens, _changes, _staging, Unfold);
     }
 
     /// <summary>Only the visible layout holds items, so the hidden one costs nothing.</summary>
@@ -161,21 +195,22 @@ public sealed partial class DiffView : UserControl
         ShowLayout();
         Lines.ItemsSource = null;
         Split.ItemsSource = null;
+        (_lineRows, _splitRows) = (null, null);
         if (_diff is null) return;
-        if (_split) Split.ItemsSource = SideBySide.Rows(_diff);
-        else Lines.ItemsSource = _diff.Lines;
+        if (_split) Split.ItemsSource = _splitRows = new(SideBySide.Rows(_diff, Rows(_diff)));
+        else Lines.ItemsSource = _lineRows = new(Rows(_diff));
     }
 
     private void OnSplitRow(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
         if (!args.InRecycleQueue && args.ItemContainer.ContentTemplateRoot is SplitRowView view && args.Item is SplitRow row)
-            view.Show(row, _tokens, _staging);
+            view.Show(row, _tokens, _changes, _staging, Unfold);
     }
 
     private void Render(DiffRowView view, DiffLine line) =>
         view.Show(line, _tokens.GetValueOrDefault(line.Id),
             Math.Max(_rowWidth + (_staging is null ? 0 : LineSelector.ColumnWidth), Lines.ActualWidth - 16),
-            _staging, Lines.ActualWidth);
+            _staging, Lines.ActualWidth, _changes.GetValueOrDefault(line.Id), Unfold);
 
     private void OnRow(ListViewBase sender, ContainerContentChangingEventArgs args)
     {

@@ -121,6 +121,51 @@ internal static class Dialogs
         }
     }
 
+    /// <summary>Shows what a repository's configuration runs and asks whether to allow it.</summary>
+    public static async Task<bool> TrustAsync(XamlRoot root, string name, RepositoryRisk risk)
+    {
+        const int shown = 20;
+        var list = new StackPanel { Spacing = 6 };
+        foreach (var setting in risk.Settings.Take(shown))
+        {
+            var value = setting.Value.Length > 200 ? setting.Value[..200] + "\u2026" : setting.Value;
+            var source = setting.Source == "this repository" ? "" : $"  ({setting.Source})";
+            list.Children.Add(new TextBlock
+            {
+                Text = $"{setting.Key} = {value}{source}", TextWrapping = TextWrapping.Wrap,
+                FontFamily = new FontFamily("Consolas"), FontSize = 12, IsTextSelectionEnabled = true,
+            });
+        }
+        // Everything is trusted together, so say when the list is cut short.
+        if (risk.Settings.Count > shown)
+            list.Children.Add(new TextBlock { Text = $"and {risk.Settings.Count - shown} more in .git/config" });
+        var content = new StackPanel { Spacing = 12, Width = 420 };
+        content.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Text = "Its configuration makes Git run programs or changes where sign-ins are sent. Trust it only "
+                + "if you know where this folder came from."
+                + (risk.BlocksCredential ? " Your saved account won\u2019t be used here while HTTP or proxy options are set." : ""),
+        });
+        content.Children.Add(new ScrollViewer { Content = list, MaxHeight = 260 });
+        var dialog = new ContentDialog
+        {
+            RequestedTheme = (root.Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default,
+            XamlRoot = root, Title = $"Trust \u201c{name}\u201d?", Content = content,
+            PrimaryButtonText = "Trust repository", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close,
+        };
+        try
+        {
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+        catch (Exception e)
+        {
+            // WinUI allows one dialog at a time. Not shown means not trusted.
+            Trace.TraceWarning($"The trust question could not be shown: {e.GetType().Name}");
+            return false;
+        }
+    }
+
     /// <summary>Asks before something destructive; Cancel is the default.</summary>
     public static async Task<bool> ConfirmAsync(XamlRoot root, string title, string message, string verb)
     {
@@ -154,11 +199,15 @@ internal static class Dialogs
             await store.AbortOperationAsync();
     }
 
+    /// <summary>Raised after text reaches the clipboard, so the window can say so.</summary>
+    public static event Action? Copied;
+
     public static void Copy(string text)
     {
         var package = new DataPackage();
         package.SetText(text);
         Clipboard.SetContent(package);
+        Copied?.Invoke();
     }
 
     /// <summary>Returns the trimmed text, or null when cancelled.</summary>

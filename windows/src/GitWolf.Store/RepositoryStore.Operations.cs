@@ -30,6 +30,16 @@ public sealed partial class RepositoryStore
         }
     }
 
+    /// <summary>Raised with a short message when an operation worth confirming has worked.</summary>
+    public event Action<string>? Succeeded;
+
+    private async Task<bool> AnnounceAsync(Task<bool> operation, string message)
+    {
+        var done = await operation;
+        if (done) Succeeded?.Invoke(message);
+        return done;
+    }
+
     private void SetBusy(bool busy, string? label)
     {
         IsBusy = busy;
@@ -85,7 +95,8 @@ public sealed partial class RepositoryStore
         if (PatchBuilder.Make(diff, ids, PatchAction.Stage) is not { } forward
             || PatchBuilder.Make(diff, ids, PatchAction.Discard) is not { } back)
             return Task.FromResult(false);
-        return PerformAsync("Stashing hunk…", r => r.StashHunkAsync(forward, back, target.Path, message));
+        return AnnounceAsync(
+            PerformAsync("Stashing hunk…", r => r.StashHunkAsync(forward, back, target.Path, message)), "Stashed");
     }
 
     private Task<bool> ApplyPatchAsync(FileDiff diff, ISet<int> ids, PatchAction action)
@@ -114,43 +125,13 @@ public sealed partial class RepositoryStore
     public Task<bool> ResolveConflictAsync(string path, ConflictSide side) =>
         PerformAsync("Resolving…", r => r.ResolveConflictAsync(path, side));
 
-    public Task<bool> FetchAsync() => PerformAsync("Fetching…", r => r.FetchAsync());
-
-    /// <summary>A pull that local work is in the way of sets <see cref="PullBlock"/> rather than an error.</summary>
-    public Task<bool> PullAsync()
-    {
-        var rebase = _settings.PullRebase;
-        return PerformAsync(rebase ? "Pulling (rebase)…" : "Pulling…", r => r.PullAsync(rebase), e =>
-        {
-            if (e is not GitException git || Core.PullBlock.Parse(git.Stderr) is not { } block) return false;
-            PullBlock = block;
-            return true;
-        });
-    }
-
-    public async Task<bool> StashAndPullAsync()
-    {
-        var (restored, rebase) = (false, _settings.PullRebase);
-        if (!await PerformAsync("Stashing and pulling…", async r => restored = await r.PullWithStashAsync(rebase)))
-            return false;
-        if (!restored)
-            ErrorMessage = "The pull finished, but your changes conflict with the new commits. "
-                + "Resolve any conflicted files. Your changes are also still saved in the stash list.";
-        return restored;
-    }
-
-
-    public Task<bool> PushAsync()
-    {
-        var (status, remotes) = (Status, Remotes);
-        return PerformAsync("Pushing…", r => r.PushAsync(status, remotes));
-    }
+    public Task<bool> FetchAsync() => AnnounceAsync(PerformAsync("Fetching…", r => r.FetchAsync()), "Fetched");
 
     public Task<bool> PushTagAsync(string name, string remote) =>
-        PerformAsync("Pushing tag…", r => r.PushTagAsync(name, remote));
+        AnnounceAsync(PerformAsync("Pushing tag…", r => r.PushTagAsync(name, remote)), "Tag pushed");
 
     public Task<bool> PushAllTagsAsync(string remote) =>
-        PerformAsync("Pushing tags…", r => r.PushAllTagsAsync(remote));
+        AnnounceAsync(PerformAsync("Pushing tags…", r => r.PushAllTagsAsync(remote)), "Tags pushed");
 
     /// <summary>Destructive: the UI must confirm first.</summary>
     public Task<bool> DeleteRemoteTagAsync(string name, string remote) =>
@@ -185,6 +166,7 @@ public sealed partial class RepositoryStore
             return false;
         DraftMessage = "";
         Amend = false;
+        Succeeded?.Invoke(amend ? "Commit amended" : "Committed");
         return true;
     }
 
@@ -232,7 +214,8 @@ public sealed partial class RepositoryStore
         });
 
     public Task<bool> DeleteTagAsync(string name) => PerformAsync("Deleting tag…", r => r.DeleteTagAsync(name));
-    public Task<bool> StashPushAsync(string message) => PerformAsync("Stashing…", r => r.StashPushAsync(message));
+    public Task<bool> StashPushAsync(string message) =>
+        AnnounceAsync(PerformAsync("Stashing…", r => r.StashPushAsync(message)), "Stashed");
     public Task<bool> StashApplyAsync(string reference) => PerformAsync("Applying stash…", r => r.StashApplyAsync(reference));
     public Task<bool> StashPopAsync(string reference) => PerformAsync("Popping stash…", r => r.StashPopAsync(reference));
     public Task<bool> StashDropAsync(string reference) => PerformAsync("Dropping stash…", r => r.StashDropAsync(reference));

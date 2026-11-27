@@ -72,7 +72,7 @@ public sealed class SecurityTests : IDisposable
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task RepositoryHooksDoNotRunDuringCredentialedFetch(bool withCredential)
+    public async Task RepositoryHooksDoNotRunDuringFetch(bool withCredential)
     {
         var remoteDir = Path.Combine(_dir, "remote");
         var workDir = Path.Combine(_dir, "work");
@@ -92,12 +92,34 @@ public sealed class SecurityTests : IDisposable
 
         var repo = new GitRepository(workDir)
         {
-            Credentials = withCredential ? host => new GitCredential(host, "me", "secret") : null,
+            Credentials = withCredential
+                ? host => Task.FromResult<GitCredential?>(new GitCredential(host, "me", "secret"))
+                : null,
             AskpassPath = "unused",
         };
         await Assert.ThrowsAsync<GitException>(repo.FetchAsync);
 
-        Assert.Equal(!withCredential, File.Exists(marker));
+        Assert.False(File.Exists(marker));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SubmoduleCommandsKeepTheTokenFromConfiguredPrograms(bool configuresProgram)
+    {
+        var git = await InitAsync(_dir);
+        await git.RunAsync(["remote", "add", "origin", "https://127.0.0.1:1/repo"]);
+        if (configuresProgram) await git.RunAsync(["config", "filter.x.smudge", "cat"]);
+        var repo = new GitRepository(_dir)
+        {
+            Credentials = host => Task.FromResult<GitCredential?>(new GitCredential(host, "me", "secret")),
+            AskpassPath = "unused",
+        };
+
+        var error = await Assert.ThrowsAsync<GitException>(
+            () => repo.AddSubmoduleAsync("https://127.0.0.1:1/lib", "lib"));
+
+        Assert.Equal(configuresProgram, error.Stderr.Contains("saved account", StringComparison.Ordinal));
     }
 
     private static async Task<GitRunner> InitAsync(string dir)

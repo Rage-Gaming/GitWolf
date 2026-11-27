@@ -42,6 +42,9 @@ public sealed partial class CommitDetailView : UserControl
         if (_shownHash != commit.Hash)
         {
             _shownHash = commit.Hash;
+            // The tick belongs to the commit that was copied.
+            CopiedAnimation.Stop();
+            CopiedPlayer.Stop();
             Author.Text = commit.AuthorName;
             var date = commit.Date.LocalDateTime;
             Date.Text = string.Create(CultureInfo.CurrentCulture, $"{date:d MMM yyyy} at {date:t}");
@@ -53,11 +56,24 @@ public sealed partial class CommitDetailView : UserControl
             _ = ShowSignatureAsync(store, commit.Hash);
         }
 
+        Checks.Show(store.Checks(commit.Hash));
+
         var source = DiffSource.ForCommit(commit.Hash);
         _syncing = true;
         ListSync.Apply(_files, store.CommitFiles.Select(f => new FileRow(f, source)).ToList(), r => r.File!.Path);
         Files.SelectedItem = _files.FirstOrDefault(r => r.File?.Path == store.SelectedTarget?.Path);
         _syncing = false;
+    }
+
+    internal PanelSplitter HeightSplitter => FilesSplitter;
+
+    internal double FilesListHeight => Files.ActualHeight;
+
+    /// <summary>A height chosen by dragging, or null to fit the files, up to a limit.</summary>
+    internal void SetFilesHeight(double? height)
+    {
+        Files.Height = height ?? double.NaN;
+        Files.MaxHeight = height ?? 190;
     }
 
     internal void ShowPicture()
@@ -87,13 +103,27 @@ public sealed partial class CommitDetailView : UserControl
         }
     }
 
+    private (string Hash, Task<CommitSignature?> Check)? _signature;
+
+    /// <summary>Starts checking the signature of a commit that is about to be shown.</summary>
+    internal Task PrepareAsync(RepositoryStore store)
+    {
+        if (store.SelectedCommit is not { } commit || commit.Hash == _shownHash) return Task.CompletedTask;
+        var repo = store.Repo;
+        var check = Task.Run(() => repo.SignatureAsync(commit.Hash));
+        _signature = (commit.Hash, check);
+        return check;
+    }
+
     private async Task ShowSignatureAsync(RepositoryStore store, string hash)
     {
         Signature.Visibility = Visibility.Collapsed;
         try
         {
             var repo = store.Repo;
-            var signature = await Task.Run(() => repo.SignatureAsync(hash));
+            // Already finished when prepared in time, so the badge appears with the rest.
+            var signature = await (_signature is { } ready && ready.Hash == hash
+                ? ready.Check : Task.Run(() => repo.SignatureAsync(hash)));
             if (signature is null || _shownHash != hash || !ReferenceEquals(store, _store)) return;
             // The end of a long key is the part people compare.
             var key = signature.Key.Length > 16 ? signature.Key[^16..] : signature.Key;
@@ -140,7 +170,21 @@ public sealed partial class CommitDetailView : UserControl
 
     private void OnCopy(object sender, RoutedEventArgs e)
     {
-        if (_store?.SelectedCommit is { } commit) Dialogs.Copy(commit.Hash);
+        if (_store?.SelectedCommit is not { } commit) return;
+        Dialogs.Copy(commit.Hash);
+        ShowCopied();
+    }
+
+    /// <summary>Draws a tick over the copy icon. Starts over when clicked again.</summary>
+    private void ShowCopied()
+    {
+        // The success colour of the current theme.
+        CopiedTick.SetColorProperty("Foreground", ActualTheme == ElementTheme.Light
+            ? Windows.UI.Color.FromArgb(255, 0x0F, 0x7B, 0x0F)
+            : Windows.UI.Color.FromArgb(255, 0x6C, 0xCB, 0x5F));
+        CopiedAnimation.Begin();
+        _ = CopiedPlayer.PlayAsync(
+            CopiedTick.Markers["NormalOffToNormalOn_Start"], CopiedTick.Markers["NormalOffToNormalOn_End"], false);
     }
 
     private void OnFileSelected(object sender, SelectionChangedEventArgs e)

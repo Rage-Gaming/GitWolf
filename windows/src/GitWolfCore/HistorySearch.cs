@@ -52,7 +52,7 @@ public sealed partial class GitRepository
         // Content searches would otherwise run the repository's text conversion commands.
         List<string> args =
         [
-            "--literal-pathspecs", "log", "--all", "--topo-order", "-z", "-n", $"{limit}",
+            "--literal-pathspecs", "log", "--no-show-signature", "--all", "--topo-order", "-z", "-n", $"{limit}",
             "--no-textconv", "--no-ext-diff", $"--format={LogParser.Format}", .. query.Arguments(),
         ];
         var path = query.Path.Trim();

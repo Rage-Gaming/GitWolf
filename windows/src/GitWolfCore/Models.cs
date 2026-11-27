@@ -156,6 +156,8 @@ public sealed record DiffLine(
     string Raw)
 {
     public bool IsChange => Kind is DiffLineKind.Addition or DiffLineKind.Deletion;
+    /// <summary>Stands for folded unchanged lines; see <see cref="DiffFolding"/>.</summary>
+    public bool IsFold => Id < 0;
 }
 
 public readonly record struct DiffHunk(int Index, int OldStart, int NewStart, string Section);
@@ -164,6 +166,7 @@ public sealed record FileDiff
 {
     public bool Equals(FileDiff? other) =>
         other is not null && IsBinary == other.IsBinary && IsTruncated == other.IsTruncated
+        && IgnoresWhitespace == other.IgnoresWhitespace
         && Additions == other.Additions && Deletions == other.Deletions && Header.SequenceEqual(other.Header)
         && Hunks.SequenceEqual(other.Hunks) && Lines.SequenceEqual(other.Lines);
 
@@ -177,6 +180,9 @@ public sealed record FileDiff
     public required int Deletions { get; init; }
     public required bool IsTruncated { get; init; }
 
+    /// <summary>Whitespace changes were left out, so the lines don't add up to a patch.</summary>
+    public bool IgnoresWhitespace { get; init; }
+
     public static readonly FileDiff Empty = new()
     {
         Header = [], Hunks = [], Lines = [], IsBinary = false, Additions = 0, Deletions = 0, IsTruncated = false,
@@ -184,7 +190,7 @@ public sealed record FileDiff
 
     /// <summary>Whether hunks/lines of this diff can safely be turned back into a patch.</summary>
     public bool CanPatch =>
-        !IsBinary && !IsTruncated && Hunks.Count > 0 && Header.Count > 0
+        !IsBinary && !IsTruncated && !IgnoresWhitespace && Hunks.Count > 0 && Header.Count > 0
         && !Lines.Any(l => l.Raw.Contains('�'));
 
     public HashSet<int> ChangedLineIds(int hunkIndex) =>

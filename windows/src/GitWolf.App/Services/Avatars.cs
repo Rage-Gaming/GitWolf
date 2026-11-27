@@ -8,30 +8,56 @@ using Microsoft.UI.Xaml.Shapes;
 
 namespace GitWolf.App.Services;
 
-/// <summary>The profile pictures known this session. Used on the UI thread only.</summary>
+/// <summary>Shows authors' profile pictures from the cache. Used on the UI thread only.</summary>
 internal static class Avatars
 {
-    private static readonly Dictionary<string, Uri> Known = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly AvatarCache Cache = new(System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GitWolf", "avatars"));
+    /// <summary>One per picture, shared by every place showing it, so a new picture appears in all of them.</summary>
     private static readonly Dictionary<Uri, ImageBrush> Brushes = [];
-    private static readonly HashSet<string> Asked = new(StringComparer.OrdinalIgnoreCase);
+    private static bool _enabled = true;
 
-    public static bool Enabled { get; set; } = true;
+    /// <summary>Turning pictures off also deletes the saved ones.</summary>
+    public static bool Enabled
+    {
+        get => _enabled;
+        set
+        {
+            _enabled = value;
+            if (value) return;
+            Brushes.Clear();
+            Cache.Clear();
+        }
+    }
 
-    /// <summary>Raised when pictures were learnt or switched on or off, so rows can redraw.</summary>
+    /// <summary>Raised when rows should redraw: authors were learnt, or pictures switched on or off.</summary>
     public static event Action? Changed;
 
     public static void Refresh() => Changed?.Invoke();
 
-    /// <summary>Looks up a repository's authors, once per session.</summary>
-    public static async Task LoadAsync(RemoteLocation? location)
+    /// <summary>Saves what has not been written yet, before the app closes.</summary>
+    public static void Save() => Cache.Flush();
+
+    /// <summary>Repositories may be looked up again, for example after signing in.</summary>
+    public static void Forget() => Cache.Forget();
+
+    /// <summary>Looks up a repository's authors when the cache says it is worth asking.</summary>
+    public static async Task LoadAsync(
+        RemoteLocation? location, IReadOnlyList<Commit> commits, AccountStore accounts)
     {
-        if (!Enabled || location is null || !AuthorAvatars.CanLookUp(location) || !Asked.Add(location.Path)) return;
+        if (!Enabled || location is null || commits.Count == 0) return;
         try
         {
-            var found = await Task.Run(() => AuthorAvatars.FetchAsync(location));
-            if (found.Count == 0) return;
-            foreach (var (email, picture) in found) Known[email] = picture;
-            Changed?.Invoke();
+            var learnt = await Task.Run(async () =>
+            {
+                if (!Cache.CanAsk(location)) return false;
+                // Only github.com's own token, which the lookup sends to api.github.com alone.
+                var token = location.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+                    && accounts.ForHost("github.com") is { Kind: ProviderKind.GitHub } account
+                        ? await accounts.SecretAsync(account) : null;
+                return await Cache.LookUpAsync(location, commits.Select(c => c.AuthorEmail).Distinct(), token);
+            });
+            if (learnt) Changed?.Invoke();
         }
         catch (Exception e)
         {
@@ -41,13 +67,12 @@ internal static class Avatars
     }
 
     /// <summary>
-    /// Covers the initials with the author's picture. Until it has downloaded, or if it can't be, the
-    /// brush is transparent and the initials show through.
+    /// Covers the initials with the author's picture: the saved one at once, then a newer one if it has
+    /// changed. Until there is one, the brush is empty and the initials show through.
     /// </summary>
     public static void Show(Ellipse target, string email)
     {
-        var address = !Enabled ? null
-            : Known.TryGetValue(email, out var known) ? known : AuthorAvatars.FromEmail(email);
+        var address = Enabled ? Cache.PictureFor(email) : null;
         if (address is null)
         {
             target.Fill = null;
@@ -55,12 +80,34 @@ internal static class Avatars
             return;
         }
         if (!Brushes.TryGetValue(address, out var brush))
-            Brushes[address] = brush = new ImageBrush
-            {
-                ImageSource = new BitmapImage(address) { DecodePixelWidth = 96 },
-                Stretch = Stretch.UniformToFill,
-            };
+        {
+            Brushes[address] = brush = new ImageBrush { Stretch = Stretch.UniformToFill };
+            Load(brush, address);
+        }
         target.Fill = brush;
         target.Visibility = Visibility.Visible;
+        if (Cache.IsStale(address)) _ = RefreshAsync(brush, address);
+    }
+
+    private static async Task RefreshAsync(ImageBrush brush, Uri address)
+    {
+        try
+        {
+            if (await Cache.RefreshAsync(address) && Enabled) Load(brush, address);
+        }
+        catch (Exception e)
+        {
+            Trace.TraceWarning($"Refreshing a profile picture failed: {e.GetType().Name}");
+        }
+    }
+
+    private static void Load(ImageBrush brush, Uri address)
+    {
+        if (Cache.CachedFile(address) is not { } file) return;
+        var image = new BitmapImage { DecodePixelWidth = 96 };
+        // A file that cannot be decoded is downloaded again later.
+        image.ImageFailed += (_, _) => Cache.Discard(address);
+        image.UriSource = new Uri(file);
+        brush.ImageSource = image;
     }
 }

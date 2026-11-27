@@ -35,7 +35,7 @@ public sealed partial class FileIconView : UserControl
     {
         _light = ActualTheme == ElementTheme.Light;
         // Tiles carry their own text colour; bare shapes sit directly on the panel.
-        var bare = icon.Glyph != IconGlyph.Letters && icon.Value != "swift";
+        var bare = icon.Glyph != IconGlyph.Letters;
         Content = Draw(_light && bare ? icon with { Color = OnLight(icon.Color) } : icon, Width);
     }
 
@@ -65,7 +65,7 @@ public sealed partial class FileIconView : UserControl
         return brush;
     }
 
-    /// <summary>A branch symbol at the given size, in its own colour.</summary>
+    /// <summary>A symbol at the given size, in its own colour.</summary>
     internal static FrameworkElement Symbol(string symbol, Brush brush, double size) => new Viewbox
     {
         Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center,
@@ -78,8 +78,6 @@ public sealed partial class FileIconView : UserControl
         return icon switch
         {
             { Glyph: IconGlyph.Letters, Value: { } text } => Tile(text, colour, icon.DarkText, size),
-            // The Swift symbol is a logo; its initials say the same.
-            { Glyph: IconGlyph.Symbol, Value: "swift" } => Tile("SW", colour, false, size),
             { Glyph: IconGlyph.Symbol, Value: { } symbol } => Symbol(symbol, colour, size * 0.94),
             { Glyph: IconGlyph.Folder } => Folder(icon.Value, colour, size),
             _ => React(colour, size),

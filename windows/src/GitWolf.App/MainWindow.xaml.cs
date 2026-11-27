@@ -33,7 +33,7 @@ public sealed partial class MainWindow : Window
         Avatars.Changed += () =>
         {
             History.ShowPictures();
-            Detail.ShowPicture();
+            if (!_holding) Detail.ShowPicture();
         };
         _workspace.Changed += Bind;
         Rail.Attach(_workspace);
@@ -50,16 +50,31 @@ public sealed partial class MainWindow : Window
         Settings.SplitChanged += split => _workspace.SplitDiff = Diff.IsSplit = split;
         _settings.Changed += OnSettingsChanged;
         Diff.SyntaxEnabled = _settings.State.SyntaxHighlighting;
+        Diff.ShowOptions(_settings.State.IgnoreWhitespace, _settings.State.FullFileDiffs);
+        Diff.OptionsChanged += (ignore, whole) =>
+            _settings.Update(_settings.State with { IgnoreWhitespace = ignore, FullFileDiffs = whole });
         Root.ActualThemeChanged += (_, _) => Theming.UpdateCaptionButtons(this, Root.ActualTheme);
         Root.Loaded += (_, _) => Theming.Apply(this, _settings.State);
         AddShortcuts();
+        AttachProvider();
 
         Activated += (_, e) =>
         {
-            if (e.WindowActivationState != WindowActivationState.Deactivated) _ = _store?.RequestRefresh();
+            if (e.WindowActivationState == WindowActivationState.Deactivated) return;
+            _ = _store?.RequestRefresh();
+            // Pictures on screen are checked for changes, and authors looked up if due.
+            Avatars.Refresh();
+            if (_store is { } store) LoadAvatars(store);
         };
-        Closed += (_, _) => _workspace.Dispose();
+        Closed += (_, _) =>
+        {
+            Avatars.Save();
+            _notifications.Dispose();
+            _workspace.Dispose();
+        };
         SetUpPanels();
+        // Starts over when something else is copied before it has faded.
+        Dialogs.Copied += () => ShowNotice("Copied");
         Bind();
     }
 
@@ -131,7 +146,7 @@ public sealed partial class MainWindow : Window
         var window = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var git = _settings.CustomGitPath;
         var folder = clone
-            ? await CreateDialogs.CloneAsync(Root.XamlRoot, window, git)
+            ? await CreateDialogs.CloneAsync(Root.XamlRoot, window, git, _settings.Accounts)
             : await CreateDialogs.NewAsync(Root.XamlRoot, window, git);
         if (folder is not null) await OpenAllAsync([folder]);
     }
@@ -157,11 +172,18 @@ public sealed partial class MainWindow : Window
         var selected = _workspace.Selected;
         if (!ReferenceEquals(selected, _store))
         {
-            if (_store is not null) _store.PropertyChanged -= OnStoreChanged;
+            if (_store is not null)
+            {
+                _store.PropertyChanged -= OnStoreChanged;
+                _store.Succeeded -= ShowNotice;
+            }
             _store = selected;
+            ReleaseDetail();
+            if (selected is { IsLoadingSelection: true }) HoldDetail();
             if (selected is not null)
             {
                 selected.PropertyChanged += OnStoreChanged;
+                selected.Succeeded += ShowNotice;
                 History.Attach(selected);
                 Changes.Attach(selected);
                 Sidebar.Attach(selected);
@@ -169,7 +191,9 @@ public sealed partial class MainWindow : Window
             ShowError(selected?.ErrorMessage);
             Title = selected is null ? "GitWolf" : $"{selected.Name} — GitWolf";
             if (selected?.PullBlock is not null) DispatcherQueue.TryEnqueue(ShowPullBlock);
+            if (selected?.RejectedPush is not null) DispatcherQueue.TryEnqueue(ShowRejectedPush);
             if (selected?.HookFailure is not null) DispatcherQueue.TryEnqueue(ShowHookFailure);
+            if (selected?.Untrusted is not null) DispatcherQueue.TryEnqueue(ShowTrustQuestion);
         }
         ShowAll();
     }
@@ -180,6 +204,23 @@ public sealed partial class MainWindow : Window
         if (_store is not { HookFailure: { } failure } store) return;
         store.HookFailure = null;
         _ = CommitDialogs.HookFailedAsync(Root.XamlRoot, store, failure);
+    }
+
+    private async void ShowTrustQuestion()
+    {
+        if (_store is not { Untrusted: { } risk } store) return;
+        try
+        {
+            if (await Dialogs.TrustAsync(Root.XamlRoot, store.Name, risk)) await store.TrustAsync(risk);
+            // Declined: the repository stays unread, and the banner says why.
+            else store.ErrorMessage = new UntrustedRepositoryException(risk).Message
+                + " Select it again to be asked once more.";
+        }
+        catch (Exception e)
+        {
+            // An event handler can't pass the failure on.
+            Trace.TraceWarning($"Trusting a repository failed: {e.GetType().Name}");
+        }
     }
 
     private void ShowPullBlock()
@@ -196,11 +237,11 @@ public sealed partial class MainWindow : Window
         Home.Visibility = When(store is null);
         if (store is null) Dashboard.Show(_workspace.Recents);
         Repository.Visibility = When(loaded);
-        Loading.IsActive = store is not null && !loaded;
+        Loading.IsActive = store is { Untrusted: null } && !loaded;
         SetTitleBar(loaded ? (UIElement)TopBar.DragRegion : HomeDragArea);
         ShowBusy();
         if (store is null || !loaded) return;
-        _ = Avatars.LoadAsync(store.RemoteLocation);
+        LoadAvatars(store);
         Banner.Show(store);
         ToolBanners.Show(store);
 
@@ -211,6 +252,7 @@ public sealed partial class MainWindow : Window
         if (store.Mode == StoreMode.Compare) Compare.Show(store);
         StashPanel.Visibility = When(store.Mode == StoreMode.Stash);
         ShowStash();
+        ShowCollab();
         TopBar.Show(store);
         History.ShowCommits();
         Changes.ShowFiles();
@@ -221,10 +263,17 @@ public sealed partial class MainWindow : Window
     /// <summary>Right panel: commit header, files and diff in history; only the diff in changes.</summary>
     private void ShowDetail()
     {
-        if (_store is not { } store) return;
+        // Redrawn in one step once the new selection has been read.
+        if (_holding || _store is not { } store) return;
         var history = store.Mode == StoreMode.History;
         var comparing = store.Mode == StoreMode.Compare;
         // Nothing to show on the right until a commit, or a compared file, is picked.
+        // Pull requests and issues have their own detail view in this panel.
+        if (CollabKindOf(store.Mode) is not null)
+        {
+            Detail.Visibility = Diff.Visibility = Conflict.Visibility = NoCommit.Visibility = Visibility.Collapsed;
+            return;
+        }
         var previewing = comparing || store.Mode == StoreMode.Stash;
         var noCommit = (history && store.SelectedCommit is null) || (previewing && store.SelectedTarget is null);
         NoCommit.Text = previewing ? "Select a file to see its changes" : "Select a commit to see its changes";
@@ -264,10 +313,16 @@ public sealed partial class MainWindow : Window
             case nameof(RepositoryStore.Commits):
             case nameof(RepositoryStore.Graph):
                 History.ShowCommits();
+                LoadAvatars(store);
                 break;
             case nameof(RepositoryStore.CommitFiles):
             case nameof(RepositoryStore.CommitMessage):
-                Detail.Show(store);
+            case nameof(RepositoryStore.Checks):
+                if (!_holding) Detail.Show(store);
+                break;
+            case nameof(RepositoryStore.IsLoadingSelection):
+                if (store.IsLoadingSelection) HoldDetail();
+                else _ = SwapDetailAsync(store);
                 break;
             case nameof(RepositoryStore.SelectedCommitId):
                 History.ShowSelection();
@@ -283,6 +338,10 @@ public sealed partial class MainWindow : Window
             case nameof(RepositoryStore.CanPatch):
             case nameof(RepositoryStore.LineSelection):
                 ShowDetail();
+                break;
+            case nameof(RepositoryStore.Untrusted):
+                ShowAll(); // Nothing is loading while the question is open.
+                if (store.Untrusted is not null) DispatcherQueue.TryEnqueue(ShowTrustQuestion);
                 break;
             case nameof(RepositoryStore.Operation):
                 Banner.Show(store);
@@ -302,8 +361,8 @@ public sealed partial class MainWindow : Window
                 TopBar.Show(store);
                 break;
             case nameof(RepositoryStore.RemoteLocation):
-                _ = Avatars.LoadAsync(store.RemoteLocation);
-                Sidebar.Show();
+                // The avatars, and the tabs on offer, depend on the remote's host.
+                ShowAll();
                 break;
             case nameof(RepositoryStore.LocalBranches):
             case nameof(RepositoryStore.RemoteBranches):
@@ -346,6 +405,9 @@ public sealed partial class MainWindow : Window
             case nameof(RepositoryStore.PullBlock):
                 // The dialog can start another pull, so wait until this one has finished.
                 DispatcherQueue.TryEnqueue(ShowPullBlock);
+                break;
+            case nameof(RepositoryStore.RejectedPush):
+                DispatcherQueue.TryEnqueue(ShowRejectedPush);
                 break;
             case nameof(RepositoryStore.Mode):
             case nameof(RepositoryStore.IsLoaded):
@@ -403,6 +465,7 @@ public sealed partial class MainWindow : Window
             Add(Icons.Fetch, "Fetch", "Repository action", () => _ = s.FetchAsync());
             Add(Icons.Pull, "Pull", "Repository action", () => _ = s.PullAsync());
             Add(Icons.Push, "Push", "Repository action", () => _ = s.PushAsync());
+            AddSyncItems(items, s);
             Add(Icons.Plus, "New branch…", "Repository action",
                 () => _ = Dialogs.NewBranchAsync(Root.XamlRoot, s, null));
             Add(Icons.Branch, "Clean up branches\u2026", "Repository action",
@@ -432,6 +495,7 @@ public sealed partial class MainWindow : Window
                 Add(Icons.OpenLink, $"Create pull request on {site}", "Repository action",
                     () => s.OpenOnWeb(new WebTarget.PullRequest()));
             }
+            AddProviderItems(items, s);
             foreach (var branch in s.LocalBranches.Where(b => !b.IsCurrent))
                 Add(Icons.Branch, branch.Name, "Check out branch", () => _ = s.CheckoutAsync(branch));
         }
@@ -455,9 +519,10 @@ public sealed partial class MainWindow : Window
         {
             Avatars.Enabled = now.ProfilePictures;
             Avatars.Refresh();
-            _ = Avatars.LoadAsync(_store?.RemoteLocation);
+            if (_store is { } current) LoadAvatars(current);
         }
-        if (old.CommitPageSize == now.CommitPageSize && old.DiffContext == now.DiffContext && old.GitPath == now.GitPath)
+        if (old.CommitPageSize == now.CommitPageSize && old.DiffContext == now.DiffContext && old.GitPath == now.GitPath
+            && old.IgnoreWhitespace == now.IgnoreWhitespace && old.FullFileDiffs == now.FullFileDiffs)
             return;
         foreach (var repo in _workspace.Repos) repo.ApplySettings();
     }

@@ -102,8 +102,15 @@ public sealed class ProviderAccount
     /// <summary>"http" for self-hosted servers without TLS; null means https.</summary>
     public string? Scheme { get; }
 
-    public ProviderAccount(ProviderKind kind, string host, string username, bool usesPassword = false, string? scheme = null, string? id = null)
+    /// <summary>Set when the account signed in through the browser; the secret is then a JSON <see cref="OAuthTokens"/>.</summary>
+    public string? OAuthClientId { get; }
+
+    public bool UsesOAuth => OAuthClientId is not null;
+
+    public ProviderAccount(ProviderKind kind, string host, string username, bool usesPassword = false, string? scheme = null,
+        string? id = null, string? oauthClientId = null)
     {
+        OAuthClientId = string.IsNullOrEmpty(oauthClientId) ? null : oauthClientId;
         Id = id ?? Guid.NewGuid().ToString();
         Kind = kind;
         Host = host;
@@ -129,9 +136,34 @@ public sealed class ProviderAccount
     public string Origin => $"{Scheme ?? "https"}://{Host}";
 
     public string Title => Host == Kind.DefaultHost() ? Kind.Title() : $"{Kind.Title()} · {Host}";
+
+    public ProviderAccount With(string username) =>
+        new(Kind, Host, username, UsesPassword == true, Scheme, Id, OAuthClientId);
+
+    /// <summary>
+    /// What the user typed as a server, reduced to `host[:port][/path]`, plus whether they asked for plain
+    /// HTTP. Null when it isn't a server name, so a secret is never sent to an address built from junk.
+    /// </summary>
+    public static (string Host, string? Scheme)? CleanHost(string input)
+    {
+        var h = input.Trim();
+        string? scheme = null;
+        if (h.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) h = h[8..];
+        else if (h.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) (h, scheme) = (h[7..], "http");
+        h = h.TrimEnd('/');
+        if (h.Length == 0 || h.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c is '?' or '#' or '\\' or '%' or '@'))
+            return null;
+        var slash = h.IndexOf('/');
+        var authority = (slash < 0 ? h : h[..slash]).ToLowerInvariant();
+        var path = slash < 0 ? "" : h[slash..];
+        if (path.Split('/').Any(s => s is "." or "..")) return null;
+        if (!Uri.TryCreate($"https://{authority}", UriKind.Absolute, out var uri) || uri.HostNameType == UriHostNameType.Unknown)
+            return null;
+        return (authority + path, scheme);
+    }
 }
 
-/// <summary>A secret handed to git for one host.</summary>
+/// <summary>A secret handed to git for one server. <paramref name="Host"/> includes a non-default port.</summary>
 public sealed record GitCredential(string Host, string Username, string Token)
 {
     public string Username { get; } = string.IsNullOrEmpty(Username) ? "git" : Username;
@@ -165,37 +197,78 @@ public sealed record GitCredential(string Host, string Username, string Token)
     public string Scheme { get; init; } = "https";
 
     /// <summary>
-    /// The only `scheme://host[:port]` the secret may be sent to. The port comes from
-    /// <paramref name="remoteUrl"/> when that is a web URL on this host; the scheme never does.
+    /// Send the token as `Authorization: Bearer` (Microsoft Entra tokens for Azure DevOps) instead of
+    /// answering git's password prompt.
     /// </summary>
+    public bool UseBearerHeader { get; init; }
+
+    /// <summary>The user name git should send with an OAuth access token.</summary>
+    public static string OAuthUsername(ProviderKind kind, string fallback) => kind switch
+    {
+        ProviderKind.GitLab => "oauth2",
+        ProviderKind.GitHub => "x-access-token",
+        ProviderKind.Bitbucket => "x-token-auth",
+        _ => fallback,
+    };
+
+    /// <summary>Never print the token, for example when a record is logged.</summary>
+    public override string ToString() => $"GitCredential({Scheme}://{Host})";
+
+    /// <summary>
+    /// `host[:port]` of an http or https address, lowercase and without a default port. Null for
+    /// anything else: ssh remotes never take a token.
+    /// </summary>
+    public static string? HttpAuthority(string url) =>
+        Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) && u.Scheme is "http" or "https" && u.Host.Length > 0
+            ? (u.IsDefaultPort ? u.Host : $"{u.Host}:{u.Port}").ToLowerInvariant()
+            : null;
+
+    /// <summary>Whether the address is the account's own server: same scheme, host and port.</summary>
+    public bool Allows(string remoteUrl) =>
+        Uri.TryCreate(remoteUrl.Trim(), UriKind.Absolute, out var url)
+        && Uri.TryCreate($"{Scheme}://{Host}", UriKind.Absolute, out var own)
+        && url.Scheme == own.Scheme && url.Port == own.Port
+        && url.Host.Equals(own.Host, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The only `scheme://host[:port]` the secret may be sent to.</summary>
     private string AllowedOrigin(string remoteUrl)
     {
-        if (Uri.TryCreate(remoteUrl.Trim(), UriKind.Absolute, out var url)
-            && url.Scheme == Scheme
-            && url.Host.Equals(Host, StringComparison.OrdinalIgnoreCase))
-        {
-            // Raw text, not Uri.Authority: git keeps an explicit default port in its prompt.
-            var authority = remoteUrl.Trim().Split("://", 2)[1].Split('/', 2)[0];
-            return $"{Scheme}://{authority[(authority.LastIndexOf('@') + 1)..]}";
-        }
-        return $"{Scheme}://{Host}";
+        if (!Allows(remoteUrl)) return $"{Scheme}://{Host}";
+        // Raw text, not Uri.Authority: git keeps an explicit default port in its prompt.
+        var authority = remoteUrl.Trim().Split("://", 2)[1].Split('/', 2)[0];
+        return $"{Scheme}://{authority[(authority.LastIndexOf('@') + 1)..]}";
     }
 
     /// <summary>
-    /// Environment that makes git use this credential for <paramref name="remoteUrl"/>'s host and
+    /// Environment that makes git use this credential for <paramref name="remoteUrl"/>'s server and
     /// nothing else (other helpers, such as a stale credential manager entry, are disabled for the
     /// call).
     /// </summary>
-    public Dictionary<string, string> Environment(string askpassPath, string remoteUrl) => new()
+    public Dictionary<string, string> Environment(string askpassPath, string remoteUrl)
     {
-        ["GIT_ASKPASS"] = askpassPath,
-        ["GITWOLF_ASKPASS_ORIGIN"] = AllowedOrigin(remoteUrl),
-        ["GITWOLF_ASKPASS_USER"] = Username,
-        ["GITWOLF_ASKPASS_TOKEN"] = Token,
-        ["GIT_CONFIG_COUNT"] = "1",
-        ["GIT_CONFIG_KEY_0"] = "credential.helper",
-        ["GIT_CONFIG_VALUE_0"] = "",
-    };
+        var origin = AllowedOrigin(remoteUrl);
+        var environment = new Dictionary<string, string>
+        {
+            ["GIT_ASKPASS"] = askpassPath,
+            ["GITWOLF_ASKPASS_ORIGIN"] = origin,
+            ["GITWOLF_ASKPASS_USER"] = Username,
+            ["GITWOLF_ASKPASS_TOKEN"] = Token,
+        };
+        AddConfig(environment, "credential.helper", "");
+        // Passed through the environment, never the command line or a config file. Unlike macOS, the
+        // header is scoped to this origin, so another remote, submodule or redirect never receives it.
+        if (UseBearerHeader) AddConfig(environment, $"http.{origin}/.extraheader", $"Authorization: Bearer {Token}");
+        return environment;
+    }
+
+    /// <summary>Appends a git setting to the `GIT_CONFIG_*` variables.</summary>
+    internal static void AddConfig(Dictionary<string, string> environment, string key, string value)
+    {
+        var count = environment.TryGetValue("GIT_CONFIG_COUNT", out var text) ? int.Parse(text) : 0;
+        environment[$"GIT_CONFIG_KEY_{count}"] = key;
+        environment[$"GIT_CONFIG_VALUE_{count}"] = value;
+        environment["GIT_CONFIG_COUNT"] = (count + 1).ToString();
+    }
 }
 
 // MARK: - Remote URLs
