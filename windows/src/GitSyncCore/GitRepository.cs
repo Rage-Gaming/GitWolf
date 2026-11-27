@@ -7,7 +7,7 @@ namespace GitSync.Core;
 /// process. Callers are responsible for serialising mutating operations. Ported from
 /// GitRepository.swift.
 /// </summary>
-public sealed class GitRepository
+public sealed partial class GitRepository
 {
     public string Root { get; }
     /// <summary>Path of the `git` executable to run.</summary>
@@ -24,7 +24,7 @@ public sealed class GitRepository
 
     private GitRunner Git => new(Root, GitPath);
 
-    private const string EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+    internal const string EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
     public GitRepository(string root, string? gitPath = null, int contextLines = 4)
     {
@@ -132,11 +132,10 @@ public sealed class GitRepository
         Action<string>? onProgress = null,
         CancellationToken cancellationToken = default)
     {
-        var destination = Path.Combine(parent, name);
-        if (Directory.Exists(destination) && Directory.EnumerateFileSystemEntries(destination).Any())
-        {
-            throw new GitException("clone", 128, $"“{name}” already exists in that location and isn’t empty.");
-        }
+        var destination = NewFolder(parent, name);
+        // "ext::" and similar URLs name a command to run.
+        if (url.Contains("::", StringComparison.Ordinal) && !url.Contains("://", StringComparison.Ordinal))
+            throw new GitException("clone", 128, "That kind of URL isn’t supported because it can run commands.");
         var env = credential is not null && askpassPath is not null
             ? credential.Environment(askpassPath, url)
             : new Dictionary<string, string>();
@@ -144,6 +143,23 @@ public sealed class GitRepository
         await runner.RunAsync(["clone", "--progress", "--", url, name], onProgress: onProgress, cancellationToken: cancellationToken);
         return destination;
     }
+
+    /// <summary>The folder <paramref name="name"/> inside <paramref name="parent"/>, which must be new or empty.</summary>
+    private static string NewFolder(string parent, string name)
+    {
+        // A single folder name only, so nothing is written outside the chosen location.
+        if (name is "" or "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            throw new GitException("argument", 129, "Enter a folder name without slashes or other special characters.");
+        var destination = Path.Combine(parent, name);
+        if (File.Exists(destination)
+            || (Directory.Exists(destination) && Directory.EnumerateFileSystemEntries(destination).Any()))
+            throw new GitException("argument", 128, $"“{name}” already exists in that location and isn’t empty.");
+        return destination;
+    }
+
+    /// <summary>Initialises a repository in a new folder inside <paramref name="parent"/>.</summary>
+    public static async Task<string> CreateAsync(string parent, string name, string initialBranch, string? gitPath = null) =>
+        await InitializeAsync(NewFolder(parent, name), initialBranch, gitPath);
 
     /// <summary>Creates (if needed) <paramref name="directory"/> and initialises a repository in it.</summary>
     public static async Task<string> InitializeAsync(string directory, string initialBranch, string? gitPath = null)
@@ -180,6 +196,7 @@ public sealed class GitRepository
             Tags = await tagsTask,
             Stashes = await stashesTask,
             Remotes = remotes,
+            Operation = InProgressOperation(),
         };
     }
 
@@ -207,7 +224,7 @@ public sealed class GitRepository
     public async Task<List<GitTag>> TagsAsync()
     {
         var data = await Git.RunAsync(
-            ["for-each-ref", "--format=%(refname:short)%1f%(objectname)", "--sort=-creatordate", "refs/tags"],
+            ["for-each-ref", $"--format={RefParser.TagFormat}", "--sort=-creatordate", "refs/tags"],
             readOnly: true);
         return RefParser.ParseTags(data);
     }
@@ -249,9 +266,10 @@ public sealed class GitRepository
 
         // Explicit prefixes and no external tools so output is stable regardless of user config
         // (diff.noprefix, diff.mnemonicPrefix, ...), which `git apply` depends on.
+        // Paths are literal: "pages/[id].tsx" must not also match "pages/d.tsx".
         var common = new List<string>
         {
-            "diff", "--no-color", "--no-ext-diff", "--no-textconv",
+            "--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--no-textconv",
             "--src-prefix=a/", "--dst-prefix=b/", $"-U{ContextLines}", "-M",
         };
 
@@ -274,6 +292,10 @@ public sealed class GitRepository
                 var hash = target.Source.CommitHash!;
                 var baseHash = await ParentOrEmptyTreeAsync(hash);
                 data = await Git.RunAsync([.. common, baseHash, hash, "--", .. paths], readOnly: true);
+                break;
+            case DiffSourceKind.Compare:
+                data = await Git.RunAsync(
+                    [.. common, target.Source.BaseHash!, target.Source.CommitHash!, "--", .. paths], readOnly: true);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(target));
@@ -303,7 +325,7 @@ public sealed class GitRepository
     public async Task StageAsync(IReadOnlyList<string> paths)
     {
         if (paths.Count == 0) return;
-        await Git.RunAsync(["add", "--", .. paths]);
+        await Git.RunAsync(["--literal-pathspecs", "add", "--", .. paths]);
     }
 
     public Task StageAllAsync() => Git.RunAsync(["add", "-A"]);
@@ -311,7 +333,7 @@ public sealed class GitRepository
     public async Task UnstageAsync(IReadOnlyList<string> paths)
     {
         if (paths.Count == 0) return;
-        await Git.RunAsync(["reset", "-q", "--", .. paths]);
+        await Git.RunAsync(["--literal-pathspecs", "reset", "-q", "--", .. paths]);
     }
 
     public Task UnstageAllAsync() => Git.RunAsync(["reset", "-q"]);
@@ -319,17 +341,8 @@ public sealed class GitRepository
     /// <summary>Discards working-tree changes. Destructive.</summary>
     public async Task DiscardAsync(IReadOnlyList<string> tracked, IReadOnlyList<string> untracked)
     {
-        if (tracked.Count > 0) await Git.RunAsync(["restore", "--", .. tracked]);
-        if (untracked.Count > 0) await Git.RunAsync(["clean", "-f", "--", .. untracked]);
-    }
-
-    public async Task CommitAsync(string message, bool amend)
-    {
-        var args = new List<string> { "commit" };
-        if (amend) args.Add("--amend");
-        if (message.Trim().Length == 0) args.Add("--no-edit");
-        else args.AddRange(["-m", message]);
-        await Git.RunAsync(args);
+        if (tracked.Count > 0) await Git.RunAsync(["--literal-pathspecs", "restore", "--", .. tracked]);
+        if (untracked.Count > 0) await Git.RunAsync(["--literal-pathspecs", "clean", "-f", "--", .. untracked]);
     }
 
     // MARK: Branches
@@ -355,21 +368,13 @@ public sealed class GitRepository
 
     // MARK: Tags
 
-    public Task CreateTagAsync(string name, string hash) => Git.RunAsync(["tag", Operand(name), Operand(hash)]);
+    /// <summary>A message makes an annotated tag (with tagger and date); without one it is lightweight.</summary>
+    public Task CreateTagAsync(string name, string hash, string message = "") =>
+        Git.RunAsync(message.Trim() is { Length: > 0 } text
+            ? ["tag", "-a", "-m", text, Operand(name), Operand(hash)]
+            : ["tag", Operand(name), Operand(hash)]);
+
     public Task DeleteTagAsync(string name) => Git.RunAsync(["tag", "-d", Operand(name)]);
-
-    // MARK: Stash
-
-    public async Task StashPushAsync(string message)
-    {
-        var args = new List<string> { "stash", "push", "--include-untracked" };
-        if (message.Length > 0) args.AddRange(["-m", message]);
-        await Git.RunAsync(args);
-    }
-
-    public Task StashApplyAsync(string reference) => Git.RunAsync(["stash", "apply", Operand(reference)]);
-    public Task StashPopAsync(string reference) => Git.RunAsync(["stash", "pop", Operand(reference)]);
-    public Task StashDropAsync(string reference) => Git.RunAsync(["stash", "drop", Operand(reference)]);
 
     // MARK: Remotes
 
@@ -379,19 +384,6 @@ public sealed class GitRepository
         // and push keep hooks: Git LFS and users' own checks depend on them.
         var net = await NetworkGitAsync(disableHooks: true);
         await net.RunAsync(["fetch", "--all", "--prune"]);
-    }
-
-    public async Task PullAsync()
-    {
-        var net = await NetworkGitAsync();
-        try
-        {
-            await net.RunAsync(["pull", "--no-edit"]);
-        }
-        catch (GitException error) when (error.Stderr.Contains("divergent branches"))
-        {
-            await net.RunAsync(["pull", "--no-edit", "--no-rebase"]);
-        }
     }
 
     public async Task PushAsync(WorkingStatus status, IReadOnlyList<string> remotes)

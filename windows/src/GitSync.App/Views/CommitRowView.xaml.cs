@@ -1,3 +1,4 @@
+using GitSync.App.Services;
 using GitSync.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -24,6 +25,10 @@ public sealed partial class CommitRowView : UserControl
 
     public CommitRowView() => InitializeComponent();
 
+    private string _email = "";
+
+    internal void ShowPicture() => Avatars.Show(Picture, _email);
+
     internal void Show(CommitRow row)
     {
         var commit = row.Commit;
@@ -34,6 +39,8 @@ public sealed partial class CommitRowView : UserControl
 
         Initials.Text = InitialsOf(commit.AuthorName);
         Avatar.Background = Palette.Avatar(commit.AuthorEmail);
+        _email = commit.AuthorEmail;
+        ShowPicture();
 
         Refs.Children.Clear();
         foreach (var label in commit.Refs.Take(MaxRefs)) Refs.Children.Add(Chip(label));
@@ -44,16 +51,23 @@ public sealed partial class CommitRowView : UserControl
 
     private static Border Chip(RefLabel label)
     {
-        var brush = Palette.Ref(label.Kind);
-        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        var icon = Icons.Create(label.Kind switch
+        // "origin/feature/x" is judged by "feature/x".
+        var look = label.Kind switch
         {
-            RefKind.Tag => Icons.Tag,
-            RefKind.Remote => Icons.Cloud,
-            _ => Icons.Branch,
-        }, brush);
-        // Icons are drawn at 14px; chips use them a little smaller.
-        content.Children.Add(new Viewbox { Width = 11, Height = 11, VerticalAlignment = VerticalAlignment.Center, Child = icon });
+            RefKind.Local => FileIcons.BranchNamed(label.Name),
+            RefKind.Remote => FileIcons.BranchNamed(label.Name[(label.Name.IndexOf('/') + 1)..]),
+            _ => null,
+        };
+        var brush = look is null ? Palette.Ref(label.Kind) : FileIconView.Brush(look.Color);
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        // Icons are drawn at 14px or more; chips use them a little smaller.
+        content.Children.Add(look is not null
+            ? FileIconView.Symbol(look.Value!, brush, 11)
+            : new Viewbox
+            {
+                Width = 11, Height = 11, VerticalAlignment = VerticalAlignment.Center,
+                Child = Icons.Create(label.Kind == RefKind.Tag ? Icons.Tag : Icons.Branch, brush),
+            });
         content.Children.Add(new TextBlock
         {
             Text = label.Name, Foreground = brush, FontSize = 11, MaxWidth = 105,

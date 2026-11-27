@@ -14,10 +14,12 @@
         <Grid x:Name="Repository" Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <views:TopBarView x:Name="TopBar" />
-            <Grid x:Name="Panels" Grid.Row="1" Margin="0,0,10,10" ColumnSpacing="10">
+            <views:OperationBannerView x:Name="Banner" Grid.Row="1" Margin="0,0,10,8" Visibility="Collapsed" />
+            <Grid x:Name="Panels" Grid.Row="2" Margin="0,0,10,10" ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="248" />
                     <ColumnDefinition Width="5*" MinWidth="320" />
@@ -28,6 +30,8 @@
                     <Grid>
                         <views:HistoryView x:Name="History" />
                         <views:ChangesView x:Name="Changes" />
+                        <views:CompareView x:Name="Compare" />
+                        <views:StashView x:Name="StashPanel" />
                     </Grid>
                 </Border>
                 <Border Grid.Column="2" Style="{StaticResource PanelStyle}">
@@ -38,6 +42,7 @@
                         </Grid.RowDefinitions>
                         <views:CommitDetailView x:Name="Detail" />
                         <views:DiffView x:Name="Diff" Grid.Row="1" />
+                        <views:ConflictView x:Name="Conflict" Grid.RowSpan="2" Visibility="Collapsed" />
                         <TextBlock x:Name="NoCommit" Grid.RowSpan="2" Text="Select a commit to see its changes"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -52,13 +57,7 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Border x:Name="HomeDragArea" Background="Transparent" Margin="0,0,140,0" />
-            <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
-                <TextBlock Text="GitSync" FontSize="32" FontWeight="Bold" HorizontalAlignment="Center" />
-                <TextBlock Text="Open a Git repository to get started" HorizontalAlignment="Center"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <Button Content="Open repository" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}"
-                        Click="OnOpen" />
-            </StackPanel>
+            <views:DashboardView x:Name="Dashboard" Grid.Row="1" />
         </Grid>
 
         <ProgressRing x:Name="Loading" Grid.Column="1" Width="40" Height="40" IsActive="False" />

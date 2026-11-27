@@ -17,7 +17,7 @@ internal sealed record SettingsState(
     int CommitPageSize = 1000,
     int DiffContext = 4,
     bool SyntaxHighlighting = true,
-    string GitPath = "");
+    string GitPath = "", bool PullRebase = false, bool ProfilePictures = true);
 
 /// <summary>
 /// User settings, kept in %LOCALAPPDATA%\GitSync\settings.json and read on every use so changes
@@ -38,6 +38,7 @@ internal sealed class AppSettings : IStoreSettings
 
     public int CommitPageSize => State.CommitPageSize;
     public int AutoFetchMinutes => State.AutoFetchMinutes;
+    public bool PullRebase => State.PullRebase;
 
     /// <summary>The custom git executable, or null to use the one found on PATH.</summary>
     public string? CustomGitPath => IsUsableGit(State.GitPath) ? State.GitPath : null;

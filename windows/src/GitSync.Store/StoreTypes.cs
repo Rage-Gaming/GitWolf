@@ -2,7 +2,10 @@ using GitSync.Core;
 
 namespace GitSync.Store;
 
-public enum StoreMode { History, Changes }
+public enum StoreMode { History, Changes, Compare, Stash }
+
+/// <summary>What a hook printed, and the signing choice to repeat if the user commits without hooks.</summary>
+public sealed record HookFailure(string Hook, string Output, bool? Sign);
 
 public abstract record StoreSheet
 {
@@ -25,6 +28,8 @@ public interface IStoreSettings
     int CommitPageSize { get; }
     /// <summary>0 disables background fetch.</summary>
     int AutoFetchMinutes { get; }
+    /// <summary>Pull by rebasing local commits onto the upstream instead of merging.</summary>
+    bool PullRebase => false;
     /// <summary>Applies git path, diff context and credentials to a repository.</summary>
     GitRepository Configure(GitRepository repo);
     ProviderKind? AccountKindForHost(string host);

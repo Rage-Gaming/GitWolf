@@ -25,6 +25,10 @@
         <ListView x:Name="Rows" Grid.Row="1" Padding="4,0,4,8" SelectionMode="None" IsItemClickEnabled="True"
                   ItemClick="OnClick" DoubleTapped="OnDoubleTap" ContextRequested="OnContext"
                   ContainerContentChanging="OnRow">
+            <!-- The stock list transitions take close to a second to show new rows; rows animate themselves. -->
+            <ListView.ItemContainerTransitions>
+                <TransitionCollection />
+            </ListView.ItemContainerTransitions>
             <ListView.ItemContainerStyle>
                 <Style TargetType="ListViewItem">
                     <Setter Property="MinHeight" Value="30" />

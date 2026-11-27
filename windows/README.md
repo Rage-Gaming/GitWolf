@@ -21,6 +21,7 @@ Engine ported so far (see the file map in PORTING.md for the full list and order
 - [x] `GraphLayout.swift` -> `GraphLayout.cs`
 - [x] `PatchBuilder.swift` -> `PatchBuilder.cs`
 - [x] `SideBySide.swift` -> `SideBySide.cs`
+- [x] `FileIcons.swift` -> `FileIcons.cs` (drawn by `Views/FileIconView.cs` and `Views/SymbolShapes.cs`)
 - [x] `SyntaxHighlighter.swift` -> `SyntaxHighlighter.cs`
 - [x] `FileWatcher.swift` -> `FileWatcher.cs` (`System.IO.FileSystemWatcher`, backed by
       `ReadDirectoryChangesW` on Windows)
@@ -41,9 +42,9 @@ Store layer:
       UI thread only, and call `RequestRefresh()` when a window is activated.
 - [x] `AppSettings.swift` -> `src/GitSync.App/Services/AppSettings.cs`
 - [ ] `Accounts.swift` -> Credential Manager, writing the askpass script with LF endings and no BOM
-- [ ] `Workspace.swift` (open and recent repositories)
+- [x] `Workspace.swift` (open and recent repositories) -> `src/GitSync.App/Services/Workspace.cs`
 
-73 tests pass against real git and stubbed HTTP.
+193 tests pass against real git and stubbed HTTP.
 
 UI (`src/GitSync.App/`):
 
@@ -59,8 +60,19 @@ UI (`src/GitSync.App/`):
 - [x] Multiple repositories, restored between launches
       (`%LOCALAPPDATA%\GitSync\workspace.json`, paths and view preferences only)
 - [x] Jump palette (Ctrl+K), Ctrl+O, Ctrl+Shift+F/L/P
-- [ ] Hunk/line staging, discard
-- [ ] Clone/new repository, home dashboard, resizable panels
+- [x] File type, folder and branch icons
+- [x] Hunk and line staging; discard a file, hunk or lines after a confirmation
+- [x] Home dashboard: open, jump, recent repositories, drop a folder to open
+- [x] Merge, rebase, cherry-pick and revert banner; conflict resolver
+- [x] Clone and new repository
+- [x] Pull strategy (merge or rebase), push and delete tags and branches on a remote
+- [x] Commit signing, message helpers, long-subject warning, Ctrl+Enter, hook output, ignore rules
+- [x] History search by message, author, content, file and date; file history and blame
+- [x] Reset, reflog, undo; signature badges
+- [x] Compare refs, interactive rebase and rebase onto a branch
+- [x] Rename branches, upstream tracking, branch cleanup, annotated tags
+- [x] Stash preview and per-hunk stash
+- [ ] Resizable panels
 - [x] Settings (Ctrl+,): theme, accent colour, background fetch, history and diff options, git path
       (`%LOCALAPPDATA%\GitSync\settings.json`)
 - [ ] Provider accounts

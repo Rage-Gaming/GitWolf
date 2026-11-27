@@ -12,8 +12,11 @@
         </Grid.ColumnDefinitions>
         <Canvas x:Name="Graph" Height="50" />
         <Border x:Name="Avatar" Grid.Column="1" Width="24" Height="24" CornerRadius="12" VerticalAlignment="Center">
-            <TextBlock x:Name="Initials" Foreground="White" FontSize="10" FontWeight="SemiBold"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Grid>
+                <TextBlock x:Name="Initials" Foreground="White" FontSize="10" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Ellipse x:Name="Picture" />
+            </Grid>
         </Border>
         <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
             <Grid>

@@ -72,6 +72,8 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
     /// <summary>Where `origin` (or the first remote) lives, for web links.</summary>
     public RemoteLocation? RemoteLocation { get; private set; }
     public bool IsLoaded { get; private set; }
+    /// <summary>A merge, rebase, cherry-pick or revert that is waiting for the user.</summary>
+    public InProgressOperation? Operation { get; private set; }
 
     public int GraphLaneCount => Math.Min(10, Math.Max(1, Graph.Count == 0 ? 1 : Graph.Max(r => r.LaneCount)));
     public bool CanLoadMore => Commits.Count >= _commitLimit;
@@ -83,6 +85,14 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
 
     private string? _errorMessage;
     public string? ErrorMessage { get => _errorMessage; set => Set(ref _errorMessage, value); }
+
+    private PullBlock? _pullBlock;
+    /// <summary>Set when a pull was refused to protect local work; the UI asks what to do, then clears it.</summary>
+    public PullBlock? PullBlock { get => _pullBlock; set => Set(ref _pullBlock, value); }
+
+    private HookFailure? _hookFailure;
+    /// <summary>Set when a hook refused a commit, until the UI has shown it.</summary>
+    public HookFailure? HookFailure { get => _hookFailure; set => Set(ref _hookFailure, value); }
 
     private StoreSheet? _sheet;
     public StoreSheet? Sheet { get => _sheet; set => Set(ref _sheet, value); }
@@ -272,6 +282,11 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
             Remotes = s.Remotes;
             Notify(nameof(Remotes));
             _ = RefreshRemoteLocationAsync();
+        }
+        if (Operation != s.Operation)
+        {
+            Operation = s.Operation;
+            Notify(nameof(Operation));
         }
         if (!IsLoaded)
         {

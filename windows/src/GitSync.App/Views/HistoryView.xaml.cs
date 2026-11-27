@@ -19,6 +19,7 @@ public sealed partial class HistoryView : UserControl
     {
         InitializeComponent();
         Commits.ItemsSource = _commits;
+        BuildSearchOptions();
     }
 
     internal void Attach(RepositoryStore store)
@@ -27,7 +28,7 @@ public sealed partial class HistoryView : UserControl
         _syncing = true;
         _commits.Clear();
         _syncing = false;
-        Search.Text = "";
+        ResetSearch();
         ShowCommits();
     }
 
@@ -38,7 +39,12 @@ public sealed partial class HistoryView : UserControl
         var lanes = store.GraphLaneCount;
         var rows = new List<CommitRow>(count);
         var query = Search.Text.Trim();
-        for (var i = 0; i < count; i++)
+        var found = GitSearch ? store.SearchResults : null;
+        if (found is not null)
+            rows.AddRange(found.Select(c => new CommitRow(c, NoGraph, 0)));
+        // While git is searching, the previous rows stay until the answer arrives.
+        else if (GitSearch) return;
+        for (var i = 0; !GitSearch && i < count; i++)
         {
             var commit = store.Commits[i];
             if (query.Length == 0) rows.Add(new CommitRow(commit, store.Graph[i], lanes));
@@ -52,9 +58,17 @@ public sealed partial class HistoryView : UserControl
         _syncing = true;
         ListSync.Apply(_commits, rows, r => r.Commit.Hash);
         _syncing = false;
-        Empty.Text = query.Length == 0 ? "No commits yet" : "No matching commits";
+        Empty.Text = query.Length == 0 && !GitSearch ? "No commits yet" : "No matching commits";
         Empty.Visibility = store.IsLoaded && rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         ShowSelection();
+    }
+
+    /// <summary>Redraws the pictures of the rows on screen; others draw theirs when they appear.</summary>
+    internal void ShowPictures()
+    {
+        for (var i = 0; i < _commits.Count; i++)
+            if (Commits.ContainerFromIndex(i) is ListViewItem { ContentTemplateRoot: CommitRowView view })
+                view.ShowPicture();
     }
 
     internal void ShowSelection()
@@ -65,7 +79,6 @@ public sealed partial class HistoryView : UserControl
         _syncing = false;
     }
 
-    private void OnSearch(object sender, TextChangedEventArgs e) => ShowCommits();
 
     private void OnContext(UIElement sender, ContextRequestedEventArgs e)
     {
@@ -87,6 +100,17 @@ public sealed partial class HistoryView : UserControl
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Cherry-pick", () => _ = store.CherryPickAsync(commit.Hash));
         Add("Revert", () => _ = store.RevertAsync(commit.Hash));
+        var reset = new MenuFlyoutSubItem { Text = "Reset current branch to here", IsEnabled = !store.IsBusy };
+        foreach (var (mode, label) in HistoryDialogs.ResetModes)
+        {
+            var entry = new MenuFlyoutItem { Text = label };
+            entry.Click += (_, _) => _ = HistoryDialogs.ResetAsync(XamlRoot, store, commit.Hash, mode);
+            reset.Items.Add(entry);
+        }
+        menu.Items.Add(reset);
+        Add("Interactive rebase from here\u2026", () => _ = RebaseDialog.ShowAsync(XamlRoot, store, commit.Hash));
+        Add("Compare with current branch",
+            () => _ = store.OpenCompareAsync(store.Status.Branch ?? "HEAD", commit.Hash));
         menu.Items.Add(new MenuFlyoutSeparator());
         if (store.WebLinks is not null)
             Add($"Open on {store.ProviderTitle ?? "the web"}", () => store.OpenOnWeb(new WebTarget.Commit(commit.Hash)));
@@ -108,6 +132,6 @@ public sealed partial class HistoryView : UserControl
             || args.Item is not CommitRow row) return;
         view.Show(row);
         // Near the end: fetch the next page of history.
-        if (Search.Text.Length == 0 && args.ItemIndex >= _commits.Count - 20) DispatcherQueue.TryEnqueue(() => _store?.LoadMoreCommits());
+        if (!GitSearch && Search.Text.Length == 0 && args.ItemIndex >= _commits.Count - 20) DispatcherQueue.TryEnqueue(() => _store?.LoadMoreCommits());
     }
 }

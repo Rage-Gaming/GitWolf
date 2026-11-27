@@ -8,7 +8,12 @@ internal static class ListSync
     /// Edits <paramref name="target"/> in place to match <paramref name="source"/>, so a list keeps
     /// its scroll position and unchanged rows are not rebuilt.
     /// </summary>
-    public static void Apply<T, TKey>(ObservableCollection<T> target, IReadOnlyList<T> source, Func<T, TKey> key)
+    /// <param name="update">
+    /// Changes an existing row to match a new one. Without it the row is replaced, which the list
+    /// shows as a removal and an insertion.
+    /// </param>
+    public static void Apply<T, TKey>(ObservableCollection<T> target, IReadOnlyList<T> source, Func<T, TKey> key,
+        Action<T, T>? update = null)
         where TKey : notnull
     {
         var wanted = source.Select(key).ToHashSet();
@@ -20,7 +25,9 @@ internal static class ListSync
         {
             if (i < target.Count && comparer.Equals(key(target[i]), key(source[i])))
             {
-                if (!EqualityComparer<T>.Default.Equals(target[i], source[i])) target[i] = source[i];
+                if (EqualityComparer<T>.Default.Equals(target[i], source[i])) continue;
+                if (update is null) target[i] = source[i];
+                else update(target[i], source[i]);
             }
             else
             {

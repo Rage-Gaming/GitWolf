@@ -17,7 +17,7 @@ public sealed partial class RailView : UserControl
 
     public RailView() => InitializeComponent();
 
-    internal event Action? AddRequested;
+    internal event Action<FrameworkElement>? AddRequested;
     internal event Action? SettingsRequested;
 
     internal void Attach(Workspace workspace)
@@ -157,5 +157,5 @@ public sealed partial class RailView : UserControl
 
     private void OnSettings(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
 
-    private void OnAdd(object sender, RoutedEventArgs e) => AddRequested?.Invoke();
+    private void OnAdd(object sender, RoutedEventArgs e) => AddRequested?.Invoke((FrameworkElement)sender);
 }

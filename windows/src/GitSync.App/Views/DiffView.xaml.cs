@@ -60,14 +60,19 @@ public sealed partial class DiffView : UserControl
         }
     }
 
+    private RepositoryStore? _store;
+    private DiffStaging? _staging;
+
     internal void Show(RepositoryStore store)
     {
+        _store = store;
         var diff = store.Diff;
         var path = store.SelectedTarget?.Path ?? "";
         var slash = path.LastIndexOf('/');
         Folder.Text = path[..(slash + 1)];
         FileName.Text = path[(slash + 1)..] + (diff?.IsTruncated == true ? "  (truncated)" : "");
         Header.Visibility = path.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        TypeIcon.Show(path.Length == 0 ? null : FileIcons.ForPath(path));
         var message = store.SelectedTarget is null ? "Select a file to see its changes"
             : diff is null ? ""
             : diff.IsBinary ? "Binary file"
@@ -77,9 +82,17 @@ public sealed partial class DiffView : UserControl
 
         var shown = message.Length == 0 ? diff : null;
         Tools.Visibility = shown is null ? Visibility.Collapsed : Visibility.Visible;
+        var staging = shown is not null && store.CanPatch ? Staging(store) : null;
+        // Rows carry buttons and selection marks, so they are redrawn when either changes.
+        var redraw = staging is null != _staging is null || staging?.Staged != _staging?.Staged
+            || !ReferenceEquals(staging?.Selection, _staging?.Selection)
+            || staging?.Stash is null != _staging?.Stash is null;
+        _staging = staging;
+        ShowSelectionBar();
         if (ReferenceEquals(_diff, shown))
         {
             ShowLayout();
+            if (redraw) Repaint();
             return;
         }
         _diff = shown;
@@ -139,7 +152,7 @@ public sealed partial class DiffView : UserControl
             foreach (var child in split.Children)
                 if (child is ListViewItem { ContentTemplateRoot: SplitRowView view } item
                     && Split.ItemFromContainer(item) is SplitRow row)
-                    view.Show(row, _tokens);
+                    view.Show(row, _tokens, _staging);
     }
 
     /// <summary>Only the visible layout holds items, so the hidden one costs nothing.</summary>
@@ -156,11 +169,13 @@ public sealed partial class DiffView : UserControl
     private void OnSplitRow(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
         if (!args.InRecycleQueue && args.ItemContainer.ContentTemplateRoot is SplitRowView view && args.Item is SplitRow row)
-            view.Show(row, _tokens);
+            view.Show(row, _tokens, _staging);
     }
 
     private void Render(DiffRowView view, DiffLine line) =>
-        view.Show(line, _tokens.GetValueOrDefault(line.Id), Math.Max(_rowWidth, Lines.ActualWidth - 16));
+        view.Show(line, _tokens.GetValueOrDefault(line.Id),
+            Math.Max(_rowWidth + (_staging is null ? 0 : LineSelector.ColumnWidth), Lines.ActualWidth - 16),
+            _staging, Lines.ActualWidth);
 
     private void OnRow(ListViewBase sender, ContainerContentChangingEventArgs args)
     {

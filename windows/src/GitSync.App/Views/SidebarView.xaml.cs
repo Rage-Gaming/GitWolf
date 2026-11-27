@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using GitSync.App.Services;
 using GitSync.Core;
 using GitSync.Store;
 using Microsoft.UI.Xaml;
@@ -11,9 +12,11 @@ namespace GitSync.App.Views;
 /// <summary>Branches, remote branches, tags and stashes. Ported from SidebarView.swift.</summary>
 public sealed partial class SidebarView : UserControl
 {
-    private readonly ObservableCollection<SidebarRow> _rows = [];
+    private readonly ObservableCollection<SidebarItem> _rows = [];
     private readonly HashSet<SidebarKind> _open = [SidebarKind.LocalBranch, SidebarKind.RemoteBranch, SidebarKind.Stash];
     private readonly HashSet<string> _openRemotes = [];
+    /// <summary>Rows just revealed by opening a group, which animate in when first drawn.</summary>
+    private HashSet<SidebarItem> _entering = [];
     private RepositoryStore? _store;
 
     public SidebarView()
@@ -25,6 +28,7 @@ public sealed partial class SidebarView : UserControl
     internal void Attach(RepositoryStore store)
     {
         _store = store;
+        _entering.Clear();
         _rows.Clear();
         Show();
     }
@@ -77,35 +81,59 @@ public sealed partial class SidebarView : UserControl
             }
 
         if (Section(SidebarKind.Tag, "TAGS", store.Tags.Count, "No tags"))
-            rows.AddRange(store.Tags.Select(t => new SidebarRow(SidebarKind.Tag, SidebarKind.Tag, t.Name, "", t.Hash)));
+            rows.AddRange(store.Tags.Select(t => new SidebarRow(SidebarKind.Tag, SidebarKind.Tag, t.Name, "", t.Hash,
+                Tip: $"{t.Name}\n" + (!t.IsAnnotated ? "Lightweight tag"
+                    : t.Message.Length > 0 ? $"Annotated: {t.Message}" : "Annotated tag"))));
 
         if (Section(SidebarKind.Stash, "STASHES", store.Stashes.Count, "No stashes"))
             rows.AddRange(store.Stashes.Select(x =>
                 new SidebarRow(SidebarKind.Stash, SidebarKind.Stash, x.Message, Stash: x)));
 
         // Stash messages can repeat, so stashes are keyed by their ref.
-        ListSync.Apply(_rows, rows, r => (r.Kind, r.Section, r.Stash?.Ref ?? r.Branch?.Name ?? r.Title));
+        ListSync.Apply(_rows, rows.Select(r => new SidebarItem(r)).ToList(),
+            i => (i.Row.Kind, i.Row.Section, i.Row.Stash?.Ref ?? i.Row.Branch?.Name ?? i.Row.Title), Update);
+    }
+
+    /// <summary>Redraws a row where it is. Rows scrolled out of view are drawn when they return.</summary>
+    private void Update(SidebarItem item, SidebarItem next)
+    {
+        if (item.Row == next.Row) return;
+        item.Row = next.Row;
+        if (Rows.ContainerFromItem(item) is ListViewItem { ContentTemplateRoot: SidebarRowView view })
+            view.Show(item.Row, animate: true);
     }
 
     private void OnWeb(object sender, RoutedEventArgs e) => _store?.OpenOnWeb(new WebTarget.Repository());
 
     private void OnClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not SidebarRow row) return;
+        if (e.ClickedItem is not SidebarItem { Row: var row }) return;
         if (row.Kind == SidebarKind.Header)
         {
             if (!_open.Remove(row.Section)) _open.Add(row.Section);
-            Show();
+            ShowToggled();
         }
         else if (row.Kind == SidebarKind.RemoteGroup)
         {
             if (!_openRemotes.Remove(row.Title)) _openRemotes.Add(row.Title);
-            Show();
+            ShowToggled();
+        }
+        else if (row.Stash is { } stash)
+        {
+            _ = _store?.SelectStashAsync(stash);
         }
         else if (row.Hash is { } hash)
         {
             _store?.Reveal(hash);
         }
+    }
+
+    private void ShowToggled()
+    {
+        var before = _rows.ToHashSet();
+        Show();
+        // The list draws the new rows after this returns.
+        _entering = _rows.Where(item => !before.Contains(item)).ToHashSet();
     }
 
     private void OnDoubleTap(object sender, DoubleTappedRoutedEventArgs e)
@@ -130,6 +158,18 @@ public sealed partial class SidebarView : UserControl
             case { Kind: SidebarKind.LocalBranch, Branch: { } branch }:
                 Add("Checkout", () => _ = store.CheckoutAsync(branch), !branch.IsCurrent);
                 Add("Merge into current branch", () => _ = store.MergeAsync(branch.Name), !branch.IsCurrent);
+                Add("Compare with current branch",
+                    () => _ = store.OpenCompareAsync(store.Status.Branch ?? "HEAD", branch.Name), !branch.IsCurrent);
+                Add("Rebase current branch onto this\u2026", () => _ = ConfirmAsync(
+                    $"Rebase onto \u201c{branch.Name}\u201d?",
+                    "The current branch\u2019s commits are rewritten on top of it. Uncommitted work is kept.",
+                    "Rebase", () => store.RebaseOntoAsync(branch.Name)), !branch.IsCurrent && store.Operation is null);
+                Add("New branch from here\u2026",
+                    () => _ = Dialogs.NewBranchAsync(XamlRoot, store, branch.Name));
+                Add("Rename\u2026", () => _ = BranchDialogs.RenameAsync(XamlRoot, store, branch.Name));
+                menu.Items.Add(TrackingMenu(store, branch));
+                Add("Clean up branches\u2026", () => _ = BranchDialogs.CleanupAsync(XamlRoot, store));
+                menu.Items.Add(new MenuFlyoutSeparator());
                 Add("Delete branch…", () => _ = ConfirmAsync(
                     $"Delete branch “{branch.Name}”?", "Git refuses if it has unmerged commits.", "Delete",
                     () => store.DeleteBranchAsync(branch.Name)), !branch.IsCurrent);
@@ -137,9 +177,31 @@ public sealed partial class SidebarView : UserControl
             case { Kind: SidebarKind.RemoteBranch, Branch: { } remote }:
                 Add("Check out as local branch", () => _ = store.CheckoutAsync(remote));
                 Add("Merge into current branch", () => _ = store.MergeAsync(remote.Name));
+                Add("Compare with current branch",
+                    () => _ = store.OpenCompareAsync(store.Status.Branch ?? "HEAD", remote.Name));
+                Add("Rebase current branch onto this\u2026", () => _ = ConfirmAsync(
+                    $"Rebase onto \u201c{remote.Name}\u201d?",
+                    "The current branch\u2019s commits are rewritten on top of it. Uncommitted work is kept.",
+                    "Rebase", () => store.RebaseOntoAsync(remote.Name)), store.Operation is null);
+                if (GitSync.Core.GitRepository.SplitRemoteBranch(remote.Name, store.Remotes) is var (host, name))
+                    Add($"Delete on {host}…", () => _ = ConfirmAsync(
+                        $"Delete branch “{name}” on {host}?",
+                        "The branch is removed from the remote for everyone. Local branches are kept.",
+                        "Delete on remote", () => store.DeleteRemoteBranchAsync(host, name)));
                 break;
             case { Kind: SidebarKind.Tag }:
-                Add("Delete tag…", () => _ = ConfirmAsync(
+                foreach (var server in store.Remotes)
+                {
+                    Add($"Push to {server}", () => _ = store.PushTagAsync(row.Title, server));
+                    Add($"Delete on {server}…", () => _ = ConfirmAsync(
+                        $"Delete tag “{row.Title}” on {server}?",
+                        "The tag is removed from the remote for everyone. The local tag is kept.",
+                        "Delete on remote", () => store.DeleteRemoteTagAsync(row.Title, server)));
+                }
+                if (store.Tags.Count > 1)
+                    foreach (var server in store.Remotes)
+                        Add($"Push all tags to {server}", () => _ = store.PushAllTagsAsync(server));
+                Add("Delete local tag…", () => _ = ConfirmAsync(
                     $"Delete tag “{row.Title}”?", "The local tag is removed.", "Delete",
                     () => store.DeleteTagAsync(row.Title)));
                 break;
@@ -147,6 +209,7 @@ public sealed partial class SidebarView : UserControl
                 // stash@{n} shifts when stashes change, so only act if the ref still means the same stash.
                 Task<bool> IfUnchanged(Func<string, Task<bool>> action) =>
                     store.Stashes.Contains(stash) ? action(stash.Ref) : Task.FromResult(false);
+                Add("Preview changes", () => _ = store.SelectStashAsync(stash));
                 Add("Apply", () => _ = IfUnchanged(store.StashApplyAsync));
                 Add("Pop", () => _ = IfUnchanged(store.StashPopAsync));
                 Add("Drop…", () => _ = ConfirmAsync(
@@ -161,6 +224,26 @@ public sealed partial class SidebarView : UserControl
         var target = (FrameworkElement)e.OriginalSource;
         if (e.TryGetPosition(target, out var point)) menu.ShowAt(target, point);
         else menu.ShowAt(target);
+    }
+
+    private static MenuFlyoutSubItem TrackingMenu(RepositoryStore store, Branch branch)
+    {
+        var menu = new MenuFlyoutSubItem
+        {
+            Text = "Track remote branch", IsEnabled = store.RemoteBranches.Count > 0 || branch.Upstream is not null,
+        };
+        foreach (var remote in store.RemoteBranches)
+        {
+            var item = new ToggleMenuFlyoutItem { Text = remote.Name, IsChecked = remote.Name == branch.Upstream };
+            item.Click += (_, _) => _ = store.SetUpstreamAsync(branch.Name, remote.Name);
+            menu.Items.Add(item);
+        }
+        if (branch.Upstream is null) return menu;
+        var stop = new MenuFlyoutItem { Text = "Stop tracking" };
+        stop.Click += (_, _) => _ = store.SetUpstreamAsync(branch.Name, null);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(stop);
+        return menu;
     }
 
     private async Task ConfirmAsync(string title, string message, string verb, Func<Task<bool>> action)
@@ -188,12 +271,15 @@ public sealed partial class SidebarView : UserControl
     {
         while (element is not null and not ListViewItem)
             element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
-        return element is ListViewItem item ? Rows.ItemFromContainer(item) as SidebarRow : null;
+        return element is ListViewItem container ? (Rows.ItemFromContainer(container) as SidebarItem)?.Row : null;
     }
 
     private void OnRow(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        if (!args.InRecycleQueue && args.ItemContainer.ContentTemplateRoot is SidebarRowView view && args.Item is SidebarRow row)
-            view.Show(row);
+        if (!args.InRecycleQueue && args.ItemContainer.ContentTemplateRoot is SidebarRowView view && args.Item is SidebarItem item)
+        {
+            view.Show(item.Row);
+            if (_entering.Remove(item)) view.Enter();
+        }
     }
 }

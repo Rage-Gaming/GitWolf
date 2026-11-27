@@ -105,6 +105,29 @@ public sealed class RepositoryStoreTests : IDisposable
         Assert.Null(store.Diff);
     });
 
+    [Fact]
+    public void ADiscardIsRefusedOnceTheShownDiffHasChanged() => SingleThread.Run(async () =>
+    {
+        using var store = await DirtyRepoStoreAsync();
+        await store.RequestRefresh();
+        store.SelectChange(store.Status.Unstaged[0], DiffSource.Unstaged);
+        await store.PendingLoad;
+        var target = store.SelectedTarget!.Value;
+        var shown = store.Diff!;
+        var ids = shown.ChangedLineIds(0);
+        var file = Path.Combine(_dir, "a.txt");
+
+        File.WriteAllText(file, "one\ntwo\nthree\n");
+        await store.RequestRefresh();
+        await store.PendingLoad;
+
+        Assert.False(await store.ApplyShownAsync(target, shown, ids, PatchAction.Discard));
+        Assert.Equal("one\ntwo\nthree\n", File.ReadAllText(file));
+
+        Assert.True(await store.ApplyShownAsync(target, store.Diff!, store.Diff!.ChangedLineIds(0), PatchAction.Discard));
+        Assert.Equal("one\n", File.ReadAllText(file));
+    });
+
     /// <summary>Runs an async test on one thread, like the UI thread the store requires.</summary>
     private static class SingleThread
     {

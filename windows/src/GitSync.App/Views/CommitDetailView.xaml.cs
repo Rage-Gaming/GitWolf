@@ -1,10 +1,12 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
 using GitSync.App.Services;
 using GitSync.Core;
 using GitSync.Store;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
 namespace GitSync.App.Views;
@@ -45,8 +47,10 @@ public sealed partial class CommitDetailView : UserControl
             Date.Text = string.Create(CultureInfo.CurrentCulture, $"{date:d MMM yyyy} at {date:t}");
             Initials.Text = CommitRowView.InitialsOf(commit.AuthorName);
             Avatar.Background = Palette.Avatar(commit.AuthorEmail);
+            Avatars.Show(Picture, commit.AuthorEmail);
             Hash.Text = commit.ShortHash;
             ShowParents(commit);
+            _ = ShowSignatureAsync(store, commit.Hash);
         }
 
         var source = DiffSource.ForCommit(commit.Hash);
@@ -54,6 +58,11 @@ public sealed partial class CommitDetailView : UserControl
         ListSync.Apply(_files, store.CommitFiles.Select(f => new FileRow(f, source)).ToList(), r => r.File!.Path);
         Files.SelectedItem = _files.FirstOrDefault(r => r.File?.Path == store.SelectedTarget?.Path);
         _syncing = false;
+    }
+
+    internal void ShowPicture()
+    {
+        if (_store?.SelectedCommit is { } commit) Avatars.Show(Picture, commit.AuthorEmail);
     }
 
     private void ShowParents(Commit commit)
@@ -76,6 +85,57 @@ public sealed partial class CommitDetailView : UserControl
             link.Click += (_, _) => _store?.Reveal(parent);
             Parents.Children.Add(link);
         }
+    }
+
+    private async Task ShowSignatureAsync(RepositoryStore store, string hash)
+    {
+        Signature.Visibility = Visibility.Collapsed;
+        try
+        {
+            var repo = store.Repo;
+            var signature = await Task.Run(() => repo.SignatureAsync(hash));
+            if (signature is null || _shownHash != hash || !ReferenceEquals(store, _store)) return;
+            // The end of a long key is the part people compare.
+            var key = signature.Key.Length > 16 ? signature.Key[^16..] : signature.Key;
+            var detail = string.Join(" · ", new[] { signature.Signer, key }.Where(part => part.Length > 0));
+            var (tint, glyph) = signature.State switch
+            {
+                SignatureState.Good => (Palette.Green, "\uE73E"),
+                SignatureState.Bad or SignatureState.Revoked => (Palette.Red, "\uE711"),
+                _ => (Palette.Orange, "\uE7BA"),
+            };
+            SignatureTitle.Text = signature.Title;
+            SignatureDetail.Text = detail;
+            SignatureDetail.Visibility = detail.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            SignatureIcon.Glyph = glyph;
+            SignatureIcon.Foreground = tint;
+            Signature.Background = Palette.Tint(tint, 0x1F);
+            Signature.Visibility = Visibility.Visible;
+        }
+        catch (Exception e)
+        {
+            Trace.TraceWarning($"Checking a signature failed: {e.GetType().Name}");
+        }
+    }
+
+    private void OnContext(UIElement sender, ContextRequestedEventArgs e)
+    {
+        var element = e.OriginalSource as DependencyObject;
+        while (element is not null and not ListViewItem) element = VisualTreeHelper.GetParent(element);
+        if (_store is not { } store || element is not ListViewItem item
+            || Files.ItemFromContainer(item) is not FileRow { File: { } file }) return;
+        var menu = new MenuFlyout();
+        void Add(string text, Action action)
+        {
+            var entry = new MenuFlyoutItem { Text = text };
+            entry.Click += (_, _) => action();
+            menu.Items.Add(entry);
+        }
+        Add("History & blame\u2026", () => _ = FileHistoryDialog.ShowAsync(XamlRoot, store, file.Path));
+        Add("Copy path", () => Dialogs.Copy(file.Path));
+        e.Handled = true;
+        if (e.TryGetPosition(item, out var point)) menu.ShowAt(item, point);
+        else menu.ShowAt(item);
     }
 
     private void OnCopy(object sender, RoutedEventArgs e)

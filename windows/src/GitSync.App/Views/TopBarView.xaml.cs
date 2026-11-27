@@ -1,4 +1,5 @@
 using GitSync.App.Services;
+using GitSync.Core;
 using GitSync.Store;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -22,17 +23,27 @@ public sealed partial class TopBarView : UserControl
         _store = store;
         var status = store.Status;
         BranchName.Text = status.BranchDisplay;
+        ShowBranchIcon(status.Branch);
         var history = store.Mode == StoreMode.History;
         HistorySelected.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
-        ChangesSelected.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
+        var changes = store.Mode == StoreMode.Changes;
+        ChangesSelected.Visibility = changes ? Visibility.Visible : Visibility.Collapsed;
         HistoryTab.Opacity = history ? 1 : 0.6;
-        ChangesTab.Opacity = history ? 0.6 : 1;
+        ChangesTab.Opacity = changes ? 1 : 0.6;
         Badge.Visibility = status.ChangeCount > 0 ? Visibility.Visible : Visibility.Collapsed;
         BadgeText.Text = status.ChangeCount.ToString();
         PullCount.Text = status.Behind > 0 ? status.Behind.ToString() : "";
         PushCount.Text = status.Ahead > 0 ? status.Ahead.ToString() : "";
         FetchButton.IsEnabled = PullButton.IsEnabled = PushButton.IsEnabled = BranchButton.IsEnabled = !store.IsBusy;
         StashButton.IsEnabled = !store.IsBusy && !status.IsClean;
+    }
+
+    /// <summary>The current branch's icon; the plain branch symbol in the accent colour when detached.</summary>
+    private void ShowBranchIcon(string? branch)
+    {
+        var look = branch is null ? null : FileIcons.BranchNamed(branch);
+        BranchIcon.Content = FileIconView.Symbol(look?.Value ?? "arrow.triangle.branch",
+            look is null ? Palette.Ref(RefKind.Local) : FileIconView.Brush(look.Color), 14);
     }
 
     /// <summary>Built when opened, so it never has to be kept in step with the branch list.</summary>
@@ -46,7 +57,15 @@ public sealed partial class TopBarView : UserControl
         };
         foreach (var branch in store.LocalBranches)
         {
-            var item = new ToggleMenuFlyoutItem { Text = branch.Name, IsChecked = branch.IsCurrent };
+            // As on macOS: a check marks the current branch, the others show their icon.
+            var look = FileIcons.BranchNamed(branch.Name);
+            var item = new MenuFlyoutItem
+            {
+                Text = branch.Name,
+                Icon = branch.IsCurrent
+                    ? new FontIcon { Glyph = "\uE73E" }
+                    : Icons.Create(SymbolShapes.Get(look.Value!), FileIconView.Brush(look.Color)),
+            };
             item.Click += (_, _) =>
             {
                 if (!branch.IsCurrent) _ = store.CheckoutAsync(branch);

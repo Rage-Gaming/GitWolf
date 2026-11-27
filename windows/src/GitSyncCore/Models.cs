@@ -108,7 +108,9 @@ public sealed record Branch(
     string? Upstream,
     int Ahead,
     int Behind,
-    string Hash)
+    string Hash,
+    // The upstream branch was deleted on the remote.
+    bool UpstreamGone = false)
 {
     public string Id => FullRef;
 
@@ -129,7 +131,8 @@ public sealed record Branch(
     public string ShortName => Remote is { } remote ? Name[(remote.Length + 1)..] : Name;
 }
 
-public sealed record GitTag(string Name, string Hash)
+/// <param name="Message">The first line of an annotated tag's message.</param>
+public sealed record GitTag(string Name, string Hash, bool IsAnnotated = false, string Message = "")
 {
     public string Id => Name;
 }
@@ -188,15 +191,17 @@ public sealed record FileDiff
         [.. Lines.Where(l => l.HunkIndex == hunkIndex && l.IsChange).Select(l => l.Id)];
 }
 
-public enum DiffSourceKind { Staged, Unstaged, Untracked, Conflicted, Commit }
+public enum DiffSourceKind { Staged, Unstaged, Untracked, Conflicted, Commit, Compare }
 
-public readonly record struct DiffSource(DiffSourceKind Kind, string? CommitHash = null)
+public readonly record struct DiffSource(DiffSourceKind Kind, string? CommitHash = null, string? BaseHash = null)
 {
     public static DiffSource Staged { get; } = new(DiffSourceKind.Staged);
     public static DiffSource Unstaged { get; } = new(DiffSourceKind.Unstaged);
     public static DiffSource Untracked { get; } = new(DiffSourceKind.Untracked);
     public static DiffSource Conflicted { get; } = new(DiffSourceKind.Conflicted);
     public static DiffSource ForCommit(string hash) => new(DiffSourceKind.Commit, hash);
+    /// <summary>The difference between two resolved commits.</summary>
+    public static DiffSource Between(string baseHash, string head) => new(DiffSourceKind.Compare, head, baseHash);
 }
 
 public readonly record struct DiffTarget(DiffSource Source, string Path, string? OriginalPath = null);
@@ -214,6 +219,7 @@ public sealed class RepositorySnapshot
     public required IReadOnlyList<GitTag> Tags { get; init; }
     public required IReadOnlyList<Stash> Stashes { get; init; }
     public required IReadOnlyList<string> Remotes { get; init; }
+    public InProgressOperation? Operation { get; init; }
 
     public static readonly RepositorySnapshot Empty = new()
     {

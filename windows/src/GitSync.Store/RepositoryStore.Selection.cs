@@ -26,7 +26,8 @@ public sealed partial class RepositoryStore
     public FileDiff? Diff { get; private set; }
     public IReadOnlySet<int> LineSelection { get; private set; } = new HashSet<int>();
 
-    public Commit? SelectedCommit => Commits.FirstOrDefault(c => c.Id == SelectedCommitId);
+    public Commit? SelectedCommit => Commits.FirstOrDefault(c => c.Id == SelectedCommitId)
+        ?? SearchResults?.FirstOrDefault(c => c.Id == SelectedCommitId);
 
     /// <summary>The latest diff / commit-detail load, so callers can await it.</summary>
     public Task PendingLoad { get; private set; } = Task.CompletedTask;
@@ -40,6 +41,7 @@ public sealed partial class RepositoryStore
         SetSelectedCommit(null);
         SetDiff(null);
         SetCommitDetails([], "");
+        ClearStash();
     }
 
     /// <summary>
@@ -52,6 +54,13 @@ public sealed partial class RepositoryStore
         {
             // Commits are immutable; only drop a selection that disappeared.
             if (SelectedCommitId is not null && SelectedCommit is null) ClearSelection();
+            return;
+        }
+        // A comparison is between fixed commits, so its selection stays valid.
+        if (Mode == StoreMode.Compare) return;
+        if (Mode == StoreMode.Stash)
+        {
+            ReconcileStash();
             return;
         }
 
@@ -211,6 +220,11 @@ public sealed partial class RepositoryStore
         }
         SetLineSelection(selection);
     }
+
+    /// <summary>A hunk can be stashed when the file has unstaged changes only.</summary>
+    public bool CanStashHunk =>
+        CanPatch && SelectedTarget is { } target && target.Source == DiffSource.Unstaged
+        && !Status.Staged.Any(f => f.Path == target.Path);
 
     // MARK: Notifying setters
 

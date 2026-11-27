@@ -18,8 +18,11 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border x:Name="Avatar" Width="34" Height="34" CornerRadius="17">
-                    <TextBlock x:Name="Initials" Foreground="White" FontSize="12" FontWeight="SemiBold"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Grid>
+                        <TextBlock x:Name="Initials" Foreground="White" FontSize="12" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Ellipse x:Name="Picture" />
+                    </Grid>
                 </Border>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock x:Name="Author" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
@@ -33,11 +36,23 @@
                     </StackPanel>
                 </Button>
             </Grid>
+            <Border x:Name="Signature" CornerRadius="8" Padding="12,7" HorizontalAlignment="Left"
+                    Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                    <FontIcon x:Name="SignatureIcon" FontSize="14" VerticalAlignment="Center" />
+                    <StackPanel>
+                        <TextBlock x:Name="SignatureTitle" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock x:Name="SignatureDetail" FontSize="11.5" IsTextSelectionEnabled="True"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="360"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
             <StackPanel x:Name="Parents" Orientation="Horizontal" Spacing="8" />
         </StackPanel>
         <Border BorderThickness="0,0,0,1" BorderBrush="{ThemeResource PanelBorderBrush}">
             <ListView x:Name="Files" Padding="6" MaxHeight="190" MinHeight="52" SelectionChanged="OnFileSelected"
-                      ContainerContentChanging="OnFileRow">
+                      ContainerContentChanging="OnFileRow" ContextRequested="OnContext">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="MinHeight" Value="32" />

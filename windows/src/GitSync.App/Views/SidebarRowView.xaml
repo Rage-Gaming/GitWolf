@@ -4,12 +4,19 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Grid x:Name="Root" Height="30" ColumnSpacing="8" Background="Transparent">
+        <Grid.RenderTransform>
+            <TranslateTransform x:Name="Slide" />
+        </Grid.RenderTransform>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="16" />
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
         <ContentPresenter x:Name="DrawnIcon" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <Border x:Name="CurrentMark" Width="9" Height="9" CornerRadius="4.5" Background="#2EA043"
+                HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,8,-3,0" Visibility="Collapsed">
+            <FontIcon Glyph="&#xE73E;" FontSize="6" Foreground="White" />
+        </Border>
         <TextBlock x:Name="Label" Grid.Column="1" FontSize="13" VerticalAlignment="Center"
                    TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
         <StackPanel x:Name="HeaderPanel" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -21,7 +28,11 @@
         </StackPanel>
         <TextBlock x:Name="Trailing" Grid.Column="2" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
                    Foreground="{ThemeResource AccentLabelBrush}" />
-        <FontIcon x:Name="Chevron" Grid.Column="2" FontSize="10" VerticalAlignment="Center"
-                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <FontIcon x:Name="Chevron" Grid.Column="2" FontSize="10" VerticalAlignment="Center" Glyph="&#xE76C;"
+                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" RenderTransformOrigin="0.5,0.5">
+            <FontIcon.RenderTransform>
+                <RotateTransform x:Name="ChevronTurn" />
+            </FontIcon.RenderTransform>
+        </FontIcon>
     </Grid>
 </UserControl>
