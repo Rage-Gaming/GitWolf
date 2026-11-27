@@ -1,6 +1,7 @@
 import Foundation
 import GitSyncCore
 import Observation
+import SwiftUI
 
 /// Pull requests or issues for one repository, loaded page by page from the hosting provider.
 @MainActor @Observable
@@ -70,7 +71,8 @@ final class CollabStore {
                 guard token == generation else { return }
                 page = requested
                 hasMore = result.count >= ProviderClient.collabPageSize
-                items = replacing ? result : items + result.filter { new in !items.contains { $0.number == new.number } }
+                let merged = replacing ? result : items + result.filter { new in !items.contains { $0.number == new.number } }
+                withAnimation(.easeOut(duration: 0.15)) { items = merged }
                 loadedAt = Date()
                 if let n = selectedNumber, !items.contains(where: { $0.number == n }) { selectedNumber = nil }
             } catch {
@@ -114,7 +116,7 @@ final class CollabStore {
             defer { if commentsFor == number { isLoadingComments = false } }
             guard let (client, path) = await makeClient() else { return }
             let result = try? await client.comments(kind, repoPath: path, number: number)
-            if commentsFor == number { comments = result ?? [] }
+            if commentsFor == number { withAnimation(.easeOut(duration: 0.15)) { comments = result ?? [] } }
         }
         if repoLabels.isEmpty {
             Task {

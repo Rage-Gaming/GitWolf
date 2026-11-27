@@ -39,6 +39,20 @@ public enum ChangeKind: Character, Hashable, Sendable {
     init(code: Character) {
         self = ChangeKind(rawValue: code) ?? .modified
     }
+
+    /// Plain-language name, used for VoiceOver.
+    public var spokenName: String {
+        switch self {
+        case .modified: "Modified"
+        case .added: "Added"
+        case .deleted: "Deleted"
+        case .renamed: "Renamed"
+        case .copied: "Copied"
+        case .typeChanged: "Type changed"
+        case .untracked: "New file"
+        case .unmerged: "Conflicted"
+        }
+    }
 }
 
 public struct FileChange: Identifiable, Hashable, Sendable {
@@ -166,13 +180,15 @@ public struct FileDiff: Equatable, Sendable {
     public var additions: Int
     public var deletions: Int
     public var isTruncated: Bool
+    /// Produced with `-w`; hunks no longer match the file exactly, so they can't be applied.
+    public var ignoresWhitespace = false
 
     public static let empty = FileDiff(
         header: [], hunks: [], lines: [], isBinary: false, additions: 0, deletions: 0, isTruncated: false)
 
     /// Whether hunks/lines of this diff can safely be turned back into a patch.
     public var canPatch: Bool {
-        !isBinary && !isTruncated && !hunks.isEmpty && !header.isEmpty
+        !isBinary && !isTruncated && !ignoresWhitespace && !hunks.isEmpty && !header.isEmpty
             && !lines.contains { $0.raw.contains("\u{FFFD}") }
     }
 

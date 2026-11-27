@@ -28,7 +28,7 @@ A fast, clean, native Git client. Think Sourcetree, without the rough edges.
 - Live file-system watching with coalesced refreshes
 
 Docs: [features](docs/FEATURES.md), [design](docs/DESIGN.md), [providers](docs/PROVIDERS.md),
-[architecture](docs/ARCHITECTURE.md), [porting guide](docs/PORTING.md) (for building the Windows and
+[architecture](docs/ARCHITECTURE.md), [releasing](docs/RELEASING.md), [porting guide](docs/PORTING.md) (for building the Windows and
 Linux clients).
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for what is next (syntax highlighting,

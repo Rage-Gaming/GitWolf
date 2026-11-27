@@ -1,0 +1,61 @@
+name: Release
+
+# Pushing a tag like v1.0.0 builds, signs, notarises and publishes a macOS disk image.
+# Required repository secrets (see docs/RELEASING.md):
+#   MACOS_CERTIFICATE_P12     base64 of the Developer ID Application certificate (.p12)
+#   MACOS_CERTIFICATE_PASSWORD password of that .p12
+#   MACOS_SIGN_IDENTITY       e.g. "Developer ID Application: Your Name (TEAMID)"
+#   NOTARY_KEY_P8             contents of an App Store Connect API key (.p8)
+#   NOTARY_KEY_ID, NOTARY_ISSUER_ID   that key's id and issuer id
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        working-directory: apple
+        run: swift test
+      - name: Import signing certificate
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/release.keychain-db"
+          KCPASS="$(uuidgen)"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          # `security -i` reads commands from stdin, so no password appears in a process argument list.
+          security -i <<EOS
+          create-keychain -p "$KCPASS" "$KC"
+          set-keychain-settings -lut 3600 "$KC"
+          unlock-keychain -p "$KCPASS" "$KC"
+          import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          set-key-partition-list -S apple-tool:,apple: -s -k "$KCPASS" "$KC"
+          list-keychains -d user -s "$KC" login.keychain-db
+          EOS
+          rm "$RUNNER_TEMP/cert.p12"
+      - name: Store notarytool credentials
+        env:
+          KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          printf '%s' "$KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          xcrun notarytool store-credentials gitsync-notary --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$KEY_ID" --issuer "$ISSUER"
+          rm "$RUNNER_TEMP/AuthKey.p8"
+      - name: Build, sign, notarise
+        working-directory: apple
+        env:
+          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          NOTARY_PROFILE: gitsync-notary
+        run: Scripts/release.sh "${GITHUB_REF_NAME#v}"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" apple/build/release/GitSync-*.dmg* --generate-notes --title "GitSync ${GITHUB_REF_NAME#v}"

@@ -1,6 +1,7 @@
 import AppKit
 import GitSyncCore
 import Observation
+import SwiftUI
 
 enum StoreSheet: Identifiable {
     case newBranch(from: String?)
@@ -77,6 +78,8 @@ final class RepositoryStore: Identifiable {
     var lfsPaths: Set<String> = []
     var isShallow = false
     var shallowChecked = false
+    /// Profile pictures of commit authors, from the hosting platform.
+    let avatars = AvatarProvider()
     private var commitGraphTried = false
     /// Where `origin` (or the first remote) lives, for web links.
     private(set) var remoteLocation: RemoteLocation?
@@ -161,6 +164,14 @@ final class RepositoryStore: Identifiable {
         return (ProviderClient(account: account, token: secret), path)
     }
 
+    /// Teaches the avatar provider to ask this repository's platform who a commit author is.
+    func configureAvatarLookup() {
+        avatars.lookup = { [weak self] sha, email in
+            guard let self, let (client, path) = await self.providerClient() else { return nil }
+            return try? await client.commitAuthorAvatar(repoPath: path, sha: sha, email: email)
+        }
+    }
+
     /// Whether this repository's host lets GitSync fork it (needs a recognised provider).
     var canFork: Bool {
         guard let kind = providerKind, let host = remoteLocation?.host else { return false }
@@ -188,6 +199,7 @@ final class RepositoryStore: Identifiable {
     func start() {
         guard !started else { return }
         started = true
+        configureAvatarLookup()
         pullRequests.context = { [weak self] in self?.collabContext() }
         Task {
             let config = await repo.signingConfig()
@@ -435,27 +447,36 @@ final class RepositoryStore: Identifiable {
         guard id != selectedCommitID else { return }
         selectedCommitID = id
         if let id { loadChecks(sha: id) }
-        selectedTarget = nil
-        diff = nil
-        commitFiles = []
-        commitMessage = ""
-        selectedSignature = nil
         diffToken += 1
         commitToken += 1
-        guard let id, let commit = commits.first(where: { $0.id == id }) else { return }
+        guard let id, let commit = commits.first(where: { $0.id == id }) else {
+            selectedTarget = nil; diff = nil; commitFiles = []; commitMessage = ""; selectedSignature = nil
+            return
+        }
+        // Keep the previous file list and diff on screen until the new ones arrive, then swap them in
+        // together, so selecting a commit doesn't blank and re-layout the pane.
+        commitMessage = commit.subject
+        selectedSignature = nil
         let token = commitToken
+        // Signature checking can be slow (gpg, ssh-keygen), so it must never hold up the files and diff.
         Task {
             let signature = try? await repo.signature(of: commit.hash)
-            if token == commitToken { selectedSignature = signature }
+            if token == commitToken { withAnimation(.easeOut(duration: 0.18)) { selectedSignature = signature } }
         }
         Task {
             async let files = try? repo.files(in: commit)
             async let message = try? repo.message(of: commit.hash)
             let (f, m) = (await files ?? [], await message ?? commit.subject)
             guard token == commitToken else { return }
-            commitFiles = f
-            commitMessage = m
-            if let first = f.first { selectChange(first, source: .commit(commit.hash)) }
+            withAnimation(.easeOut(duration: 0.18)) {
+                commitFiles = f
+                commitMessage = m
+                if let first = f.first {
+                    selectChange(first, source: .commit(commit.hash))
+                } else {
+                    selectedTarget = nil; diff = nil
+                }
+            }
         }
     }
 
@@ -482,9 +503,15 @@ final class RepositoryStore: Identifiable {
             do {
                 let result = try await repo.compare(from: from, to: to, sinceAncestor: since, remotes: remotes)
                 guard token == compareToken else { return }
-                comparison = result
-                selectedTarget = nil; diff = nil; diffToken += 1
-                if let first = result.files.first { selectChange(first, source: .compare(base: result.base, head: result.head)) }
+                withAnimation(.easeOut(duration: 0.18)) {
+                    comparison = result
+                    diffToken += 1
+                    if let first = result.files.first {
+                        selectChange(first, source: .compare(base: result.base, head: result.head))
+                    } else {
+                        selectedTarget = nil; diff = nil
+                    }
+                }
             } catch {
                 guard token == compareToken else { return }
                 comparison = nil
@@ -503,13 +530,14 @@ final class RepositoryStore: Identifiable {
     func selectStash(_ stash: Stash) {
         mode = .stash
         selectedStash = stash
-        stashFiles = []; stashCommit = nil
-        selectedTarget = nil; diff = nil; diffToken += 1
+        diffToken += 1
         Task {
             guard let hash = try? await repo.stashHash(stash.ref), let files = try? await repo.stashFiles(stash.ref),
                   selectedStash == stash else { return }
-            stashCommit = hash; stashFiles = files
-            if let first = files.first { selectChange(first, source: .commit(hash)) }
+            withAnimation(.easeOut(duration: 0.18)) {
+                stashCommit = hash; stashFiles = files
+                if let first = files.first { selectChange(first, source: .commit(hash)) } else { selectedTarget = nil; diff = nil }
+            }
         }
     }
 
@@ -525,6 +553,15 @@ final class RepositoryStore: Identifiable {
         loadDiff(for: target)
     }
 
+    /// Re-reads the selected diff, e.g. after a diff display option changed.
+    func reloadDiff() { if let selectedTarget { loadDiff(for: selectedTarget) } }
+
+    /// Both sides of the selected file, for image previews.
+    func imageVersions() async -> (old: Data?, new: Data?) {
+        guard let target = selectedTarget else { return (nil, nil) }
+        return await repo.imageVersions(for: target)
+    }
+
     private func loadDiff(for target: DiffTarget) {
         diffToken += 1
         let token = diffToken
@@ -532,7 +569,13 @@ final class RepositoryStore: Identifiable {
             let result = (try? await repo.diff(for: target)) ?? .empty
             guard token == diffToken else { return }
             if diff != result {
-                diff = result; clearLineSelection()
+                switch target.source {
+                case .commit, .compare:
+                    withAnimation(.easeOut(duration: 0.18)) { diff = result }
+                default:
+                    diff = result
+                }
+                clearLineSelection()
                 #if DEBUG
                 demoHook(result)
                 #endif

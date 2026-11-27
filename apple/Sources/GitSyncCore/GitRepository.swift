@@ -8,6 +8,12 @@ public struct GitRepository: Sendable {
     public var gitPath: String
     /// Unchanged lines shown around each diff hunk.
     public var contextLines: Int
+    /// Ignore whitespace changes in diffs (`git diff -w`). Such diffs can't be turned back into patches.
+    public var ignoreWhitespace = false
+    /// Show whole files in diffs instead of a few lines of context.
+    public var fullFileDiffs = false
+
+    private var contextArgument: String { "-U\(fullFileDiffs ? 1_000_000 : contextLines)" }
 
     /// Resolves a saved credential for a remote host, plus where the `GIT_ASKPASS` helper lives.
     /// Only consulted for network commands (fetch, pull, push, clone).
@@ -184,7 +190,8 @@ public struct GitRepository: Sendable {
         // Explicit prefixes and no external tools so output is stable regardless of user config
         // (diff.noprefix, diff.mnemonicPrefix, ...), which `git apply` depends on.
         let common = ["diff", "--no-color", "--no-ext-diff", "--no-textconv",
-                      "--src-prefix=a/", "--dst-prefix=b/", "-U\(contextLines)", "-M"]
+                      "--src-prefix=a/", "--dst-prefix=b/", contextArgument, "-M"]
+            + (ignoreWhitespace ? ["-w"] : [])
         let data: Data
         switch target.source {
         case .unstaged, .conflicted:
@@ -193,7 +200,7 @@ public struct GitRepository: Sendable {
             data = try await git.run(common + ["--cached", "--"] + paths, readOnly: true)
         case .untracked:
             data = try await git.run(
-                ["diff", "--no-color", "--no-index", "-U\(contextLines)", "--", "/dev/null", target.path],
+                ["diff", "--no-color", "--no-index", contextArgument] + (ignoreWhitespace ? ["-w"] : []) + ["--", "/dev/null", target.path],
                 readOnly: true, allowedExitCodes: [0, 1])
         case .commit(let hash):
             let base = try await parentOrEmptyTree(of: hash)
@@ -201,7 +208,36 @@ public struct GitRepository: Sendable {
         case .compare(let base, let head):
             data = try await git.run(common + [base, head, "--"] + paths, readOnly: true)
         }
-        return DiffParser.parse(data, maxLines: maxLines)
+        var parsed = DiffParser.parse(data, maxLines: maxLines)
+        parsed.ignoresWhitespace = ignoreWhitespace
+        return parsed
+    }
+
+    /// File contents on each side of a diff target, for image previews. `nil` means absent on that side.
+    public func imageVersions(for target: DiffTarget, limit: Int = 20_000_000) async -> (old: Data?, new: Data?) {
+        func blob(_ spec: String) async -> Data? {
+            guard let data = try? await git.run(["show", spec], readOnly: true), data.count <= limit else { return nil }
+            return data
+        }
+        func working() -> Data? {
+            guard let data = try? Data(contentsOf: root.appendingPathComponent(target.path)), data.count <= limit else { return nil }
+            return data
+        }
+        let oldPath = target.originalPath ?? target.path
+        switch target.source {
+        case .unstaged, .conflicted: return (await blob(":\(oldPath)"), working())
+        case .staged: return (await blob("HEAD:\(oldPath)"), await blob(":\(target.path)"))
+        case .untracked: return (nil, working())
+        case .commit(let hash):
+            var old: Data?
+            if let parent = try? await parentOrEmptyTree(of: hash), parent != Self.emptyTree { old = await blob("\(parent):\(oldPath)") }
+            return (old, await blob("\(hash):\(target.path)"))
+        case .compare(let base, let head): return (await blob("\(base):\(oldPath)"), await blob("\(head):\(target.path)"))
+        }
+    }
+
+    public static func isImagePath(_ path: String) -> Bool {
+        ["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "ico"].contains((path as NSString).pathExtension.lowercased())
     }
 
     private func parentOrEmptyTree(of hash: String) async throws -> String {

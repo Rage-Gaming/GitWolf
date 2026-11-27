@@ -2177,6 +2177,24 @@ struct FileIconTests {
         #expect(FileIcons.branchIcon(named: "").name == "Branch")
     }
 
+    @Test func tagsByName() {
+        #expect(FileIcons.tagIcon(named: "v2.0.0").name == "Major release")
+        #expect(FileIcons.tagIcon(named: "1.0").name == "Major release")
+        #expect(FileIcons.tagIcon(named: "v1.4.2").name == "Release")
+        #expect(FileIcons.tagIcon(named: "v0.3.0").name == "Release")
+        #expect(FileIcons.tagIcon(named: "v1.5.0-rc.1").name == "Release candidate")
+        #expect(FileIcons.tagIcon(named: "v1.5.0-beta.2").name == "Pre-release")
+        #expect(FileIcons.tagIcon(named: "v3.0.0-alpha").name == "Pre-release")
+        #expect(FileIcons.tagIcon(named: "nightly-2026-11-27").name == "Nightly")
+        #expect(FileIcons.tagIcon(named: "latest").name == "Latest")
+        #expect(FileIcons.tagIcon(named: "release-lts").name == "Long-term support")
+        #expect(FileIcons.tagIcon(named: "deploy-prod-42").name == "Deploy")
+        #expect(FileIcons.tagIcon(named: "old-backup").name == "Archive")
+        #expect(FileIcons.tagIcon(named: "milestone").name == "Tag")
+        #expect(FileIcons.tagIcon(named: "milestone", isAnnotated: false).glyph == .symbol("tag"))
+        #expect(FileIcons.tagIcon(named: "").name == "Tag")
+    }
+
     @Test func foldersByName() {
         #expect(FileIcons.folderIcon(named: "src").name == "Source")
         #expect(FileIcons.folderIcon(named: "Docs").name == "Docs")
@@ -2195,5 +2213,321 @@ struct FileIconTests {
         for icon in Array(FileIcons.extensions.values) + Array(FileIcons.names.values) + Array(FileIcons.folders.values) {
             #expect(icon.color <= 0xFFFFFF)
         }
+    }
+}
+
+@Suite("Avatars")
+struct AvatarTests {
+    @Test func noreplyAddresses() {
+        #expect(AvatarURLs.fromNoreply(email: "12345+octo-cat@users.noreply.github.com")?.absoluteString
+                == "https://avatars.githubusercontent.com/u/12345?s=96")
+        #expect(AvatarURLs.fromNoreply(email: "octocat@users.noreply.github.com")?.absoluteString
+                == "https://github.com/octocat.png?size=96")
+        #expect(AvatarURLs.fromNoreply(email: "42-jane@users.noreply.gitlab.com")?.absoluteString
+                == "https://gitlab.com/uploads/-/system/user/avatar/42/avatar.png?width=96")
+        #expect(AvatarURLs.fromNoreply(email: "someone@example.com") == nil)
+        // Nothing smuggled into the path.
+        #expect(AvatarURLs.fromNoreply(email: "../evil@users.noreply.github.com") == nil)
+        #expect(AvatarURLs.fromNoreply(email: "") == nil)
+    }
+
+    @Test func onlyWebAddresses() {
+        #expect(AvatarURLs.safe("https://avatars.githubusercontent.com/u/1?v=4") != nil)
+        #expect(AvatarURLs.safe("file:///etc/passwd") == nil)
+        #expect(AvatarURLs.safe("javascript:alert(1)") == nil)
+        #expect(AvatarURLs.safe(nil) == nil)
+        #expect(AvatarURLs.safe("") == nil)
+    }
+
+    @Test func providerResponses() async throws {
+        let gh = Data(#"[{"sha":"a","author":{"login":"o","avatar_url":"https://avatars.githubusercontent.com/u/9?v=4"}}]"#.utf8)
+        #expect(try ProviderClient.parseCommitListAvatar(gh)?.absoluteString == "https://avatars.githubusercontent.com/u/9?v=4")
+        #expect(try ProviderClient.parseCommitListAvatar(Data(#"[{"sha":"a","author":null}]"#.utf8)) == nil)
+        #expect(try ProviderClient.parseCommitListAvatar(Data("[]".utf8)) == nil)
+        #expect(try ProviderClient.parseGitLabAvatar(Data(#"{"avatar_url":"https://gitlab.com/a.png"}"#.utf8))?.host == "gitlab.com")
+        let bb = Data(#"{"author":{"user":{"links":{"avatar":{"href":"https://bitbucket.org/a.png"}}}}}"#.utf8)
+        #expect(try ProviderClient.parseBitbucketCommitAvatar(bb)?.host == "bitbucket.org")
+        #expect(throws: ProviderError.self) { try ProviderClient.parseGitLabAvatar(Data("[]".utf8)) }
+    }
+
+    @Test func requestsGoToThePlatformOnly() async throws {
+        final class Seen: @unchecked Sendable { var urls: [String] = []; let lock = NSLock()
+            func add(_ s: String) { lock.lock(); urls.append(s); lock.unlock() } }
+        let seen = Seen()
+        func client(_ kind: ProviderKind, host: String) -> ProviderClient {
+            ProviderClient(account: ProviderAccount(kind: kind, host: host, username: "u"), token: "t") { request in
+                seen.add(request.url!.absoluteString)
+                let body: String = switch kind {
+                case .gitlab: #"{"avatar_url":"https://gitlab.com/a.png"}"#
+                case .bitbucket: #"{"author":{"user":{"links":{"avatar":{"href":"https://x/a.png"}}}}}"#
+                default: #"[{"author":{"avatar_url":"https://x/a.png"}}]"#
+                }
+                return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+        }
+        let sha = String(repeating: "a", count: 40)
+        #expect(try await client(.github, host: "github.com").commitAuthorAvatar(repoPath: "o/r", sha: sha, email: "e@x.com") != nil)
+        #expect(try await client(.gitlab, host: "gitlab.com").commitAuthorAvatar(repoPath: "o/r", sha: sha, email: "e+tag@x.com") != nil)
+        #expect(try await client(.gitea, host: "codeberg.org").commitAuthorAvatar(repoPath: "o/r", sha: sha, email: "e@x.com") != nil)
+        #expect(try await client(.bitbucket, host: "bitbucket.org").commitAuthorAvatar(repoPath: "o/r", sha: sha, email: "e@x.com") != nil)
+        #expect(try await client(.azure, host: "dev.azure.com").commitAuthorAvatar(repoPath: "o/r", sha: sha, email: "e@x.com") == nil)
+        // A malformed "sha" is never sent anywhere.
+        #expect(try await client(.github, host: "github.com").commitAuthorAvatar(repoPath: "o/r", sha: "../x", email: "e@x.com") == nil)
+        #expect(seen.urls.count == 4)
+        #expect(seen.urls[0].hasPrefix("https://api.github.com/repos/o/r/commits?sha="))
+        #expect(seen.urls[1] == "https://gitlab.com/api/v4/avatar?email=e%2Btag%40x.com&size=96")
+        #expect(seen.urls.allSatisfy { !$0.contains("gravatar") })
+    }
+}
+
+@Suite struct BadgeTests {
+    @Test func badgeText() {
+        #expect(BadgeLabel.text(forChanges: 0) == nil)
+        #expect(BadgeLabel.text(forChanges: 7) == "7")
+        #expect(BadgeLabel.text(forChanges: 99) == "99")
+        #expect(BadgeLabel.text(forChanges: 100) == "99+")
+    }
+}
+
+@Suite struct HomeLayoutTests {
+    @Test func pinAndGroups() throws {
+        var layout = HomeLayout()
+        layout.togglePin("/a"); layout.togglePin("/b")
+        #expect(layout.pinned == ["/a", "/b"])
+        layout.togglePin("/a")
+        #expect(layout.pinned == ["/b"])
+
+        #expect(layout.addGroup(named: "   ") == nil)
+        let created = layout.addGroup(named: " Work ")
+        let work = try #require(created)
+        #expect(layout.groups.first?.name == "Work")
+        layout.toggle("/b", inGroup: work); layout.toggle("/c", inGroup: work)
+        #expect(layout.groupIDs(containing: "/b") == [work])
+        layout.toggle("/c", inGroup: work)
+        #expect(layout.groups[0].paths == ["/b"])
+        layout.renameGroup(work, to: "Day job")
+        #expect(layout.groups[0].name == "Day job")
+
+        layout.remove("/b")
+        #expect(layout.pinned.isEmpty && layout.groups[0].paths.isEmpty)
+        layout.deleteGroup(work)
+        #expect(layout.groups.isEmpty)
+    }
+
+    @Test func codableAndPrune() throws {
+        var layout = HomeLayout()
+        layout.togglePin("/keep"); layout.togglePin("/gone")
+        let created = layout.addGroup(named: "G", paths: ["/keep", "/gone"])
+        let id = try #require(created)
+        let decoded = try JSONDecoder().decode(HomeLayout.self, from: JSONEncoder().encode(layout))
+        #expect(decoded == layout)
+        let pruned = decoded.pruned { $0 == "/keep" }
+        #expect(pruned.pinned == ["/keep"])
+        #expect(pruned.groups.first { $0.id == id }?.paths == ["/keep"])
+    }
+}
+
+private func makeTempDir() throws -> URL {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("gs-act-\(UUID().uuidString)").resolvingSymlinksInPath()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}
+
+@Suite struct CustomActionTests {
+    @Test func runsAtRepoRootWithEnvironment() async throws {
+        let dir = try makeTempDir()
+        let action = CustomAction(name: "Show", command: "pwd; echo \"branch=$GITSYNC_BRANCH\"; echo \"repo=$GITSYNC_REPO\"")
+        let result = await CustomActionRunner.run(action, root: dir, branch: "feature/x y")
+        #expect(result.succeeded)
+        #expect(result.output.contains("branch=feature/x y"))
+        #expect(result.output.contains("repo=\(dir.path)"))
+    }
+
+    @Test func reportsFailure() async throws {
+        let dir = try makeTempDir()
+        let result = await CustomActionRunner.run(CustomAction(name: "Fail", command: "echo oops >&2; exit 3"), root: dir, branch: nil)
+        #expect(result.exitCode == 3)
+        #expect(result.output.contains("oops"))
+    }
+
+    @Test func validation() {
+        #expect(!CustomAction(name: " ", command: "ls").isValid)
+        #expect(!CustomAction(name: "x", command: "").isValid)
+        #expect(CustomAction(name: "x", command: "ls").isValid)
+    }
+}
+
+@Suite struct DiffImprovementTests {
+    private func makeRepo() async throws -> (GitRepository, GitRunner, URL) {
+        let dir = try makeTempDir()
+        let runner = GitRunner(workingDirectory: dir)
+        try await runner.run(["init", "-b", "main"])
+        try await runner.run(["config", "user.name", "Tester"])
+        try await runner.run(["config", "user.email", "t@example.com"])
+        return (GitRepository(root: dir), runner, dir)
+    }
+
+    @Test func wordLevelChanges() {
+        let c = InlineDiff.changes(old: "let total = price * qty", new: "let total = price * quantity")
+        #expect(c.old == [20..<23])
+        #expect(c.new == [20..<28])
+        // Unrelated lines get no inline highlight.
+        let none = InlineDiff.changes(old: "alpha beta gamma", new: "one two three four")
+        #expect(none.old.isEmpty && none.new.isEmpty)
+        // Identical lines have nothing to highlight.
+        #expect(InlineDiff.changes(old: "same", new: "same").old.isEmpty)
+    }
+
+    @Test func inlineRangesPairDeletionsWithAdditions() async throws {
+        let (repo, _, dir) = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try "a\nvalue = 1\nb\n".write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+        try await repo.stage(["f.txt"]); try await repo.commit(message: "base", amend: false)
+        try "a\nvalue = 2\nb\n".write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+        let diff = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        let ranges = diff.inlineRanges()
+        let del = try #require(diff.lines.first { $0.kind == .deletion })
+        let add = try #require(diff.lines.first { $0.kind == .addition })
+        #expect(ranges[del.id] == [8..<9])
+        #expect(ranges[add.id] == [8..<9])
+    }
+
+    @Test func ignoreWhitespaceAndFullFile() async throws {
+        var (repo, _, dir) = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let base = (1...30).map { "line \($0)" }
+        try (base.joined(separator: "\n") + "\n").write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+        try await repo.stage(["f.txt"]); try await repo.commit(message: "base", amend: false)
+        var edited = base
+        edited[14] = "line   15"          // whitespace only
+        edited[2] = "line 3 CHANGED"
+        try (edited.joined(separator: "\n") + "\n").write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+
+        let normal = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        #expect(normal.additions == 2 && normal.canPatch)
+
+        repo.ignoreWhitespace = true
+        let ignoring = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        #expect(ignoring.additions == 1)
+        #expect(!ignoring.canPatch)
+        repo.ignoreWhitespace = false
+
+        repo.fullFileDiffs = true
+        let full = try await repo.diff(for: DiffTarget(source: .unstaged, path: "f.txt"))
+        #expect(full.hunks.count == 1)
+        #expect(full.lines.filter { $0.kind == .context }.count == 28)
+        // Long unchanged stretches can be folded, keeping 3 lines beside each change.
+        let runs = full.collapsibleRuns()
+        #expect(!runs.isEmpty)
+        for run in runs { #expect(full.lines[run].allSatisfy { $0.kind == .context }) }
+    }
+
+    @Test func collapsibleRunsRespectsEdges() {
+        func line(_ id: Int, _ kind: DiffLine.Kind) -> DiffLine {
+            DiffLine(id: id, kind: kind, hunkIndex: 0, oldNumber: id, newNumber: id, text: "x", raw: " x")
+        }
+        var diff = FileDiff.empty
+        diff.lines = [line(0, .addition)] + (1...20).map { line($0, .context) } + [line(21, .deletion)]
+        #expect(diff.collapsibleRuns() == [4..<18])
+        diff.lines = (0..<5).map { line($0, .context) }
+        #expect(diff.collapsibleRuns().isEmpty)
+    }
+
+    @Test func imageVersionsReadBothSides() async throws {
+        let (repo, runner, dir) = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("pic.png")
+        try Data([1, 2, 3]).write(to: file)
+        try await repo.stage(["pic.png"]); try await repo.commit(message: "add", amend: false)
+        try Data([4, 5, 6, 7]).write(to: file)
+
+        let unstaged = await repo.imageVersions(for: DiffTarget(source: .unstaged, path: "pic.png"))
+        #expect(unstaged.old == Data([1, 2, 3]) && unstaged.new == Data([4, 5, 6, 7]))
+        try await repo.stage(["pic.png"])
+        let staged = await repo.imageVersions(for: DiffTarget(source: .staged, path: "pic.png"))
+        #expect(staged.old == Data([1, 2, 3]) && staged.new == Data([4, 5, 6, 7]))
+        try await repo.commit(message: "edit", amend: false)
+        let hash = try await runner.runString(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let commit = await repo.imageVersions(for: DiffTarget(source: .commit(hash), path: "pic.png"))
+        #expect(commit.old == Data([1, 2, 3]) && commit.new == Data([4, 5, 6, 7]))
+        // The first commit has no parent version.
+        let first = try await runner.runString(["rev-list", "--max-parents=0", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let added = await repo.imageVersions(for: DiffTarget(source: .commit(first), path: "pic.png"))
+        #expect(added.old == nil && added.new == Data([1, 2, 3]))
+        #expect(GitRepository.isImagePath("a/B.PNG") && !GitRepository.isImagePath("a.svg"))
+    }
+}
+
+@Suite struct UpdateCheckerTests {
+    private func checker(status: Int = 200, body: String) -> UpdateChecker {
+        UpdateChecker(repository: "o/r") { request in
+            #expect(request.url?.absoluteString == "https://api.github.com/repos/o/r/releases/latest")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+        }
+    }
+
+    @Test func versionOrdering() throws {
+        let v = { try #require(AppVersion($0)) }
+        #expect(try v("1.10.0") > v("1.9.9"))
+        #expect(try v("v2.0") == v("2.0.0"))
+        #expect(try v("2.0.0-beta.2") < v("2.0.0"))
+        #expect(try v("2.0.0-beta.2") < v("2.0.0-beta.10"))
+        #expect(AppVersion("dev") == nil)
+    }
+
+    @Test func reportsNewerRelease() async throws {
+        let body = #"{"tag_name":"v1.2.0","html_url":"https://github.com/o/r/releases/tag/v1.2.0","body":"Notes","draft":false,"prerelease":false}"#
+        let found = try await checker(body: body).newerRelease(than: try #require(AppVersion("1.1.0")))
+        #expect(found?.tag == "v1.2.0" && found?.notes == "Notes")
+        #expect(try await checker(body: body).newerRelease(than: try #require(AppVersion("1.2.0"))) == nil)
+    }
+
+    @Test func ignoresPrereleasesMissingReleasesAndForeignLinks() async throws {
+        let current = try #require(AppVersion("1.0.0"))
+        let pre = #"{"tag_name":"v9.0.0","html_url":"https://github.com/o/r/x","prerelease":true}"#
+        #expect(try await checker(body: pre).newerRelease(than: current) == nil)
+        #expect(try await checker(status: 404, body: "{}").newerRelease(than: current) == nil)
+        let evil = #"{"tag_name":"v9.0.0","html_url":"https://evil.example/download"}"#
+        #expect(try await checker(body: evil).newerRelease(than: current) == nil)
+        await #expect(throws: URLError.self) { try await checker(status: 500, body: "").newerRelease(than: current) }
+    }
+}
+
+@Suite struct RepoIconTests {
+    @Test func setReplaceAndClear() {
+        var icons = RepoIcons()
+        #expect(icons.set(.symbol("star"), for: "/a") == nil)
+        #expect(icons.icon(for: "/a") == .symbol("star"))
+        #expect(icons.set(.image("one.png"), for: "/a") == nil)
+        // Replacing an image reports the file that is now unused.
+        #expect(icons.set(.symbol("flame"), for: "/a") == "one.png")
+        #expect(icons.set(.image("two.png"), for: "/b") == nil)
+        #expect(icons.set(nil, for: "/b") == "two.png")
+        #expect(icons.icon(for: "/b") == nil)
+    }
+
+    @Test func settingTheSameImageKeepsItsFile() {
+        var icons = RepoIcons()
+        icons.set(.image("x.png"), for: "/a")
+        #expect(icons.set(.image("x.png"), for: "/a") == nil)
+    }
+
+    @Test func prunesMissingRepositories() {
+        var icons = RepoIcons()
+        icons.set(.image("gone.png"), for: "/gone")
+        icons.set(.symbol("star"), for: "/kept")
+        let unused = icons.pruned { $0 == "/kept" }
+        #expect(unused == ["gone.png"])
+        #expect(icons.icon(for: "/gone") == nil)
+        #expect(icons.icon(for: "/kept") == .symbol("star"))
+    }
+
+    @Test func roundTripsThroughJSON() throws {
+        var icons = RepoIcons()
+        icons.set(.symbol("bolt"), for: "/a")
+        icons.set(.image("p.png"), for: "/b")
+        let back = try JSONDecoder().decode(RepoIcons.self, from: JSONEncoder().encode(icons))
+        #expect(back == icons)
     }
 }

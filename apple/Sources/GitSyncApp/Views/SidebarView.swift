@@ -3,9 +3,9 @@ import SwiftUI
 
 struct SidebarView: View {
     @Bindable var store: RepositoryStore
-    @State private var showLocal = true
+    @State private var showLocal = ProcessInfo.processInfo.environment["GITSYNC_TAGS"] == nil
     @State private var showRemote = true
-    @State private var showTags = false
+    @State private var showTags = ProcessInfo.processInfo.environment["GITSYNC_TAGS"] != nil
     @State private var showStashes = true
 
     var body: some View {
@@ -53,7 +53,7 @@ struct SidebarView: View {
                             .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary).padding(.leading, 10)
                     }
                     ForEach(store.tags) { tag in
-                        SidebarRow(icon: "tag", title: tag.name, tint: .orange, trailing: nil, emphasized: false,
+                        SidebarRow(icon: tagSymbol(tag), title: tag.name, tint: Color(hex: FileIcons.tagIcon(named: tag.name, isAnnotated: tag.isAnnotated).color), trailing: nil, emphasized: false,
                                    onTap: { store.reveal(hash: tag.hash) }, onDoubleTap: {})
                             .help(tag.isAnnotated ? (tag.message.isEmpty ? "Annotated tag" : "Annotated: \(tag.message)") : "Lightweight tag")
                             .contextMenu {
@@ -172,6 +172,10 @@ private func branchSymbol(_ name: String) -> String {
     if case .symbol(let symbol) = FileIcons.branchIcon(named: name).glyph { return symbol }
     return "arrow.triangle.branch"
 }
+private func tagSymbol(_ tag: GitTag) -> String {
+    if case .symbol(let symbol) = FileIcons.tagIcon(named: tag.name, isAnnotated: tag.isAnnotated).glyph { return symbol }
+    return "tag"
+}
 private func branchColor(_ name: String) -> Color { Color(hex: FileIcons.branchIcon(named: name).color) }
 
 private struct SidebarSection<Content: View>: View {
@@ -230,5 +234,7 @@ private struct SidebarRow: View {
         .onHover { hovering = $0 }
         .onTapGesture(count: 2, perform: onDoubleTap)
         .onTapGesture(perform: onTap)
+        .selectableRow(current ? "\(title), current" : title, selected: current, action: onTap)
+        .accessibilityAction(named: "Open", onDoubleTap)
     }
 }

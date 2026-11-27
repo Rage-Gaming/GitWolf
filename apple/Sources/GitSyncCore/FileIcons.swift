@@ -117,6 +117,36 @@ public enum FileIcons {
         return branchDefault
     }
 
+    /// The icon for a tag, from its name: version numbers (a major release like `v2.0.0` gets a star), pre-releases
+    /// (`-rc.1`, `-beta`, `-alpha`), `nightly`, `latest`/`stable`, `lts`, deploy markers, and a plain tag otherwise
+    /// (outlined when it is lightweight).
+    public static func tagIcon(named name: String, isAnnotated: Bool = true) -> FileIcon {
+        let lower = name.lowercased()
+        func has(_ words: [String]) -> Bool { words.contains { lower.contains($0) } }
+        if has(["nightly", "daily"]) { return FileIcon("Nightly", .symbol("moon.stars.fill"), 0x5C6BC0) }
+        if has(["-rc", ".rc", "rc."]) || lower.hasSuffix("rc") && lower.contains(where: \.isNumber) {
+            return FileIcon("Release candidate", .symbol("flag.checkered"), 0x7E57C2)
+        }
+        if has(["alpha", "beta", "preview", "snapshot", "-pre", "canary", "-dev"]) {
+            return FileIcon("Pre-release", .symbol("testtube.2"), 0xAB47BC)
+        }
+        if lower == "latest" || lower == "stable" || lower == "current" {
+            return FileIcon("Latest", .symbol("checkmark.seal.fill"), 0x43A047)
+        }
+        if has(["lts"]) { return FileIcon("Long-term support", .symbol("shield.fill"), 0x26A69A) }
+        if has(["deploy", "prod", "staging", "live"]) { return FileIcon("Deploy", .symbol("paperplane.fill"), 0x29B6F6) }
+        if has(["backup", "archive", "old", "legacy"]) { return FileIcon("Archive", .symbol("archivebox.fill"), 0x8E8E93) }
+        if match(#"^v?[1-9]\d*\.0(\.0)?$"#, lower) != nil { return FileIcon("Major release", .symbol("star.circle.fill"), 0xFFB300) }
+        if match(#"^v?\d+(\.\d+)+$"#, lower) != nil {
+            return FileIcon("Release", .symbol(isAnnotated ? "tag.fill" : "tag"), 0xFF9800)
+        }
+        return FileIcon("Tag", .symbol(isAnnotated ? "tag.fill" : "tag"), 0xFF9800)
+    }
+
+    private static func match(_ pattern: String, _ text: String) -> Range<String.Index>? {
+        text.range(of: pattern, options: .regularExpression)
+    }
+
     private static let branchDefault = FileIcon("Branch", .symbol("arrow.triangle.branch"), 0x8E8E93)
 
     private static func branch(_ name: String, _ symbol: String, _ color: UInt32) -> FileIcon {

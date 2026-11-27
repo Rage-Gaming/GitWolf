@@ -23,10 +23,16 @@ struct CommandPalette: View {
             }
         }
         if let s = workspace.selected {
+            all += CustomActionStore.load().filter(\.isValid).map { action in
+                Item(id: "action-\(action.id)", title: action.name, subtitle: "Custom action", icon: "play") { s.run(action) }
+            }
             all += [
                 Item(id: "fetch", title: "Fetch", subtitle: "Repository action", icon: "arrow.triangle.2.circlepath") { s.fetch() },
                 Item(id: "pull", title: "Pull", subtitle: "Repository action", icon: "arrow.down") { s.pull() },
                 Item(id: "push", title: "Push", subtitle: "Repository action", icon: "arrow.up") { s.push() },
+                Item(id: "finder", title: "Show in Finder", subtitle: "Repository action", icon: "folder") { s.openInFinder() },
+                Item(id: "terminal", title: "Open in Terminal", subtitle: "Repository action", icon: "terminal") { s.openInTerminal() },
+                Item(id: "editor", title: "Open in \(CustomActionStore.editorApp)", subtitle: "Repository action", icon: "chevron.left.forwardslash.chevron.right") { s.openInEditor() },
                 Item(id: "newbranch", title: "New Branch…", subtitle: "Repository action", icon: "plus") { s.sheet = .newBranch(from: nil) },
                 Item(id: "history", title: "Show History", subtitle: "View", icon: "clock.arrow.circlepath") { s.mode = .history },
                 Item(id: "changes", title: "Show Changes", subtitle: "View", icon: "square.and.pencil") { s.mode = .changes },

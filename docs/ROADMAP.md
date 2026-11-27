@@ -1,9 +1,9 @@
 # Roadmap
 
 ## Next
-- Syntax highlighting and side-by-side diff
-- Clone, init, and recent-repo management
-- App icon, notarised releases, auto-update
+- First notarised release: needs an Apple Developer ID; tooling and CI workflow exist but have not been run (see [RELEASING.md](RELEASING.md))
+- Translations: strings are extracted (`apple/Scripts/extract-strings.py`), no language is shipped yet; interpolated strings need hand-made keys
+- In-place auto-update (Sparkle-style); today the app only announces new releases
 
 ## Later
 - Git LFS download/lock actions (needs git-lfs), a bisect run script

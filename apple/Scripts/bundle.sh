@@ -13,5 +13,16 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/GitSync"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
-codesign --force --sign - "$APP"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# Translations: every Resources/<lang>.lproj folder (see Scripts/extract-strings.py).
+for lproj in Resources/*.lproj; do [ -d "$lproj" ] && cp -R "$lproj" "$APP/Contents/Resources/"; done
+if [ -n "${VERSION:-}" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
+fi
+# Ad-hoc signed by default. Scripts/release.sh signs with a Developer ID instead (SIGN_IDENTITY).
+if [ -n "${SIGN_IDENTITY:-}" ]; then
+  codesign --force --options runtime --timestamp --entitlements Resources/GitSync.entitlements --sign "$SIGN_IDENTITY" "$APP"
+else
+  codesign --force --sign - "$APP"
+fi
 echo "Built $APP"

@@ -63,7 +63,7 @@ struct FileHistorySheet: View {
                     LazyVStack(spacing: 2) {
                         ForEach(history) { commit in
                             HStack(spacing: 10) {
-                                AvatarView(name: commit.authorName, email: commit.authorEmail, size: 26)
+                                AvatarView(name: commit.authorName, email: commit.authorEmail, size: 26, sha: commit.hash)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(commit.subject).lineLimit(1)
                                     Text("\(commit.authorName) · \(commit.shortHash) · \(commit.date.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated)))")
@@ -92,9 +92,8 @@ struct FileHistorySheet: View {
 
     private func select(_ commit: Commit) async {
         selected = commit
-        diff = nil
         let result = try? await store.repo.fileDiff(path: path, at: commit.hash)
-        if selected == commit { diff = result ?? .empty }
+        if selected == commit { withAnimation(.easeOut(duration: 0.15)) { diff = result ?? .empty } }
     }
 
     // MARK: Blame

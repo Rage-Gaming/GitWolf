@@ -46,7 +46,8 @@ struct HistoryView: View {
     @State private var since = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
     @State private var until = Date()
     @State private var showFilters = false
-    @State private var found: [Commit] = []
+    /// Results of the last git search; nil until one arrives, so the list never blanks while a search runs.
+    @State private var found: [Commit]?
     @State private var searching = false
     @State private var searchError: String?
 
@@ -60,7 +61,8 @@ struct HistoryView: View {
     }
 
     private var items: [HistoryItem] {
-        if gitSearch { return found.map { HistoryItem(commit: $0, graph: nil) } }
+        if gitSearch, let found { return found.map { HistoryItem(commit: $0, graph: nil) } }
+        if gitSearch { return store.commits.map { HistoryItem(commit: $0, graph: nil) } }
         if query.isEmpty {
             return zip(store.commits, store.graph).map { HistoryItem(commit: $0, graph: $1) }
         }
@@ -83,7 +85,7 @@ struct HistoryView: View {
                     Image(systemName: hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                         .font(.system(size: 17)).foregroundStyle(hasFilters ? Theme.brand : .secondary)
                 }
-                .buttonStyle(.plain).help("Search options: scope, file and dates")
+                .buttonStyle(.plain).help("Search options: scope, file and dates").accessibilityLabel("Search options: scope, file and dates")
                 .popover(isPresented: $showFilters, arrowEdge: .bottom) { filters }
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
@@ -133,17 +135,17 @@ struct HistoryView: View {
     }
 
     private func runSearch() async {
-        guard gitSearch else { found = []; searchError = nil; searching = false; return }
+        guard gitSearch else { found = nil; searchError = nil; searching = false; return }
         // A short pause so typing doesn't start a search per keystroke.
         try? await Task.sleep(for: .milliseconds(300))
         if Task.isCancelled { return }
         let text = query.trimmingCharacters(in: .whitespaces)
-        if text.isEmpty && scope != .loaded && path.isEmpty && !useSince && !useUntil { found = []; return }
+        if text.isEmpty && scope != .loaded && path.isEmpty && !useSince && !useUntil { found = nil; return }
         searching = true
         defer { searching = false }
         do {
             let result = try await store.repo.search(gitQuery, remotes: Set(store.remotes))
-            if !Task.isCancelled { found = result; searchError = nil }
+            if !Task.isCancelled { withAnimation(.easeOut(duration: 0.15)) { found = result }; searchError = nil }
         } catch {
             if !Task.isCancelled { found = []; searchError = error.localizedDescription }
         }
@@ -167,6 +169,8 @@ struct HistoryView: View {
                                           selected: item.id == store.selectedCommitID, store: store)
                                     .id(item.id)
                                     .onTapGesture { store.selectCommit(item.id) }
+                                    .selectableRow("\(item.commit.subject), \(item.commit.authorName), \(item.commit.shortHash)",
+                                                   selected: item.id == store.selectedCommitID) { store.selectCommit(item.id) }
                             }
                             if store.canLoadMore && query.isEmpty && !gitSearch {
                                 Button("Load More…") { store.loadMoreCommits() }
@@ -175,6 +179,8 @@ struct HistoryView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .opacity(searching ? 0.6 : 1)
+                    .animation(.easeOut(duration: 0.15), value: searching)
                     .focusable()
                     .focusEffectDisabled()
                     .onKeyPress(.downArrow) { move(1, items); return .handled }
@@ -208,7 +214,7 @@ private struct CommitRow: View {
             if let graph = item.graph {
                 GraphCell(row: graph, laneCount: laneCount)
             }
-            AvatarView(name: c.authorName, email: c.authorEmail, size: 24)
+            AvatarView(name: c.authorName, email: c.authorEmail, size: 24, sha: c.hash)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     ForEach(c.refs.prefix(3), id: \.self) { RefChip(label: $0) }
@@ -218,7 +224,7 @@ private struct CommitRow: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 6)
-            Text(c.date.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated)))
+            Text(RelativeDates.short(c.date))
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 .help(c.date.formatted(date: .complete, time: .shortened))
         }
@@ -297,4 +303,15 @@ struct GraphCell: View {
         }
         .frame(width: CGFloat(laneCount) * Theme.laneWidth, height: Theme.historyRowHeight)
     }
+}
+
+/// Relative dates ("5 min ago") through one shared formatter; building one per row is slow while scrolling.
+@MainActor
+enum RelativeDates {
+    private static let formatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+    static func short(_ date: Date) -> String { formatter.localizedString(for: date, relativeTo: Date()) }
 }

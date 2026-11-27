@@ -20,6 +20,12 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `Bisect` | `BisectState` (from `BISECT_LOG`), start/mark/reset. |
 | `Patches` | format-patch, working diff, apply/check, `am`. |
 | `Worktrees`, `Submodules` | list/add/remove worktrees; submodule status, update, add. |
+| `UpdateChecker` | `AppVersion` ordering and the GitHub latest-release lookup (injectable transport). |
+| `CustomActions` | `CustomAction` and `CustomActionRunner` (shell command at repo root, env vars). |
+| `InlineDiff` | Word-level changed ranges, line pairing, folding of long unchanged runs. |
+| `RepoIcons` / `RepoIcon` | Which tile icon each repository uses in the rail: a named symbol or an imported image file (Codable, keyed by repo path). |
+| `HomeLayout` | Pinned repositories and named groups for the home screen (Codable). |
+| `BadgeLabel` | Text for the app-icon badge (changes count, `99+` cap). |
 | `LFS`, `CloneOptions`, `Performance` | LFS paths and pointers; shallow/partial clone arguments; commit-graph cache. |
 | `FileIcons` | Path → icon (glyph, brand colour). Drawn by `FileIconView` in the app. |
 | `Sync` | `PullStrategy`, `PushOptions`, `GitError.isPushRejected/isDivergedPull`, `RemoteInfo`, remote add/rename/set-url/remove. |

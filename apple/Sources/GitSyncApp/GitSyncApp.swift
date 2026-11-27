@@ -1,11 +1,33 @@
 import AppKit
+import GitSyncCore
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        Task { @MainActor in UpdateManager.checkInBackground() }
+        StatusItemController.shared.sync()
+        NSWindow.allowsAutomaticWindowTabbing = false
+        MainMenuTidier.start()
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in StatusItemController.shared.sync() }
+        }
         #if DEBUG
+        // GITSYNC_DUMP_MENU=/path.txt writes the main menu's structure, then quits.
+        if let path = ProcessInfo.processInfo.environment["GITSYNC_DUMP_MENU"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + (Double(ProcessInfo.processInfo.environment["GITSYNC_DUMP_DELAY"] ?? "") ?? 4)) {
+                func dump(_ menu: NSMenu, _ depth: Int) -> String {
+                    menu.items.map { item in
+                        let line = String(repeating: "  ", count: depth) + (item.isSeparatorItem ? "---" : item.title)
+                        return line + (item.submenu.map { "\n" + dump($0, depth + 1) } ?? "")
+                    }.joined(separator: "\n")
+                }
+                let text = dump(NSApp.mainMenu ?? NSMenu(), 0) + "\n\n" + StatusItemController.shared.debugState
+                try? text.write(toFile: path, atomically: true, encoding: .utf8)
+                exit(0)
+            }
+        }
         // GITSYNC_SNAPSHOT=/path.png renders the window to a PNG after a delay, then quits.
         // GITSYNC_APPEARANCE=dark|light forces an appearance for the capture.
         if let path = ProcessInfo.processInfo.environment["GITSYNC_SNAPSHOT"] {
@@ -44,7 +66,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
     }
+    /// Right-clicking the Dock icon lists recent repositories.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        for url in RecentRepositories.load().prefix(8) {
+            let item = NSMenuItem(title: url.lastPathComponent, action: #selector(openRecent(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = url
+            menu.addItem(item)
+        }
+        return menu.items.isEmpty ? nil : menu
+    }
+
+    @objc private func openRecent(_ item: NSMenuItem) {
+        if let url = item.representedObject as? URL { Task { @MainActor in Workspace.current?.open(url) } }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
+/// SwiftUI leaves empty View and Format menus behind, and the Edit, View, Format and Window menus aren't wanted (AppKit re-adds View with Full Screen and tab items once a window is focused). Remove them,
+/// and again whenever SwiftUI rebuilds the menu.
+@MainActor
+enum MainMenuTidier {
+    private static var pending = false
+    private static var monitor: Any?
+
+    static func start() {
+        NotificationCenter.default.addObserver(forName: NSMenu.didAddItemNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in schedule() }
+        }
+        // Without an Edit menu the standard text shortcuts would stop working, so route them to the
+        // focused text field ourselves.
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard flags.contains(.command), !flags.contains(.option), !flags.contains(.control),
+                  let key = event.charactersIgnoringModifiers?.lowercased() else { return event }
+            let selector: Selector?
+            switch (key, flags.contains(.shift)) {
+            case ("c", false): selector = #selector(NSText.copy(_:))
+            case ("v", false): selector = #selector(NSText.paste(_:))
+            case ("x", false): selector = #selector(NSText.cut(_:))
+            case ("a", false): selector = #selector(NSText.selectAll(_:))
+            case ("z", false): selector = Selector(("undo:"))
+            case ("z", true): selector = Selector(("redo:"))
+            case ("m", false): selector = #selector(NSWindow.performMiniaturize(_:))
+            default: selector = nil
+            }
+            guard let selector, NSApp.sendAction(selector, to: nil, from: nil) else { return event }
+            return nil
+        }
+        schedule()
+    }
+
+    private static func schedule() {
+        guard !pending else { return }
+        pending = true
+        // Coalesce bursts of menu changes, and never mutate the menu from inside its own notification.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            pending = false
+            tidy()
+        }
+    }
+
+    /// Removes leading, trailing and doubled separators left behind by deleted items.
+    private static func collapseSeparators(in menu: NSMenu) {
+        var previousWasSeparator = true
+        for entry in menu.items where !entry.isHidden {
+            if entry.isSeparatorItem && previousWasSeparator { menu.removeItem(entry) }
+            else { previousWasSeparator = entry.isSeparatorItem }
+        }
+        while let last = menu.items.last, last.isSeparatorItem { menu.removeItem(last) }
+    }
+
+    static func tidy() {
+        guard let main = NSApp.mainMenu else { return }
+        for item in main.items.reversed() {
+            guard let sub = item.submenu else { continue }
+            let hasContent = sub.items.contains { !$0.isSeparatorItem }
+            if !hasContent && item.title != "GitSync" { main.removeItem(item); continue }
+            if ["Edit", "View", "Format", "Window"].contains(item.title) { main.removeItem(item); continue }
+            collapseSeparators(in: sub)
+        }
+    }
 }
 
 @main
@@ -58,6 +162,7 @@ struct GitSyncApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 880)
         .commands { AppCommands() }
+
 
         // A regular window (not the `Settings` scene) so it gets the same hidden-title-bar chrome
         // as the main window; the Settings scene re-applies its own opaque title bar.
@@ -113,9 +218,14 @@ struct RootView: View {
         .focusedSceneValue(\.workspace, workspace)
         .modifier(AppearanceModifier())
         .task {
+            workspace.activate()
             await workspace.bootstrap()
             #if DEBUG
             if let name = ProcessInfo.processInfo.environment["GITSYNC_SHEET"] { workspace.sheet = WorkspaceSheet(rawValue: name) }
+            // GITSYNC_ICON_IMPORT=/path/to/image imports it as the selected repository's icon.
+            if let file = ProcessInfo.processInfo.environment["GITSYNC_ICON_IMPORT"] {
+                workspace.setIconImage(from: URL(fileURLWithPath: file), for: workspace.selectedID ?? "/Users/dhanush/Work/GitSync")
+            }
             #endif
         }
         .alert("Couldn’t Open Repository", isPresented: Binding(
@@ -134,17 +244,39 @@ struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { Task { await UpdateManager.check(userInitiated: true) } }
+        }
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { openWindow(id: "settings") }
                 .keyboardShortcut(",")
         }
-        CommandGroup(after: .newItem) {
+        // Menus that don't apply to GitSync: extra windows, toolbar and sidebar toggles, font
+        // formatting and the empty Help book.
+        CommandGroup(replacing: .systemServices) {}
+        CommandGroup(replacing: .appVisibility) {}
+        CommandGroup(replacing: .toolbar) {}
+        CommandGroup(replacing: .sidebar) {}
+        CommandGroup(replacing: .textFormatting) {}
+        CommandGroup(replacing: .help) {
+            Link("GitSync Documentation", destination: URL(string: "https://github.com/ipuppyyt/git-sync/tree/main/docs")!)
+            Link("Report an Issue", destination: URL(string: "https://github.com/ipuppyyt/git-sync/issues")!)
+        }
+        CommandGroup(replacing: .newItem) {
             Button("Open Repository…") { workspace?.openPanel() }
                 .keyboardShortcut("o")
             Button("Clone Repository…") { workspace?.sheet = .clone }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
             Button("New Repository…") { workspace?.sheet = .create }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+            Menu("Open Recent") {
+                ForEach(workspace?.recents ?? [], id: \.self) { url in
+                    Button(url.lastPathComponent) { workspace?.open(url) }
+                }
+                Divider()
+                Button("Clear Menu") { workspace?.clearRecents() }
+                    .disabled(workspace?.recents.isEmpty ?? true)
+            }
             Button("Close Repository") { if let s = workspace?.selected { workspace?.close(s) } }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
                 .disabled(workspace?.selected == nil)
@@ -152,6 +284,17 @@ struct AppCommands: Commands {
         CommandMenu("Repository") {
             Button("Jump To…") { workspace?.showPalette.toggle() }
                 .keyboardShortcut("k")
+            Menu("Switch Repository") {
+                Button("Next Repository") { workspace?.cycle(1) }
+                    .keyboardShortcut(.tab, modifiers: .control)
+                Button("Previous Repository") { workspace?.cycle(-1) }
+                    .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                Divider()
+                ForEach(Array((workspace?.repos ?? []).prefix(9).enumerated()), id: \.element.id) { index, store in
+                    Button(store.name) { workspace?.selectIndex(index) }
+                        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
+                }
+            }.disabled(workspace?.repos.isEmpty ?? true)
             Divider()
             Button("Refresh") { workspace?.selected?.requestRefresh() }
                 .keyboardShortcut("r").disabled(workspace?.selected == nil)
@@ -180,6 +323,19 @@ struct AppCommands: Commands {
             Button("Create Patch from Changes…") { workspace?.selected?.createPatchFromChanges() }.disabled(workspace?.selected == nil)
             Button("Apply Patch…") { workspace?.selected?.applyPatches() }.disabled(workspace?.selected == nil)
             Button("Stop Bisect") { workspace?.selected?.stopBisect() }.disabled(workspace?.selected?.bisect.isActive != true)
+            Divider()
+            Button("Show in Finder") { workspace?.selected?.openInFinder() }
+                .keyboardShortcut("r", modifiers: [.command, .shift, .option]).disabled(workspace?.selected == nil)
+            Button("Open in Terminal") { workspace?.selected?.openInTerminal() }
+                .keyboardShortcut("t", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Button("Open in \(CustomActionStore.editorApp)") { workspace?.selected?.openInEditor() }
+                .keyboardShortcut("e", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
+            Menu("Custom Actions") {
+                ForEach(CustomActionStore.load().filter(\.isValid)) { action in
+                    Button(action.name) { workspace?.selected?.run(action) }
+                }
+            }.disabled(workspace?.selected == nil)
+            Divider()
             Button("Manage Remotes…") { workspace?.selected?.sheet = .remotes }.disabled(workspace?.selected == nil)
             Button("Fork Repository…") { workspace?.selected?.sheet = .fork }.disabled(workspace?.selected?.canFork != true)
             Button("Notifications…") { workspace?.selected?.sheet = .notifications }.disabled(workspace?.selected == nil)
@@ -187,6 +343,7 @@ struct AppCommands: Commands {
                 .disabled(workspace?.selected?.providerTitle == nil)
             Button("New Issue…") { workspace?.selected?.sheet = .newCollab(.issue) }
                 .disabled(workspace?.selected?.providerTitle == nil)
+            Divider()
             Button("Clean Up Branches…") { workspace?.selected?.sheet = .cleanup }.disabled(workspace?.selected == nil)
             Button("Reflog…") { workspace?.selected?.sheet = .reflog }.disabled(workspace?.selected == nil)
             Divider()
@@ -200,31 +357,6 @@ struct AppCommands: Commands {
             if let store = workspace?.selected, store.supports(.issue) {
                 Button("Show Issues") { store.mode = .issues }
             }
-        }
-        CommandMenu("Repositories") {
-            Button("Next Repository") { workspace?.cycle(1) }
-                .keyboardShortcut(.tab, modifiers: .control)
-            Button("Previous Repository") { workspace?.cycle(-1) }
-                .keyboardShortcut(.tab, modifiers: [.control, .shift])
-            Divider()
-            Button("Repository 1") { workspace?.selectIndex(0) }
-                .keyboardShortcut("1")
-            Button("Repository 2") { workspace?.selectIndex(1) }
-                .keyboardShortcut("2")
-            Button("Repository 3") { workspace?.selectIndex(2) }
-                .keyboardShortcut("3")
-            Button("Repository 4") { workspace?.selectIndex(3) }
-                .keyboardShortcut("4")
-            Button("Repository 5") { workspace?.selectIndex(4) }
-                .keyboardShortcut("5")
-            Button("Repository 6") { workspace?.selectIndex(5) }
-                .keyboardShortcut("6")
-            Button("Repository 7") { workspace?.selectIndex(6) }
-                .keyboardShortcut("7")
-            Button("Repository 8") { workspace?.selectIndex(7) }
-                .keyboardShortcut("8")
-            Button("Repository 9") { workspace?.selectIndex(8) }
-                .keyboardShortcut("9")
         }
     }
 }

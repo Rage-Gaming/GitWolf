@@ -1,9 +1,24 @@
+import GitSyncCore
 import SwiftUI
 
 /// Shown when no repository is selected: open something or jump back into recents.
 struct DashboardView: View {
     let workspace: Workspace
     @State private var isTargeted = false
+    @State private var groupDialog: GroupDialog?
+    @State private var groupName = ""
+
+    /// A pending "name this group" prompt: creating one (optionally seeded with a repository) or renaming.
+    private enum GroupDialog: Identifiable {
+        case create(seed: String?)
+        case rename(UUID)
+        var id: String {
+            switch self {
+            case .create(let seed): "create-\(seed ?? "")"
+            case .rename(let id): "rename-\(id)"
+            }
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -39,18 +54,23 @@ struct DashboardView: View {
                     .buttonStyle(.bordered).controlSize(.large)
                 }
 
-                if !workspace.recents.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("RECENT").font(.system(size: 11, weight: .semibold)).tracking(0.8).foregroundStyle(.secondary)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 12)], spacing: 12) {
-                            ForEach(workspace.recents.prefix(9), id: \.self) { url in
-                                RecentCard(url: url) { workspace.open(url) }
-                            }
-                        }
+                VStack(alignment: .leading, spacing: 26) {
+                    if !workspace.home.pinned.isEmpty {
+                        section("PINNED", paths: workspace.home.pinned)
                     }
-                    .frame(maxWidth: 820)
-                    .padding(.horizontal, 32)
+                    ForEach(workspace.home.groups) { group in
+                        section(group.name.uppercased(), paths: group.paths, group: group)
+                    }
+                    if !workspace.recents.isEmpty {
+                        section("RECENT", paths: workspace.recents.prefix(9).map(\.path))
+                    }
+                    Button { groupName = ""; groupDialog = .create(seed: nil) } label: {
+                        Label("New Group", systemImage: "folder.badge.plus")
+                    }
+                    .buttonStyle(.link)
                 }
+                .frame(maxWidth: 820, alignment: .leading)
+                .padding(.horizontal, 32)
                 Spacer(minLength: 30)
             }
             .frame(maxWidth: .infinity)
@@ -68,11 +88,67 @@ struct DashboardView: View {
             urls.forEach(workspace.open)
             return !urls.isEmpty
         } isTargeted: { isTargeted = $0 }
+        .alert(groupDialog.map { if case .rename = $0 { "Rename Group" } else { "New Group" } } ?? "",
+               isPresented: Binding(get: { groupDialog != nil }, set: { if !$0 { groupDialog = nil } })) {
+            TextField("Name", text: $groupName)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                switch groupDialog {
+                case .create(let seed): workspace.editHome { $0.addGroup(named: groupName, paths: seed.map { [$0] } ?? []) }
+                case .rename(let id): workspace.editHome { $0.renameGroup(id, to: groupName) }
+                case nil: break
+                }
+            }
+        }
+    }
+
+    private func section(_ title: String, paths: [String], group: HomeLayout.Group? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(title).font(.system(size: 11, weight: .semibold)).tracking(0.8).foregroundStyle(.secondary)
+                if let group {
+                    Spacer()
+                    Menu {
+                        Button("Rename…") { groupName = group.name; groupDialog = .rename(group.id) }
+                        Button("Delete Group", role: .destructive) { workspace.editHome { $0.deleteGroup(group.id) } }
+                    } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .accessibilityLabel("Group options")
+                }
+            }
+            if paths.isEmpty {
+                Text("Right-click a repository and choose Add to Group.").font(.caption).foregroundStyle(.secondary)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 12)], spacing: 12) {
+                ForEach(paths, id: \.self) { path in
+                    let url = URL(fileURLWithPath: path, isDirectory: true)
+                    RecentCard(url: url, pinned: workspace.home.isPinned(path)) { workspace.open(url) }
+                        .contextMenu { menu(for: path) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func menu(for path: String) -> some View {
+        Button(workspace.home.isPinned(path) ? "Unpin" : "Pin") { workspace.editHome { $0.togglePin(path) } }
+        Menu("Add to Group") {
+            ForEach(workspace.home.groups) { group in
+                Button { workspace.editHome { $0.toggle(path, inGroup: group.id) } } label: {
+                    if group.paths.contains(path) { Label(group.name, systemImage: "checkmark") } else { Text(group.name) }
+                }
+            }
+            if !workspace.home.groups.isEmpty { Divider() }
+            Button("New Group…") { groupName = ""; groupDialog = .create(seed: path) }
+        }
+        Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
+        Divider()
+        Button("Remove from Home") { workspace.forget(path) }
     }
 }
 
 private struct RecentCard: View {
     let url: URL
+    var pinned = false
     let action: () -> Void
     @State private var hovering = false
 
@@ -89,6 +165,7 @@ private struct RecentCard: View {
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
                 }
                 Spacer(minLength: 0)
+                if pinned { Image(systemName: "pin.fill").font(.caption).foregroundStyle(.secondary) }
             }
             .padding(12)
             .background(Color(nsColor: .textBackgroundColor).opacity(hovering ? 1 : 0.7),
@@ -99,6 +176,8 @@ private struct RecentCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(url.lastPathComponent)
+        .accessibilityHint("Opens the repository")
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
     }

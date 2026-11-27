@@ -64,7 +64,7 @@ struct CollabListView: View {
                     Button { collab.load() } label: {
                         Image(systemName: "arrow.clockwise").font(.system(size: 12, weight: .semibold))
                     }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Reload")
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Reload").accessibilityLabel("Reload")
                     .disabled(collab.isLoading)
                 }
                 Picker("", selection: $collab.filter) {
@@ -326,7 +326,7 @@ private struct ConversationView: View {
             ForEach(collab.comments) { comment in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        AvatarView(name: comment.author, email: "", size: 22)
+                        AvatarView(name: comment.author, email: "", size: 22, url: comment.avatarURL)
                         Text(comment.author).fontWeight(.semibold)
                         if let date = comment.created {
                             Text(date.formatted(.relative(presentation: .named))).foregroundStyle(.secondary)

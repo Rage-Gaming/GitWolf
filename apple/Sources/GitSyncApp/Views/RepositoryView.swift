@@ -29,15 +29,16 @@ struct RepositoryView: View {
                 let content = min(CGFloat(contentWidth), max(320, geo.size.width - sidebar - 380 - 24))
                 HStack(spacing: 0) {
                     SidebarView(store: store).frame(width: sidebar)
-                    SplitHandle(width: $sidebarWidth, range: 200...360)
+                    SplitHandle(width: $sidebarWidth, range: 180...480)
                     mainColumn.frame(width: content).panel()
-                    SplitHandle(width: $contentWidth, range: 340...760)
+                    SplitHandle(width: $contentWidth, range: 280...900)
                     detailColumn.frame(minWidth: 360, maxWidth: .infinity).panel()
                 }
                 .padding(.trailing, 10).padding(.bottom, 10)
             }
         }
         .environment(\.lfsPaths, store.lfsPaths)
+        .environment(store.avatars)
         .animation(.snappy, value: store.bisect.isActive)
         .task { store.start(); NotificationsStore.shared.startPolling() }
         .overlay(alignment: .bottom) { if let label = store.busyLabel { BusyPill(label: label) } }
@@ -129,12 +130,12 @@ struct RepositoryView: View {
     @ViewBuilder private var detailColumn: some View {
         switch store.mode {
         case .history: CommitDetailView(store: store)
-        case .stash, .compare: DiffPane(diff: store.diff, path: store.selectedTarget?.path)
+        case .stash, .compare: DiffPane(diff: store.diff, path: store.selectedTarget?.path, reload: { store.reloadDiff() }, images: { await store.imageVersions() })
         case .changes:
             if let t = store.selectedTarget, t.source == .conflicted, store.status.conflicted.contains(where: { $0.path == t.path }) {
                 ConflictResolverView(store: store, path: t.path).id(t.path)
             } else {
-                DiffPane(diff: store.diff, path: store.selectedTarget?.path, staging: staging)
+                DiffPane(diff: store.diff, path: store.selectedTarget?.path, staging: staging, reload: { store.reloadDiff() }, images: { await store.imageVersions() })
             }
         case .pullRequests: CollabDetailView(store: store, collab: store.pullRequests)
         case .issues: CollabDetailView(store: store, collab: store.issues)
@@ -155,6 +156,7 @@ struct TopBar: View {
             modeTabs
             Spacer(minLength: 12)
             syncCluster
+            openInMenu
             if NotificationsStore.shared.hasAccounts { bell }
             Button { workspace.showPalette = true } label: {
                 HStack(spacing: 7) {
@@ -207,6 +209,25 @@ struct TopBar: View {
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
         .fixedSize()
         .help("Switch branch")
+    }
+
+    private var openInMenu: some View {
+        Menu {
+            Button("Show in Finder", systemImage: "folder") { store.openInFinder() }
+            Button("Open in Terminal", systemImage: "terminal") { store.openInTerminal() }
+            Button("Open in \(CustomActionStore.editorApp)", systemImage: "chevron.left.forwardslash.chevron.right") { store.openInEditor() }
+            let actions = CustomActionStore.load().filter(\.isValid)
+            if !actions.isEmpty {
+                Divider()
+                ForEach(actions) { action in Button(action.name, systemImage: "play") { store.run(action) } }
+            }
+        } label: {
+            Image(systemName: "square.and.arrow.up.on.square").pill()
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+        .fixedSize()
+        .help("Open the repository in Finder, Terminal or your editor, or run a custom action")
+        .accessibilityLabel("Open repository in")
     }
 
     private var modeTabs: some View {
@@ -323,6 +344,8 @@ private struct SyncButton: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help.components(separatedBy: " (").first ?? help)
+        .accessibilityValue(count > 0 ? "\(count)" : "")
         .onHover { hovering = $0 }
     }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct CommitDetailView: View {
     @Bindable var store: RepositoryStore
+    @AppStorage("commitFilesHeight") private var filesHeight = 150.0
 
     var body: some View {
         if let commit = store.selectedCommit {
@@ -23,9 +24,9 @@ struct CommitDetailView: View {
                     }
                     .padding(6)
                 }
-                .frame(height: min(max(CGFloat(store.commitFiles.count) * 33 + 14, 52), 190))
-                Divider()
-                DiffPane(diff: store.diff, path: store.selectedTarget?.path)
+                .frame(height: filesHeight)
+                VSplitHandle(height: $filesHeight, range: 52...520)
+                DiffPane(diff: store.diff, path: store.selectedTarget?.path, reload: { store.reloadDiff() }, images: { await store.imageVersions() })
                     .frame(maxHeight: .infinity)
             }
         } else {
@@ -44,7 +45,7 @@ struct CommitDetailView: View {
                     .foregroundStyle(.secondary).textSelection(.enabled)
             }
             HStack(spacing: 10) {
-                AvatarView(name: c.authorName, email: c.authorEmail, size: 30)
+                AvatarView(name: c.authorName, email: c.authorEmail, size: 30, sha: c.hash)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(c.authorName).fontWeight(.semibold)
                     Text(c.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
@@ -93,6 +94,7 @@ struct CommitFileRow: View {
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .onTapGesture(perform: action)
+            .selectableRow("\(change.kind.spokenName) \(change.path)", selected: selected, action: action)
     }
 }
 

@@ -13,6 +13,23 @@ and should follow each platform's native idioms.
 - **Multiple repositories open at once** [ui + core]. A vertical *repo rail* lists them with a live
   badge of uncommitted changes. Every open repo keeps its own watcher and sync loop alive in the
   background, not only the visible one.
+- **Repository icons** [ui + core `RepoIcons`]. A repo's rail tile can show a symbol from a curated set or an
+  imported picture instead of its initials (context menu: Change Icon…, Remove Icon). Images are cropped to a
+  centred square, saved as a 128 px PNG in the app's data folder and referenced by file name; icons are keyed by
+  repository path and forgotten with the repository.
+- **Dock / taskbar integration** [ui; core `BadgeLabel`]. The app icon badge shows the total files with
+  uncommitted changes across open repositories (`BadgeLabel.text`: none for 0, `99+` above 99). The
+  Dock (taskbar jump list on Windows/Linux) menu lists up to 8 recent repositories, and File > Open
+  Recent lists the recents with *Clear Menu*.
+- **Home screen pins and groups** [ui; core `HomeLayout`]. With no repository selected the home screen
+  shows *Pinned*, one section per user-named *Group*, then *Recent*. Context menu on a card: Pin/Unpin,
+  Add to Group (toggle, New Group…), Reveal, Remove from Home. `HomeLayout` is a Codable value type
+  (pinned paths, groups of paths) persisted as JSON; missing folders are pruned on load.
+- **Menu bar / tray icon** [ui]. Status item (a native status item built when the menu opens; a declarative, observing tray scene caused a redraw loop on macOS) with the branch symbol and the total changed-file count
+  (`BadgeLabel`); menu: open repositories (name, branch, changes; selecting one focuses it), Open Recent,
+  Open Repository…, Show GitSync, Quit. Setting `showMenuBarExtra` (default on). Windows/Linux: the
+  notification-area / tray icon with the same menu.
+- Menu bar hygiene: only menus that apply are shown (no New Window, toolbar/sidebar toggles or Format).
 - Open set and selection are persisted and restored on launch.
 - Open a repository (folder picker; any folder inside a repo resolves to its root via
   `rev-parse --show-toplevel`), `--open=/path` launch flag.
@@ -188,6 +205,20 @@ A menu button next to "Amend last commit":
 
 - **Unified and side-by-side** layouts (setting; toggle in the diff header). Side-by-side pairing is
   [core `SideBySide.rows`]: consecutive deletions/additions are paired row by row.
+- **Word-level highlighting** [core `InlineDiff`, `FileDiff.inlineRanges`]: each run of deleted lines is
+  paired in order with the added run that follows; both lines are tokenised (words, whitespace, single
+  punctuation), an LCS marks the differing tokens, and those character ranges get a stronger
+  background. Skipped when more than 70% of a line changed or a line has over 600 tokens.
+- **Ignore whitespace** [core `GitRepository.ignoreWhitespace`]: adds `-w`. `FileDiff.ignoresWhitespace`
+  makes `canPatch` false, so hunk/line staging is disabled while it is on.
+- **Show whole file** [core `GitRepository.fullFileDiffs`]: `-U1000000`. Combined with **folding**
+  [core `FileDiff.collapsibleRuns(minimum: 8, keep: 3)`]: unchanged runs of 8+ lines collapse to a row
+  "N unchanged lines" (3 lines stay beside every change); click to expand. Both toggles are in the diff
+  header and stored in settings.
+- **Image diffs** [core `GitRepository.imageVersions`, `isImagePath`]: for binary image files the
+  old/new bytes are read (`git show :path`, `HEAD:path`, `<commit>^:path`, or the working file) and shown
+  side by side with pixel size and file size; a missing side reads "Did not exist" / "Deleted". SVG stays
+  a text diff.
 - Line numbers for both sides, hunk headers, "no newline" notes, CRLF preserved, long lines scroll
   horizontally (do not wrap).
 - **Syntax highlighting** [core `SyntaxHighlighter`]: a deliberately small lexer, not a grammar
@@ -251,6 +282,11 @@ hammer, `staging` flag, `production` shield), then the first word split on `/`, 
 In the sidebar draw the symbol in its colour; mark the current branch with a small green check badge on the icon
 (and a semibold name) rather than replacing the icon.
 
+Tags [`FileIcons.tagIcon(named:isAnnotated:)`], first match wins: `nightly`/`daily` moon; `-rc`/`.rc` checkered flag;
+`alpha`/`beta`/`preview`/`snapshot`/`canary`/`-dev` test tube; `latest`/`stable`/`current` seal; `lts` shield;
+`deploy`/`prod`/`staging`/`live` paper plane; `backup`/`archive`/`old`/`legacy` archive box; `N.0` or `N.0.0`
+(N ≥ 1) star; any other dotted version a tag (filled if annotated, outlined if lightweight); else a plain tag.
+
 ## 6b. Scale and power
 
 - **Bisect** [core `Bisect.swift`]: state comes from `BISECT_LOG` (marks, and the
@@ -273,6 +309,17 @@ In the sidebar draw the symbol in its colour; mark the current branch with a sma
 - **Large repositories** [`Performance.swift`]: history is paged. `git log --topo-order` walks all of
   history without a commit-graph, so if a refresh takes over 0.5s write it once with
   `commit-graph write --reachable --changed-paths` in the background.
+
+## 6c. Open in… and custom actions
+
+- **Open in Finder / Terminal / editor** [ui]. Reveal the repo root in the file manager, open a
+  terminal at it, or open it in a user-chosen editor (setting `editorApp`, default Visual Studio
+  Code). macOS uses `open -a <app> <path>` with the path as an argument. Shortcuts ⌥⌘T / ⌥⌘E / ⇧⌥⌘R.
+- **Custom actions** [core `CustomAction`, `CustomActionRunner`]. Named shell commands stored in
+  settings. Run through the system shell (`/bin/sh -c`; `cmd`/`sh` on other platforms) with the repo
+  root as working directory and `GITSYNC_REPO` / `GITSYNC_BRANCH` in the environment. Values are never
+  interpolated into the command text. Non-zero exit shows the code and the last 600 characters of
+  output. Listed in the toolbar menu, Repository menu and ⌘K palette.
 
 ## 7. Settings
 
@@ -351,11 +398,35 @@ Selecting a pushed commit (History) or a pull request shows a pill with the over
 | Open / Clone / New repository | ⌘O / ⇧⌘O / ⇧⌘N |
 | Close repository | ⇧⌘W |
 | Jump palette | ⌘K |
-| Repository 1-9 / next / previous | ⌘1…9 / ⌃⇥ / ⌃⇧⇥ |
+| Switch repository 1-9 / next / previous (Repository > Switch Repository) | ⌘1…9 / ⌃⇥ / ⌃⇧⇥ |
 | History / Changes | ⌥⌘1 / ⌥⌘2 |
 | Refresh / Fetch / Pull / Push | ⌘R / ⇧⌘F / ⇧⌘L / ⇧⌘P |
 | Open on provider | ⇧⌘G |
 | Settings | ⌘, |
+
+## 9a. Updates and releases
+
+- **Update check** [core `UpdateChecker`, `AppVersion`; ui `UpdateManager`]. `GET /repos/<repo>/releases/latest`
+  with no credentials. Ignored: drafts, pre-releases, 404 (no releases), and any `html_url` that is not
+  `https://github.com/...`. Offered through an alert with Download (opens the page), Later, Skip This
+  Version. Automatic check at most once a day, only for packaged builds that have a version; setting
+  `checkForUpdates` (default on). Also a menu command. Never downloads or installs.
+- Releases are produced by `Scripts/release.sh` / `docs/RELEASING.md`.
+
+## 9b. Accessibility and localisation
+
+- Every interactive element has a spoken label; icon-only buttons use their tooltip text. Rows that
+  select on click are announced as selectable buttons with state. File rows expose *Stage*/*Unstage*
+  as accessibility actions because the visible button only appears on hover. Change kinds have plain
+  names [core `ChangeKind.spokenName`]. Ports should map this to UI Automation (Windows) and AT-SPI
+  (Linux) names, and make every action reachable without a pointer.
+- Keyboard: arrows move through commits and changed files, the command palette is fully keyboard
+  driven, and every menu action has an item in the menu bar.
+- **Strings**: user-visible text is kept as literals so the toolkit's own lookup can translate it.
+  macOS: `Scripts/extract-strings.py` writes `Resources/en.lproj/Localizable.strings` (key = English text);
+  strings with interpolation are listed in `Interpolated.txt` and need `%@`/`%lld` keys added by hand.
+  Other platforms should extract the same set of strings into their resource format (`.resw`, `.po`).
+  Translation files are not shipped yet.
 
 ## 10. Not built yet
 

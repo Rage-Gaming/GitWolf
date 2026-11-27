@@ -141,6 +141,30 @@ The response is the new repository; read its clone URLs with the same parsers as
 
 The same name reported twice (re-runs) keeps the first entry. Azure DevOps and Bitbucket Server are not supported.
 
+### Profile pictures
+
+Commit authors show the platform's profile picture, over their coloured initials until it loads. Only the
+platform the repository is on is ever asked; never Gravatar or any other third party (that would reveal who
+works on a private repository). Resolution per author email, once per session (retry after 10 minutes):
+
+1. Noreply addresses name the account, no request needed:
+   `ID+login@users.noreply.github.com` → `https://avatars.githubusercontent.com/u/ID?s=96`,
+   `login@users.noreply.github.com` → `https://github.com/login.png?size=96`,
+   `ID-login@users.noreply.gitlab.com` → `https://gitlab.com/uploads/-/system/user/avatar/ID/avatar.png?width=96`.
+2. Otherwise ask the platform with the saved account's token (or none for public repositories):
+
+| Provider | Request | Picture |
+|---|---|---|
+| GitHub | `GET /repos/{o}/{r}/commits?sha={sha}&per_page=1` | `[0].author.avatar_url` (author is null when the email isn't linked) |
+| Gitea / Forgejo | `GET /repos/{o}/{r}/commits?sha={sha}&limit=1&stat=false&files=false` | `[0].author.avatar_url` |
+| GitLab | `GET /avatar?email={url-escaped email, + as %2B}&size=96` | `avatar_url` |
+| Bitbucket Cloud | `GET /repositories/{ws}/{repo}/commit/{sha}` | `author.user.links.avatar.href` |
+| Bitbucket Data Center, Azure DevOps | none | initials |
+
+Only `http(s)` picture URLs are accepted. Pictures are downloaded without credentials, limited to 2 MB, kept in
+memory and in a cache folder for a week, and at most 3 lookups run at once. Pull request and issue comments use
+the `avatar_url` the API already returns (GitHub, Gitea, GitLab) or `links.avatar.href` (Bitbucket).
+
 ### Write calls
 
 All send JSON with the same auth headers; non-2xx replies surface the body's `message` / `error` (plus GitHub's `errors[].message`) so users see why (e.g. "A pull request already exists").

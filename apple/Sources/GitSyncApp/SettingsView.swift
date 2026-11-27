@@ -1,14 +1,16 @@
 import AppKit
+import GitSyncCore
 import SwiftUI
 
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general = "General", accounts = "Accounts", git = "Git", shortcuts = "Shortcuts"
+    case general = "General", accounts = "Accounts", git = "Git", tools = "Tools", shortcuts = "Shortcuts"
     var id: String { rawValue }
     var icon: String {
         switch self {
         case .general: "slider.horizontal.3"
         case .accounts: "person.crop.circle"
         case .git: "arrow.triangle.branch"
+        case .tools: "wrench.and.screwdriver"
         case .shortcuts: "command"
         }
     }
@@ -17,6 +19,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "Look, sync and diffs"
         case .accounts: "GitHub, GitLab and more"
         case .git: "Git executable"
+        case .tools: "Editor and custom actions"
         case .shortcuts: "Keys for everything"
         }
     }
@@ -38,6 +41,7 @@ struct SettingsView: View {
                         case .general: GeneralSettings()
                         case .accounts: AccountsSettings()
                         case .git: GitSettings()
+                        case .tools: ToolsSettings()
                         case .shortcuts: ShortcutsSettings()
                         }
                     }
@@ -191,6 +195,8 @@ private struct GeneralSettings: View {
     @AppStorage(SettingsKey.autoFetchMinutes) private var autoFetch = 5
     @AppStorage(SettingsKey.commitPageSize) private var pageSize = 1000
     @AppStorage(SettingsKey.pullRebase) private var pullRebase = false
+    @AppStorage(UpdateManager.autoKey) private var checkUpdates = true
+    @AppStorage(MenuBarSetting.key) private var menuBarExtra = true
     @AppStorage(SettingsKey.diffContext) private var context = 4
     @AppStorage(SettingsKey.syntaxHighlighting) private var syntax = true
     @AppStorage(SettingsKey.diffLayout) private var layout = DiffLayout.unified.rawValue
@@ -245,8 +251,16 @@ private struct GeneralSettings: View {
                     ("Every 15 minutes", 15), ("Every 30 minutes", 30)])
             }
             Row(icon: "arrow.triangle.pull", tint: .orange, title: "Pull strategy",
-                detail: "Rebase keeps history linear; merge keeps a merge commit", divider: false) {
+                detail: "Rebase keeps history linear; merge keeps a merge commit") {
                 PillPicker(selection: $pullRebase, options: [("Merge", false), ("Rebase", true)])
+            }
+            Row(icon: "menubar.rectangle", tint: .indigo, title: "Menu bar icon",
+                detail: "Open repositories and their changes, one click away") {
+                Toggle("", isOn: $menuBarExtra).labelsHidden().toggleStyle(.switch)
+            }
+            Row(icon: "arrow.down.app", tint: .green, title: "Check for updates",
+                detail: "Once a day, asks GitHub for a newer release. Nothing is installed automatically", divider: false) {
+                Toggle("", isOn: $checkUpdates).labelsHidden().toggleStyle(.switch)
             }
         }
 
@@ -460,5 +474,53 @@ private struct SettingsWindowConfigurator: NSViewRepresentable {
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
         window.isMovableByWindowBackground = true
+    }
+}
+
+
+// MARK: - Tools
+
+private struct ToolsSettings: View {
+    @AppStorage(CustomActionStore.editorKey) private var editor = ""
+    @State private var actions = CustomActionStore.load()
+
+    var body: some View {
+        Group(title: "Editor") {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(CustomActionStore.defaultEditor, text: $editor)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .background(Color.primary.opacity(0.06), in: Capsule())
+                    .accessibilityLabel("Editor application name")
+                Text("The application “Open in Editor” uses, by name, for example Xcode, Sublime Text or Zed.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(12)
+        }
+        Group(title: "Custom Actions") {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach($actions) { $action in
+                    HStack(spacing: 8) {
+                        TextField("Name", text: $action.name)
+                            .frame(width: 140)
+                            .accessibilityLabel("Action name")
+                        TextField("Command, e.g. make test", text: $action.command)
+                            .font(.system(.callout, design: .monospaced))
+                            .accessibilityLabel("Action command")
+                        Button { actions.removeAll { $0.id == action.id } } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.plain).accessibilityLabel("Remove action")
+                    }
+                    .textFieldStyle(.roundedBorder)
+                }
+                Button { actions.append(CustomAction(name: "", command: "")) } label: {
+                    Label("Add Action", systemImage: "plus")
+                }
+                .buttonStyle(.plain).font(.callout).pill()
+                Text("Runs with /bin/sh in the repository’s root folder. The environment has GITSYNC_REPO (the root path) and GITSYNC_BRANCH. Actions appear in the Open In menu, the Repository menu and the ⌘K palette.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(12)
+        }
+        .onChange(of: actions) { _, new in CustomActionStore.save(new) }
     }
 }

@@ -64,12 +64,16 @@ private struct PanelStyle: ViewModifier {
 
     func body(content: Content) -> some View {
         let light = scheme == .light
+        let shape = RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous)
+        // The shadow sits on a background shape, not on the content, so scrolling content is never
+        // re-rendered through an offscreen shadow pass.
         content
-            .background((light ? Color(nsColor: .textBackgroundColor) : Color(red: 0.118, green: 0.122, blue: 0.149)))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous)
-                .strokeBorder(Color.primary.opacity(light ? 0.11 : 0.12), lineWidth: 1))
-            .shadow(color: .black.opacity(light ? 0.09 : 0.35), radius: light ? 14 : 16, y: light ? 5 : 6)
+            .background {
+                shape.fill(light ? Color(nsColor: .textBackgroundColor) : Color(red: 0.118, green: 0.122, blue: 0.149))
+                    .shadow(color: .black.opacity(light ? 0.09 : 0.35), radius: light ? 14 : 16, y: light ? 5 : 6)
+            }
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Color.primary.opacity(light ? 0.11 : 0.12), lineWidth: 1))
     }
 }
 
@@ -91,6 +95,14 @@ extension View {
     func panel() -> some View { modifier(PanelStyle()) }
 
     func pill() -> some View { modifier(PillStyle()) }
+
+    /// Exposes a tap-to-select row to VoiceOver and Full Keyboard Access as a button with a spoken label.
+    func selectableRow(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        self.accessibilityElement(children: .contain)
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction(.default, action)
+    }
 
     func rowBackground(selected: Bool, hovering: Bool, radius: CGFloat = 10) -> some View {
         self.background(
@@ -133,6 +145,31 @@ struct SplitHandle: View {
     }
 }
 
+/// A horizontal divider the user drags up and down to size the pane next to it.
+/// `inverted` is for a pane below the handle, which grows when the handle moves up.
+struct VSplitHandle: View {
+    @Binding var height: Double
+    let range: ClosedRange<Double>
+    var inverted = false
+    @State private var start: Double?
+
+    var body: some View {
+        Color.clear
+            .frame(height: 9)
+            .overlay(Divider())
+            .contentShape(Rectangle())
+            .pointerStyle(.rowResize)
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        if start == nil { start = height }
+                        let delta = inverted ? -value.translation.height : value.translation.height
+                        height = min(max((start ?? height) + delta, range.lowerBound), range.upperBound)
+                    }
+                    .onEnded { _ in start = nil })
+    }
+}
+
 struct SearchField: View {
     @Binding var text: String
     let prompt: String
@@ -152,22 +189,6 @@ struct SearchField: View {
 }
 
 // MARK: - Small views
-
-struct AvatarView: View {
-    let name: String
-    let email: String
-    var size: CGFloat = 26
-
-    var body: some View {
-        let initials = name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
-        Text(initials.isEmpty ? "?" : initials)
-            .font(.system(size: size * 0.4, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(avatarColor(for: email), in: Circle())
-            .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
-    }
-}
 
 struct StatusBadge: View {
     let kind: ChangeKind
@@ -193,10 +214,11 @@ struct RefChip: View {
         .background(color.opacity(label.isCurrent ? 0.22 : 0.12), in: Capsule())
         .overlay(Capsule().strokeBorder(color.opacity(label.isCurrent ? 0.35 : 0.0)))
     }
-    /// Local and remote branches use the same icon as in the sidebar, chosen from the branch name.
+    /// Branches and tags use the same icons as in the sidebar, chosen from the name.
     private var branchLook: FileIcon? {
         switch label.kind {
         case .local: return FileIcons.branchIcon(named: label.name)
+        case .tag: return FileIcons.tagIcon(named: label.name)
         case .remote:
             // "origin/feature/x" → look at "feature/x".
             let name = label.name.split(separator: "/", maxSplits: 1).dropFirst().first.map(String.init) ?? label.name

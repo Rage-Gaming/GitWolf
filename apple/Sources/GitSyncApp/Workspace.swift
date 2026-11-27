@@ -12,10 +12,30 @@ enum RecentRepositories {
             .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
+    static func remove(_ path: String) {
+        let paths = (UserDefaults.standard.stringArray(forKey: key) ?? []).filter { $0 != path }
+        UserDefaults.standard.set(paths, forKey: key)
+    }
+
+    static func clear() { UserDefaults.standard.removeObject(forKey: key) }
+
     static func add(_ url: URL) {
         var paths = (UserDefaults.standard.stringArray(forKey: key) ?? []).filter { $0 != url.path }
         paths.insert(url.path, at: 0)
         UserDefaults.standard.set(Array(paths.prefix(12)), forKey: key)
+    }
+}
+
+enum HomeLayoutStore {
+    private static let key = "homeLayout"
+
+    static func load() -> HomeLayout {
+        let saved = UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(HomeLayout.self, from: $0) }
+        return (saved ?? HomeLayout()).pruned { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    static func save(_ layout: HomeLayout) {
+        if let data = try? JSONEncoder().encode(layout) { UserDefaults.standard.set(data, forKey: key) }
     }
 }
 
@@ -29,13 +49,79 @@ final class Workspace {
     var showPalette = false
     var sheet: WorkspaceSheet?
     private(set) var recents: [URL] = RecentRepositories.load()
+    private(set) var home = HomeLayoutStore.load()
+    private(set) var repoIcons = RepoIconStore.load()
 
+    /// The window's workspace, for AppKit hooks (Dock menu) that live outside SwiftUI.
+    static weak var current: Workspace?
     private static var didBootstrap = false
     private static let openKey = "openRepositories"
     private static let selectedKey = "selectedRepository"
     private var isRestoring = false
 
     var selected: RepositoryStore? { repos.first { $0.id == selectedID } }
+
+    /// Files with uncommitted changes across every open repository.
+    var totalChanges: Int { repos.reduce(0) { $0 + $1.status.changeCount } }
+
+    /// Registers this workspace with the Dock badge and menu bar icon. Called once from the window's
+    /// `.task`, not from `init`: SwiftUI re-runs `Workspace()` whenever the owning view is re-created,
+    /// and publishing observed state from there loops forever.
+    func activate() {
+        guard Self.current !== self else { return }
+        Self.current = self
+        trackDockBadge()
+    }
+
+    /// Keeps the Dock icon's badge equal to `totalChanges`, re-arming after every change.
+    private func trackDockBadge() {
+        let count = withObservationTracking {
+            totalChanges
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.trackDockBadge() }
+        }
+        NSApp?.dockTile.badgeLabel = BadgeLabel.text(forChanges: count)
+        StatusItemController.shared.update(changes: count)
+    }
+
+    /// Edits the home layout and saves it.
+    func editHome(_ change: (inout HomeLayout) -> Void) {
+        change(&home)
+        HomeLayoutStore.save(home)
+    }
+
+    /// Removes a repository from recents, pins and groups (the folder itself is untouched).
+    func forget(_ path: String) {
+        RecentRepositories.remove(path)
+        recents = RecentRepositories.load()
+        editHome { $0.remove(path) }
+        setIcon(nil, for: path)
+    }
+
+    func setIcon(_ icon: RepoIcon?, for path: String) {
+        if let unused = repoIcons.set(icon, for: path) { RepoIconStore.deleteImage(unused) }
+        RepoIconStore.save(repoIcons)
+    }
+
+    func setIconImage(from url: URL, for path: String) {
+        Task {
+            let name = await Task.detached(priority: .userInitiated) { () -> String? in
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                return RepoIconStore.importImage(from: url)
+            }.value
+            guard let name else {
+                errorMessage = "That file couldn’t be read as an image."
+                return
+            }
+            setIcon(.image(name), for: path)
+        }
+    }
+
+    func clearRecents() {
+        RecentRepositories.clear()
+        recents = []
+    }
 
     // MARK: Opening & closing
 
