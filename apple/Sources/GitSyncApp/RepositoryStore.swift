@@ -184,15 +184,17 @@ final class RepositoryStore: Identifiable {
     private(set) var checksBySHA: [String: CIStatus] = [:]
     private var checksRequested: [String: Date] = [:]
 
-    func loadChecks(sha: String) {
+    func loadChecks(sha: String, force: Bool = false) {
         guard !sha.isEmpty else { return }
-        // Pending runs change, so a result is reused for a minute at most.
-        if let at = checksRequested[sha], Date().timeIntervalSince(at) < 60 { return }
+        // Pending runs change, so a result is reused for a minute at most (`force` is the poll while one is running).
+        if !force, let at = checksRequested[sha], Date().timeIntervalSince(at) < 60 { return }
         guard providerKind != nil, remoteLocation != nil else { return }
         checksRequested[sha] = Date()
         Task {
             guard let (client, path) = await providerClient() else { return }
-            if let status = try? await client.ciStatus(repoPath: path, sha: sha), !status.isEmpty { checksBySHA[sha] = status }
+            if let status = try? await client.ciStatus(repoPath: path, sha: sha), !status.isEmpty {
+                withAnimation(.snappy(duration: 0.2)) { checksBySHA[sha] = status }
+            }
         }
     }
 
