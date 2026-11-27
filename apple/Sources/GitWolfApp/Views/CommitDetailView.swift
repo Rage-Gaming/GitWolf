@@ -51,17 +51,22 @@ struct CommitDetailView: View {
                     Text(c.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(c.hash, forType: .string)
-                } label: {
+                CopyButton(text: c.hash) { copied in
                     HStack(spacing: 5) {
-                        Image(systemName: "doc.on.doc")
-                        Text(c.shortHash).font(.system(.caption, design: .monospaced))
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .foregroundStyle(copied ? Color.green : Color.primary)
+                            .contentTransition(.symbolEffect(.replace))
+                        // Both texts are laid out so the pill keeps its width while the words swap.
+                        ZStack(alignment: .leading) {
+                            Text(c.shortHash).opacity(copied ? 0 : 1)
+                            Text("Copied").opacity(copied ? 1 : 0)
+                        }
+                        .font(.system(.caption, design: .monospaced))
                     }
                     .pill()
                 }
                 .buttonStyle(.plain).help("Copy full hash")
+                .accessibilityLabel("Copy full hash")
             }
             if let sig = store.selectedSignature { SignatureBadge(signature: sig) }
             ChecksSection(store: store, sha: c.hash, committed: c.date)
