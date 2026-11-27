@@ -20,6 +20,14 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
   </ItemGroup>
 
+  <!-- Set by the release workflow, with -p:Version. Other builds never check for updates. -->
+  <ItemGroup Condition="'$(GitWolfUpdates)' == 'true'">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>GitWolfUpdates</_Parameter1>
+      <_Parameter2>true</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\GitWolfCore\GitWolfCore.csproj" />
     <ProjectReference Include="..\GitWolf.Store\GitWolf.Store.csproj" />

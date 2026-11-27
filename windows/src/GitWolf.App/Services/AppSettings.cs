@@ -20,7 +20,8 @@ internal sealed record SettingsState(
     string GitPath = "", bool PullRebase = false, bool ProfilePictures = true,
     bool IgnoreWhitespace = false, bool FullFileDiffs = false,
     bool SpellCheck = true, double SidebarWidth = 248, double ListShare = 0.45,
-    double MessageHeight = 90, double FilesHeight = 0);
+    double MessageHeight = 90, double FilesHeight = 0,
+    bool CheckForUpdates = true, long LastUpdateCheck = 0, string SkippedUpdate = "");
 
 /// <summary>
 /// User settings, kept in %LOCALAPPDATA%\GitWolf\settings.json and read on every use so changes
@@ -103,6 +104,7 @@ internal sealed class AppSettings : IStoreSettings
         GitPath = (s.GitPath ?? "").Trim().Trim('"'),
         SidebarWidth = double.IsFinite(s.SidebarWidth) ? Math.Clamp(s.SidebarWidth, 160, 600) : 248,
         ListShare = double.IsFinite(s.ListShare) ? Math.Clamp(s.ListShare, 0.15, 0.85) : 0.45,
+        SkippedUpdate = s.SkippedUpdate ?? "",
         MessageHeight = double.IsFinite(s.MessageHeight) ? Math.Clamp(s.MessageHeight, 60, 600) : 90,
         // Zero means the list fits its files.
         FilesHeight = double.IsFinite(s.FilesHeight) && s.FilesHeight > 0 ? Math.Clamp(s.FilesHeight, 52, 800) : 0,

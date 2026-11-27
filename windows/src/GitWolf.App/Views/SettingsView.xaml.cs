@@ -27,6 +27,8 @@ public sealed partial class SettingsView : UserControl
     /// <summary>The diff layout lives with the workspace, which the diff header also changes.</summary>
     internal event Action<bool>? SplitChanged;
 
+    internal event Action? UpdateRequested;
+
     internal void Attach(Window window, AppSettings settings, Workspace workspace)
     {
         _window = window;
@@ -157,6 +159,21 @@ public sealed partial class SettingsView : UserControl
 
         Group("Commit message",
             Row("Check spelling", "Underline misspelled words while typing", spelling));
+
+        var updates = new ToggleSwitch { IsOn = s.CheckForUpdates, MinWidth = 0, OnContent = null, OffContent = null };
+        updates.Toggled += (_, _) => Set(x => x with { CheckForUpdates = updates.IsOn });
+        var check = new Button { Content = "Check Now" };
+        check.Click += (_, _) => UpdateRequested?.Invoke();
+
+        var version = Row($"Version {AppBuild.Version}",
+            AppBuild.UpdatesEnabled ? null : "Development build: updates are only available in the packaged app",
+            check);
+        // A row names its control after its title, which doesn't say what this button does.
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(check, "Check Now");
+
+        Group("Updates",
+            Row("Check for updates", "Once a day. Nothing is installed without asking", updates),
+            version);
 
         Group("History & diffs",
             Row("Profile pictures", "From GitHub, for github.com repositories. Turning this off deletes saved pictures", pictures),

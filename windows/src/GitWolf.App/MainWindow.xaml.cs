@@ -57,6 +57,7 @@ public sealed partial class MainWindow : Window
         Root.Loaded += (_, _) => Theming.Apply(this, _settings.State);
         AddShortcuts();
         AttachProvider();
+        SetUpUpdates();
 
         Activated += (_, e) =>
         {
@@ -503,6 +504,8 @@ public sealed partial class MainWindow : Window
         items.Add(new PaletteItem(Icons.Plus, "Clone repository\u2026", "Workspace", () => _ = CreateAsync(clone: true)));
         items.Add(new PaletteItem(Icons.Plus, "New repository\u2026", "Workspace", () => _ = CreateAsync(clone: false)));
         items.Add(new PaletteItem(Icons.Plus, "Settings\u2026", "App", Settings.Open));
+        items.Add(new PaletteItem(Icons.Fetch, "Check for Updates\u2026", "App",
+            () => _ = CheckForUpdatesAsync(manual: true)));
         CommandPalette.Open(items);
     }
 

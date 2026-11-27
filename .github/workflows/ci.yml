@@ -37,6 +37,8 @@ jobs:
           dotnet-version: 8.0.x
       - name: Test
         run: dotnet test tests/GitWolfCore.Tests/GitWolfCore.Tests.csproj --nologo --blame-hang-timeout 5m
+      - name: Build release tool
+        run: dotnet build tools/GitWolf.Release/GitWolf.Release.csproj --nologo
       # The WinUI app needs the MSBuild that ships with Visual Studio.
       - name: Build app
         shell: pwsh

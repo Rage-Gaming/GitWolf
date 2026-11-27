@@ -50,7 +50,7 @@ Provider features: OAuth sign-in (`OAuth.cs`, `OAuthLoopback.cs`), pull requests
 (`Collab.cs`, `CollabActions.cs`), CI checks (`CiStatus.cs`), notifications (`Notifications.cs`),
 fork (`Fork.cs`) and a Markdown subset (`Markdown.cs`).
 
-333 tests pass against real git and stubbed HTTP.
+349 tests pass against real git and stubbed HTTP.
 
 Differences from macOS, all deliberately stricter:
 
@@ -119,6 +119,11 @@ UI (`src/GitWolf.App/`):
       fast-forward-only pull (right-click Pull or Push, or the jump palette)
 - [x] Manage remotes: add, edit, rename, remove, fetch and push one remote
 - [x] Diff: changed words, ignore whitespace, whole file with folding, image previews
+
+- [x] In-app updates: a daily check (Settings > General) and *Check for Updates…* in the jump palette, with
+      release notes, then install and relaunch, skip the version or be reminded later. Releases are verified
+      with the project's Ed25519 key (see [docs/RELEASING.md](../docs/RELEASING.md)). Development builds never
+      contact the update server
 
 ### Trusting a repository
 

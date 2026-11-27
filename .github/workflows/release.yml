@@ -1,7 +1,7 @@
 name: Release
 
-# Pushing a tag like v1.0.0 builds, signs and publishes GitWolf for macOS, then updates the feed that the
-# in-app updater reads. No Apple Developer account is needed (see docs/RELEASING.md). Repository secrets:
+# Pushing a tag like v1.0.0 builds, signs and publishes GitWolf for macOS and then Windows, and updates the
+# feeds that the in-app updaters read. No Apple Developer account is needed (see docs/RELEASING.md). Repository secrets:
 #   MACOS_CERTIFICATE_P12       base64 of the self-signed "GitWolf Release" certificate (.p12)
 #   MACOS_CERTIFICATE_PASSWORD  password of that .p12
 #   GITWOLF_UPDATE_KEY          the private update-signing key (gitwolf-release keys export)
@@ -70,9 +70,79 @@ jobs:
           else
             git switch --orphan gh-pages
           fi
-          git rm -rfq --ignore-unmatch . || true
+          # The Windows job keeps its own feed on this branch.
+          git rm -rfq --ignore-unmatch -- . ':(exclude)appcast-windows.xml' || true
           cp "$RUNNER_TEMP/appcast.xml" appcast.xml
           touch .nojekyll
           git add appcast.xml .nojekyll
           git commit -m "Update the feed for $GITHUB_REF_NAME"
           git push origin gh-pages
+
+  windows:
+    # After macOS, which creates the release and the gh-pages branch.
+    needs: macos
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Check the version
+        shell: bash
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "The tag must look like v1.2.3"; exit 1; }
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Test
+        working-directory: windows
+        run: dotnet test tests/GitWolfCore.Tests/GitWolfCore.Tests.csproj --nologo --blame-hang-timeout 5m
+      # The WinUI app needs the MSBuild that ships with Visual Studio.
+      - name: Build and package
+        working-directory: windows
+        shell: pwsh
+        run: |
+          $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          if (-not $msbuild) { throw 'MSBuild was not found' }
+          $out = Join-Path $env:RUNNER_TEMP 'app'
+          & $msbuild src\GitWolf.App\GitWolf.App.csproj -restore -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=true "-p:Version=$env:VERSION" -p:GitWolfUpdates=true -v:minimal -nologo
+          if ($LASTEXITCODE -ne 0) { throw 'The build failed' }
+          Copy-Item src\GitWolf.App\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64 $out -Recurse
+          Get-ChildItem $out -Recurse -Filter *.pdb | Remove-Item
+          $zip = Join-Path $env:RUNNER_TEMP "GitWolf-$env:VERSION-windows-x64.zip"
+          Compress-Archive -Path "$out\*" -DestinationPath $zip
+          (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  $(Split-Path $zip -Leaf)" | Set-Content "$zip.sha256" -Encoding ascii
+          dotnet build tools\GitWolf.Release\GitWolf.Release.csproj -c Release --nologo -o (Join-Path $env:RUNNER_TEMP 'tool')
+          if ($LASTEXITCODE -ne 0) { throw 'The release tool failed to build' }
+      - name: Sign and write the update feed
+        shell: bash
+        env:
+          GITWOLF_UPDATE_KEY: ${{ secrets.GITWOLF_UPDATE_KEY }}
+        run: |
+          TEMP_DIR="$(cygpath -u "$RUNNER_TEMP")"
+          ZIP="GitWolf-$VERSION-windows-x64.zip"
+          # This version's section of the changelog, if there is one.
+          awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ {on=0} on' CHANGELOG.md > "$TEMP_DIR/notes.md"
+          git config core.autocrlf false
+          git fetch origin gh-pages
+          git worktree add --detach "$TEMP_DIR/pages" FETCH_HEAD
+          dotnet "$TEMP_DIR/tool/GitWolf.Release.dll" "$TEMP_DIR/$ZIP" "$VERSION" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$ZIP" \
+            "$TEMP_DIR/pages/appcast-windows.xml" "$TEMP_DIR/notes.md" "$TEMP_DIR/pages/appcast-windows.xml"
+      # The archive is uploaded before the feed that points to it.
+      - name: Upload to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TEMP_DIR="$(cygpath -u "$RUNNER_TEMP")"
+          ZIP="$TEMP_DIR/GitWolf-$VERSION-windows-x64.zip"
+          gh release upload "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256"
+      - name: Publish the update feed
+        shell: bash
+        run: |
+          cd "$(cygpath -u "$RUNNER_TEMP")/pages"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast-windows.xml
+          git commit -m "Update the Windows feed for $GITHUB_REF_NAME"
+          git push origin HEAD:gh-pages
