@@ -72,7 +72,7 @@
         <ProgressRing x:Name="Loading" Grid.Column="1" Width="40" Height="40" IsActive="False" />
         <!-- Short notices above the progress pill, at the bottom of the window. -->
         <StackPanel Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,20"
-                    Spacing="8" IsHitTestVisible="False">
+                    Spacing="8">
             <StackPanel.Resources>
                 <Storyboard x:Name="NoticeAnimation">
                     <DoubleAnimationUsingKeyFrames Storyboard.TargetName="NoticePill" Storyboard.TargetProperty="Opacity">
@@ -82,12 +82,26 @@
                     </DoubleAnimationUsingKeyFrames>
                 </Storyboard>
             </StackPanel.Resources>
-            <Border x:Name="NoticePill" HorizontalAlignment="Center" Opacity="0"
+            <Border x:Name="NoticePill" HorizontalAlignment="Center" Opacity="0" IsHitTestVisible="False"
                     CornerRadius="18" Padding="16,8" Background="{ThemeResource PanelBrush}"
                     BorderBrush="{ThemeResource PillBorderBrush}" BorderThickness="1">
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <FontIcon Glyph="&#xE73E;" FontSize="14" Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
                     <TextBlock x:Name="NoticeText" />
+                </StackPanel>
+            </Border>
+            <Border x:Name="PushOfferPill" HorizontalAlignment="Center" Visibility="Collapsed"
+                    CornerRadius="22" Padding="16,6,6,6" Background="{ThemeResource PanelBrush}"
+                    BorderBrush="{ThemeResource PillBorderBrush}" BorderThickness="1">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="Pushed" VerticalAlignment="Center" />
+                    <TextBlock x:Name="PushOfferBranch" FontFamily="Consolas" MaxWidth="280"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <Button x:Name="PushOfferOpen" Style="{StaticResource AccentButtonStyle}" Click="OnOpenPushOffer" />
+                    <Button Click="OnDismissPushOffer" Padding="8" Background="Transparent" BorderThickness="0"
+                            AutomationProperties.Name="Dismiss" ToolTipService.ToolTip="Dismiss">
+                        <FontIcon Glyph="&#xE711;" FontSize="12" />
+                    </Button>
                 </StackPanel>
             </Border>
             <Border x:Name="BusyPill" HorizontalAlignment="Center"

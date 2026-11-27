@@ -116,6 +116,7 @@ public sealed partial class RepositoryStore
             }
         }
         await Collab(kind).CreateAsync(title, body, head, baseBranch, draft);
+        if (kind == CollabKind.PullRequest) DismissPushOffer();
         Mode = kind == CollabKind.PullRequest ? StoreMode.PullRequests : StoreMode.Issues;
     }
 

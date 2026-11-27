@@ -71,7 +71,11 @@ public sealed partial class RepositoryStore
             return true;
         }), "Pushed");
         // The run for what was just pushed is about to appear.
-        if (pushed) WatchChecks(status.HeadOid);
+        if (pushed)
+        {
+            WatchChecks(status.HeadOid);
+            OfferPullRequest(status);
+        }
         return pushed;
     }
 

@@ -234,6 +234,7 @@ public sealed partial class MainWindow : Window
 
     private void ShowAll()
     {
+        ShowPushOffer();
         var store = _store;
         var loaded = store?.IsLoaded == true;
         Home.Visibility = When(store is null);
@@ -407,6 +408,9 @@ public sealed partial class MainWindow : Window
             case nameof(RepositoryStore.PullBlock):
                 // The dialog can start another pull, so wait until this one has finished.
                 DispatcherQueue.TryEnqueue(ShowPullBlock);
+                break;
+            case nameof(RepositoryStore.PushOffer):
+                ShowPushOffer();
                 break;
             case nameof(RepositoryStore.RejectedPush):
                 DispatcherQueue.TryEnqueue(ShowRejectedPush);

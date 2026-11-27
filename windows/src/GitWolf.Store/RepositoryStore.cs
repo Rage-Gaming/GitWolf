@@ -292,6 +292,7 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
             Status = s.Status;
             Notify(nameof(Status));
             FollowChecks(previous);
+            if (previous.Branch != Status.Branch) DismissPushOffer();
         }
         if (!Commits.SequenceEqual(s.Commits))
         {
