@@ -27,7 +27,7 @@
             <TextBlock x:Name="Clean" Text="Working tree is clean" HorizontalAlignment="Center" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <StackPanel Grid.Row="1" Margin="12" Spacing="8">
-                <TextBox x:Name="Message" PlaceholderText="Commit message" AcceptsReturn="True" TextWrapping="Wrap"
+                <TextBox x:Name="Message" PlaceholderText="Commit message" IsSpellCheckEnabled="True" AcceptsReturn="True" TextWrapping="Wrap"
                          Height="90" TextChanged="OnMessageChanged" PreviewKeyDown="OnMessageKey" />
                 <TextBlock x:Name="SubjectWarning" FontSize="12" TextWrapping="Wrap" Visibility="Collapsed"
                            Foreground="{ThemeResource SystemFillColorCautionBrush}" />

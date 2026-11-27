@@ -41,7 +41,7 @@ public sealed partial class ChangesView : UserControl
         {
             if (files.Count == 0) return;
             rows.Add(new FileRow(null, source, $"{title} ({files.Count})"));
-            rows.AddRange(files.Select(f => new FileRow(f, source)));
+            rows.AddRange(files.Select(f => new FileRow(f, source, IsLfs: store.LfsPaths.Contains(f.Path))));
         }
         var status = store.Status;
         Section("CONFLICTS", DiffSource.Conflicted, status.Conflicted);

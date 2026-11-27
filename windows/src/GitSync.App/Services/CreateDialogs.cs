@@ -21,12 +21,13 @@ internal static class CreateDialogs
             if (name.Text != suggested) return;
             name.Text = suggested = GitRepository.SuggestedName(url.Text);
         };
+        var options = new CloneOptionFields();
         return ShowAsync(root, window, "Clone repository", "Clone", [url], name, () =>
         {
-            var (from, folder) = (url.Text.Trim(), name.Text.Trim());
+            var (from, folder, chosen) = (url.Text.Trim(), name.Text.Trim(), options.Read());
             return (parent, progress, token) => GitRepository.CloneAsync(
-                from, parent, folder, gitPath, onProgress: progress, cancellationToken: token);
-        });
+                from, parent, folder, gitPath, onProgress: progress, cancellationToken: token, options: chosen);
+        }, options.View);
     }
 
     /// <returns>The new repository's folder, or null when cancelled.</returns>
@@ -73,7 +74,7 @@ internal static class CreateDialogs
         var dialog = new ContentDialog
         {
             RequestedTheme = (root.Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default,
-            XamlRoot = root, Title = title, Content = content, PrimaryButtonText = verb,
+            XamlRoot = root, Title = title, Content = new ScrollViewer { Content = content }, PrimaryButtonText = verb,
             CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary,
         };
         choose.Click += async (_, _) =>

@@ -17,7 +17,8 @@ internal sealed record SettingsState(
     int CommitPageSize = 1000,
     int DiffContext = 4,
     bool SyntaxHighlighting = true,
-    string GitPath = "", bool PullRebase = false, bool ProfilePictures = true);
+    string GitPath = "", bool PullRebase = false, bool ProfilePictures = true,
+    bool SpellCheck = true, double SidebarWidth = 248, double ListShare = 0.45);
 
 /// <summary>
 /// User settings, kept in %LOCALAPPDATA%\GitSync\settings.json and read on every use so changes
@@ -78,6 +79,8 @@ internal sealed class AppSettings : IStoreSettings
         CommitPageSize = Math.Clamp(s.CommitPageSize, 100, 20000),
         DiffContext = Math.Clamp(s.DiffContext, 0, 50),
         GitPath = (s.GitPath ?? "").Trim().Trim('"'),
+        SidebarWidth = double.IsFinite(s.SidebarWidth) ? Math.Clamp(s.SidebarWidth, 180, 480) : 248,
+        ListShare = double.IsFinite(s.ListShare) ? Math.Clamp(s.ListShare, 0.2, 0.8) : 0.45,
     };
 
     private static SettingsState Load()

@@ -59,6 +59,7 @@ public sealed partial class MainWindow : Window
             if (e.WindowActivationState != WindowActivationState.Deactivated) _ = _store?.RequestRefresh();
         };
         Closed += (_, _) => _workspace.Dispose();
+        SetUpPanels();
         Bind();
     }
 
@@ -201,6 +202,7 @@ public sealed partial class MainWindow : Window
         if (store is null || !loaded) return;
         _ = Avatars.LoadAsync(store.RemoteLocation);
         Banner.Show(store);
+        ToolBanners.Show(store);
 
         var history = store.Mode == StoreMode.History;
         History.Visibility = When(history);
@@ -285,6 +287,13 @@ public sealed partial class MainWindow : Window
             case nameof(RepositoryStore.Operation):
                 Banner.Show(store);
                 break;
+            case nameof(RepositoryStore.Bisect):
+            case nameof(RepositoryStore.IsShallow):
+                ToolBanners.Show(store);
+                break;
+            case nameof(RepositoryStore.LfsPaths):
+                Changes.ShowFiles();
+                break;
             case nameof(RepositoryStore.Status):
                 Banner.Show(store);
                 ShowDetail();
@@ -315,6 +324,7 @@ public sealed partial class MainWindow : Window
                 TopBar.Show(store);
                 Changes.ShowCommitState();
                 Banner.Show(store);
+                ToolBanners.Show(store);
                 Conflict.ShowState();
                 break;
             case nameof(RepositoryStore.ErrorMessage):
@@ -367,6 +377,7 @@ public sealed partial class MainWindow : Window
         Add(VirtualKey.P, shifted, () => _ = Idle?.PushAsync());
         Add(VirtualKey.C, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu,
             () => _ = Idle?.OpenCompareAsync());
+        AddMoreShortcuts(Add);
     }
 
     /// <summary>The selected repository when it can take a new operation.</summary>
@@ -396,6 +407,16 @@ public sealed partial class MainWindow : Window
                 () => _ = Dialogs.NewBranchAsync(Root.XamlRoot, s, null));
             Add(Icons.Branch, "Clean up branches\u2026", "Repository action",
                 () => _ = BranchDialogs.CleanupAsync(Root.XamlRoot, s));
+            Add(Icons.Branch, "Worktrees & submodules\u2026", "Repository action",
+                () => _ = CheckoutDialog.ShowAsync(Root.XamlRoot, s, WindowHandle, path => _ = OpenAsync(path)));
+            Add(Icons.File, "Apply patch\u2026", "Repository action",
+                () => _ = ToolDialogs.ApplyPatchesAsync(Root.XamlRoot, s, WindowHandle));
+            Add(Icons.File, "Create patch from changes\u2026", "Repository action",
+                () => _ = ToolDialogs.SavePatchAsync(s, WindowHandle));
+            if (s.Bisect.IsActive)
+                Add(Icons.History, "Stop bisect", "Repository action", () => _ = s.StopBisectAsync());
+            if (s.IsShallow)
+                Add(Icons.Fetch, "Fetch full history", "Sync", () => _ = s.UnshallowAsync());
             Add(Icons.Branch, "Compare refs\u2026", "Repository action", () => _ = s.OpenCompareAsync());
             Add(Icons.History, "Reflog\u2026", "Repository action",
                 () => _ = HistoryDialogs.ReflogAsync(Root.XamlRoot, s));
@@ -429,6 +450,7 @@ public sealed partial class MainWindow : Window
             Rail.Show();
         }
         Diff.SyntaxEnabled = now.SyntaxHighlighting;
+        Changes.SpellCheck = now.SpellCheck;
         if (old.ProfilePictures != now.ProfilePictures)
         {
             Avatars.Enabled = now.ProfilePictures;

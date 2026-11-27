@@ -130,7 +130,8 @@ public sealed partial class GitRepository
         GitCredential? credential = null,
         string? askpassPath = null,
         Action<string>? onProgress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        CloneOptions? options = null)
     {
         var destination = NewFolder(parent, name);
         // "ext::" and similar URLs name a command to run.
@@ -140,7 +141,8 @@ public sealed partial class GitRepository
             ? credential.Environment(askpassPath, url)
             : new Dictionary<string, string>();
         var runner = new GitRunner(parent, gitPath, env);
-        await runner.RunAsync(["clone", "--progress", "--", url, name], onProgress: onProgress, cancellationToken: cancellationToken);
+        await runner.RunAsync(["clone", "--progress", .. (options ?? new CloneOptions()).Arguments, "--", url, name],
+            onProgress: onProgress, cancellationToken: cancellationToken);
         return destination;
     }
 

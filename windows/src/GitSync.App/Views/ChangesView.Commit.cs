@@ -14,6 +14,8 @@ namespace GitSync.App.Views;
 // The commit box: signing, message helpers and ignore rules.
 public sealed partial class ChangesView
 {
+    internal bool SpellCheck { set => Message.IsSpellCheckEnabled = value; }
+
     private SigningConfig? _signing;
     /// <summary>The user's own choice; null follows the repository's setting.</summary>
     private bool? _sign;

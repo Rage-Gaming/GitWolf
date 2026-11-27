@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using GitSync.App.Services;
+using GitSync.Core;
 using GitSync.Store;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -111,6 +112,8 @@ public sealed partial class HistoryView : UserControl
         Add("Interactive rebase from here\u2026", () => _ = RebaseDialog.ShowAsync(XamlRoot, store, commit.Hash));
         Add("Compare with current branch",
             () => _ = store.OpenCompareAsync(store.Status.Branch ?? "HEAD", commit.Hash));
+        menu.Items.Add(BisectMenu(store, commit.Hash));
+        Add("Export as patch\u2026", () => _ = ToolDialogs.ExportPatchAsync(XamlRoot, store, commit.Hash));
         menu.Items.Add(new MenuFlyoutSeparator());
         if (store.WebLinks is not null)
             Add($"Open on {store.ProviderTitle ?? "the web"}", () => store.OpenOnWeb(new WebTarget.Commit(commit.Hash)));
@@ -119,6 +122,22 @@ public sealed partial class HistoryView : UserControl
         e.Handled = true;
         if (e.TryGetPosition(item, out var point)) menu.ShowAt(item, point);
         else menu.ShowAt(item);
+    }
+
+    private static MenuFlyoutSubItem BisectMenu(RepositoryStore store, string hash)
+    {
+        var menu = new MenuFlyoutSubItem { Text = "Bisect", IsEnabled = !store.IsBusy };
+        void Add(string text, BisectMark mark)
+        {
+            var entry = new MenuFlyoutItem { Text = text };
+            entry.Click += (_, _) => _ = store.BisectMarkCommitAsync(mark, hash);
+            menu.Items.Add(entry);
+        }
+        var active = store.Bisect.IsActive;
+        Add(active ? "This commit is good" : "Bisect: this commit is good", BisectMark.Good);
+        Add(active ? "This commit is bad" : "Bisect: this commit is bad", BisectMark.Bad);
+        if (active) Add("Skip this commit", BisectMark.Skip);
+        return menu;
     }
 
     private void OnCommitSelected(object sender, SelectionChangedEventArgs e)
