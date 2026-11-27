@@ -21,22 +21,35 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
+/// The Keychain is reached through Apple's own `security` tool: it has a stable identity, so access granted
+/// once ("Always Allow") survives rebuilds of this tool, which a binary of ours would not.
+func runSecurity(_ arguments: [String], stdin: String? = nil) -> (status: Int32, out: String) {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+    p.arguments = arguments
+    let out = Pipe()
+    p.standardOutput = out
+    p.standardError = FileHandle.nullDevice
+    let input = Pipe()
+    if stdin != nil { p.standardInput = input }
+    do { try p.run() } catch { return (-1, "") }
+    if let stdin { input.fileHandleForWriting.write(Data(stdin.utf8)); try? input.fileHandleForWriting.close() }
+    let data = out.fileHandleForReading.readDataToEndOfFile()
+    p.waitUntilExit()
+    return (p.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+}
+
 func keychainRead() -> String? {
-    var item: CFTypeRef?
-    let status = SecItemCopyMatching([
-        kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account,
-        kSecReturnData: true, kSecMatchLimit: kSecMatchLimitOne,
-    ] as CFDictionary, &item)
-    guard status == errSecSuccess, let data = item as? Data else { return nil }
-    return String(data: data, encoding: .utf8)
+    let r = runSecurity(["find-generic-password", "-s", service, "-a", account, "-w"])
+    guard r.status == 0 else { return nil }
+    let key = r.out.trimmingCharacters(in: .whitespacesAndNewlines)
+    return key.isEmpty ? nil : key
 }
 
 func keychainSave(_ secret: String) {
-    let status = SecItemAdd([
-        kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account,
-        kSecValueData: Data(secret.utf8), kSecAttrAccessible: kSecAttrAccessibleWhenUnlocked,
-    ] as CFDictionary, nil)
-    if status != errSecSuccess { fail("couldn’t save the key to the Keychain (status \(status))") }
+    // `security -i` reads its commands from stdin, so the secret never appears in an argument list.
+    let r = runSecurity(["-i"], stdin: "add-generic-password -s \"\(service)\" -a \"\(account)\" -w \"\(secret)\" -U\n")
+    if r.status != 0 { fail("couldn’t save the key to the Keychain") }
 }
 
 func privateKey() -> String {
