@@ -1,5 +1,6 @@
 import AppKit
 import GitSyncCore
+import ImageIO
 import SwiftUI
 
 /// Persists `RepoIcons` and the imported image files.
@@ -73,11 +74,10 @@ struct RepoIconPicker: View {
     let current: RepoIcon?
     let choose: (RepoIcon?) -> Void
     let importURL: (URL) -> Void
-    @State private var targeted = false
     @State private var browsing = false
     @Environment(\.dismiss) private var dismiss
 
-    private let columns = Array(repeating: GridItem(.fixed(40), spacing: 8), count: 5)
+    private let columns = Array(repeating: GridItem(.fixed(40), spacing: 8), count: 8)
 
     var body: some View {
         if browsing {
@@ -116,18 +116,6 @@ struct RepoIconPicker: View {
             }
             .frame(height: 300)
             Divider()
-            // Dropping a file or pasting a copied picture works without the system file dialog.
-            Label("Drop an image here, or paste one", systemImage: "square.and.arrow.down")
-                .font(.callout).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(targeted ? Theme.brand.opacity(0.16) : Color.primary.opacity(0.05),
-                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(targeted ? Theme.brand : Color.primary.opacity(0.14), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-                .dropDestination(for: URL.self) { urls, _ in
-                    guard let url = urls.first else { return false }
-                    importURL(url); dismiss(); return true
-                } isTargeted: { targeted = $0 }
             HStack {
                 Button("Paste") { pasteImage() }
                 Button("Choose Image…") { browsing = true }
@@ -136,8 +124,8 @@ struct RepoIconPicker: View {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
             }
         }
-        .padding(18)
-        .frame(width: 5 * 40 + 4 * 8 + 36)
+        .padding(20)
+        .frame(width: 8 * 40 + 7 * 8 + 36)
     }
 
     private func pasteImage() {
@@ -165,6 +153,7 @@ struct ImageFileBrowser: View {
     @State private var entries: [URL] = []
     @State private var selected: URL?
     @State private var failed = false
+    @State private var preview: NSImage?
 
     private static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
     private static var start: URL {
@@ -212,18 +201,42 @@ struct ImageFileBrowser: View {
             HStack {
                 Button("Back") { back() }
                 Spacer()
+                if let selected, let preview {
+                    Text(selected.lastPathComponent).font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle).frame(maxWidth: 140, alignment: .trailing)
+                    Image(nsImage: preview).resizable().scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.15)))
+                        .accessibilityLabel("Preview of \(selected.lastPathComponent)")
+                }
                 Button("Choose") { if let selected { pick(selected) } }
                     .keyboardShortcut(.defaultAction).disabled(selected == nil || isFolder(selected!))
             }
         }
-        .padding(18)
-        .frame(width: 420)
+        .padding(20)
+        .frame(width: 8 * 40 + 7 * 8 + 36)
         .task(id: folder) { await load() }
+        .task(id: selected) { await loadPreview() }
     }
 
     private func isFolder(_ url: URL) -> Bool { (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
     private func go(_ url: URL) { selected = nil; folder = url }
     private func open(_ url: URL) { if isFolder(url) { go(url) } else { pick(url) } }
+
+    private func loadPreview() async {
+        preview = nil
+        guard let url = selected, !isFolder(url) else { return }
+        let image: NSImage? = await Task.detached {
+            guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 132] as CFDictionary) else { return nil }
+            return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        }.value
+        if !Task.isCancelled { preview = image }
+    }
 
     private func load() async {
         let dir = folder
