@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace GitWolf.Core;
 
@@ -7,7 +8,16 @@ namespace GitWolf.Core;
 /// <summary>Ordered from least to most important: the worst state wins.</summary>
 public enum CheckState { Neutral, Success, Pending, Failure }
 
-public sealed record CiCheck(string Name, CheckState State, Uri? Url);
+public sealed record CiCheck(string Name, CheckState State, Uri? Url)
+{
+    /// <summary>The GitHub Actions run this check belongs to; cancelling acts on the whole run.</summary>
+    public string? RunId { get; init; }
+
+    /// <summary>The single job (GitHub Actions or GitLab) behind this check; re-running acts on it.</summary>
+    public string? JobId { get; init; }
+}
+
+public enum CiAction { Rerun, Cancel }
 
 /// <summary>All CI checks reported for one commit, plus the overall result.</summary>
 public sealed record CiStatus(IReadOnlyList<CiCheck> Checks)
@@ -15,6 +25,11 @@ public sealed record CiStatus(IReadOnlyList<CiCheck> Checks)
     public static CiStatus None { get; } = new([]);
 
     public bool IsEmpty => Checks.Count == 0;
+
+    /// <summary>By content, so a repeated lookup with the same answer changes nothing.</summary>
+    public bool Equals(CiStatus? other) => other is not null && Checks.SequenceEqual(other.Checks);
+
+    public override int GetHashCode() => HashCode.Combine(Checks.Count, Checks.FirstOrDefault());
 
     /// <summary>Any failure fails it, otherwise anything pending, otherwise success.</summary>
     public CheckState? Overall => IsEmpty ? null : Checks.Max(c => c.State);
@@ -35,6 +50,22 @@ public sealed record CiStatus(IReadOnlyList<CiCheck> Checks)
 public static class CiProviderExtensions
 {
     public static bool SupportsChecks(this ProviderKind kind) => kind != ProviderKind.Azure;
+
+    /// <summary>Whether the provider's API can do this to the check. GitHub Actions and GitLab jobs only.</summary>
+    public static bool CanPerform(this ProviderKind kind, CiAction action, CiCheck check)
+    {
+        var running = check.State == CheckState.Pending;
+        if (running != (action == CiAction.Cancel)) return false;
+        return kind switch
+        {
+            ProviderKind.GitHub => IsId(running ? check.RunId : check.JobId),
+            ProviderKind.GitLab => IsId(check.JobId),
+            _ => false,
+        };
+    }
+
+    // Ids become part of a request path.
+    private static bool IsId(string? id) => id is { Length: > 0 } && id.All(char.IsAsciiDigit);
 }
 
 public sealed partial class ProviderClient
@@ -87,6 +118,23 @@ public sealed partial class ProviderClient
             .OrderByDescending(c => c.State).ThenBy(c => c.Name, StringComparer.Ordinal).ToList());
     }
 
+    /// <summary>Re-runs a finished job or cancels a running one.</summary>
+    public async Task PerformAsync(CiAction action, CiCheck check, string repoPath)
+    {
+        if (!Account.Kind.CanPerform(action, check))
+            throw ProviderException.Unsupported(
+                $"This check can’t be {(action == CiAction.Rerun ? "re-run" : "cancelled")} from here.");
+        var repo = Repo(repoPath);
+        var url = (Account.Kind, action) switch
+        {
+            (ProviderKind.GitHub, CiAction.Rerun) => $"{repo}/actions/jobs/{check.JobId}/rerun",
+            (ProviderKind.GitHub, _) => $"{repo}/actions/runs/{check.RunId}/cancel",
+            (_, CiAction.Rerun) => $"{repo}/jobs/{check.JobId}/retry",
+            _ => $"{repo}/jobs/{check.JobId}/cancel",
+        };
+        await SendAsync(HttpMethod.Post, url);
+    }
+
     /// <summary>Maps each provider's wording onto four states.</summary>
     internal static CheckState CheckStateFor(string? raw) => (raw ?? "").ToLowerInvariant() switch
     {
@@ -115,7 +163,14 @@ public sealed partial class ProviderClient
                 "cancelled" or "failure" or "timed_out" or "action_required" or "startup_failure" or "stale" => CheckState.Failure,
                 _ => CheckState.Neutral,
             };
-            result.Add(new CiCheck(name, state, Link(GetString(r, "html_url"))));
+            var link = GetString(r, "html_url");
+            // Only an Actions job has an address of this shape; other apps' checks can't be controlled.
+            var job = ActionsJob().Match(link ?? "");
+            result.Add(new CiCheck(name, state, Link(link))
+            {
+                RunId = job.Success ? job.Groups[1].Value : null,
+                JobId = job.Success ? job.Groups[2].Value : null,
+            });
         }
         return result;
     }
@@ -133,6 +188,15 @@ public sealed partial class ProviderClient
 
     /// <summary>GitLab's plain list of jobs.</summary>
     internal static List<CiCheck> ParseStatusArray(byte[] data) => ArrayOf(data)
-        .Select(r => Check(GetString(r, "name"), GetString(r, "status"), GetString(r, "target_url")))
+        // Each GitLab status is a job; its id is what retry and cancel need.
+        .Select(r => Check(GetString(r, "name"), GetString(r, "status"), GetString(r, "target_url")) is { } check
+            ? check with
+            {
+                JobId = Property(r, "id") is { ValueKind: JsonValueKind.Number } id ? id.GetRawText() : null,
+            }
+            : null)
         .OfType<CiCheck>().ToList();
+
+    [GeneratedRegex(@"/actions/runs/([0-9]+)/job/([0-9]+)")]
+    private static partial Regex ActionsJob();
 }

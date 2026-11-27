@@ -57,7 +57,7 @@ internal static class Ui
     public static Brush CheckBrush(CheckState state) => state switch
     {
         CheckState.Success => Palette.Green,
-        CheckState.Failure => Palette.Ref(RefKind.Tag),
+        CheckState.Failure => Palette.Red,
         CheckState.Pending => Palette.Orange,
         _ => Theme("TextFillColorSecondaryBrush"),
     };

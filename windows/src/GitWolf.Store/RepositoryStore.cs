@@ -141,6 +141,7 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
         _watcher = new FileWatcher(_baseRepo.Root);
         _ = WatchAsync(_watcher, _lifetime.Token);
         _ = AutoFetchAsync(_lifetime.Token);
+        _ = PollHeadChecksAsync(_lifetime.Token);
     }
 
     public void Dispose()
@@ -287,8 +288,10 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
     {
         if (!Status.Equals(s.Status))
         {
+            var previous = Status;
             Status = s.Status;
             Notify(nameof(Status));
+            FollowChecks(previous);
         }
         if (!Commits.SequenceEqual(s.Commits))
         {

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using GitWolf.App.Services;
+using GitWolf.Core;
 using GitWolf.Store;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -58,7 +59,8 @@ public sealed partial class RailView : UserControl
         HomeButton.CornerRadius = new CornerRadius(16);
     }
 
-    private sealed record Tile(Grid Root, Button Button, Border Marker, Border Badge, TextBlock Count);
+    private sealed record Tile(
+        Grid Root, Button Button, Border Marker, Border Badge, TextBlock Count, Border Ci);
 
     private static Tile Create(Workspace workspace, RepositoryStore store)
     {
@@ -109,11 +111,19 @@ public sealed partial class RailView : UserControl
             // The style adds a ring in the canvas colour that separates the badge from the tile.
             Style = (Style)Application.Current.Resources["RailBadgeStyle"],
             Background = Palette.Orange, Child = count, IsHitTestVisible = false,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 8, -5),
+        };
+        // The CI result of the checked-out commit, in the other corner.
+        var ci = new Border
+        {
+            Width = 18, Height = 18, CornerRadius = new CornerRadius(9), BorderThickness = new Thickness(2),
+            BorderBrush = Ui.Theme("CanvasBrush"), Visibility = Visibility.Collapsed,
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, -5, 8, 0),
         };
-        var root = new Grid { Width = 75, Height = 46, Children = { button, marker, badge } };
-        return new Tile(root, button, marker, badge, count);
+        var root = new Grid { Width = 75, Height = 46, Children = { button, marker, badge, ci } };
+        return new Tile(root, button, marker, badge, count, ci);
     }
 
     private static string Initials(string name)
@@ -141,12 +151,46 @@ public sealed partial class RailView : UserControl
         var changes = store.Status.ChangeCount;
         tile.Badge.Visibility = changes > 0 ? Visibility.Visible : Visibility.Collapsed;
         tile.Count.Text = changes > 99 ? "99+" : changes.ToString();
-        ToolTipService.SetToolTip(tile.Button, $"{store.Name} · {store.Status.BranchDisplay}");
+        var ci = store.HeadChecks is { } state && state != CheckState.Neutral ? state : (CheckState?)null;
+        ShowCi(tile.Ci, ci);
+        var result = ci switch
+        {
+            CheckState.Pending => "CI running",
+            CheckState.Success => "CI passed",
+            CheckState.Failure => "CI failed",
+            _ => null,
+        };
+        var tip = $"{store.Name} · {store.Status.BranchDisplay}" + (result is null ? "" : $" · {result}");
+        ToolTipService.SetToolTip(tile.Button, tip);
+        AutomationProperties.SetName(tile.Button, result is null ? store.Name : $"{store.Name}, {result}");
+    }
+
+    private static void ShowCi(Border mark, CheckState? state)
+    {
+        // Rebuilt only on a change, so the spinner keeps turning smoothly.
+        if (Equals(mark.Tag, state)) return;
+        mark.Tag = state;
+        mark.Visibility = state is null ? Visibility.Collapsed : Visibility.Visible;
+        if (state is not { } shown) return;
+        var running = shown == CheckState.Pending;
+        mark.Background = running ? Ui.Theme("CanvasBrush") : Ui.CheckBrush(shown);
+        mark.Child = running
+            ? new ProgressRing
+            {
+                IsActive = true, Width = 12, Height = 12, MinWidth = 12, MinHeight = 12,
+                Foreground = Ui.CheckBrush(shown),
+            }
+            : new FontIcon
+            {
+                Glyph = shown == CheckState.Success ? "\uE73E" : "\uE711", FontSize = 8,
+                Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+            };
     }
 
     private void OnStoreChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(RepositoryStore.Status) && sender is RepositoryStore store
+        if (e.PropertyName is nameof(RepositoryStore.Status) or nameof(RepositoryStore.Checks)
+            && sender is RepositoryStore store
             && _tiles.TryGetValue(store, out var tile)) Update(store, tile);
     }
 

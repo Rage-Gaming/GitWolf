@@ -6,12 +6,8 @@ namespace GitWolf.Store;
 // The repository's hosting provider: pull requests, issues, CI checks and forking.
 public sealed partial class RepositoryStore
 {
-    private static readonly TimeSpan ChecksFreshFor = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ForkRetryDelay = TimeSpan.FromSeconds(4);
-    private const int MaxCachedChecks = 200;
 
-    private readonly Dictionary<string, CiStatus> _checks = [];
-    private readonly Dictionary<string, DateTimeOffset> _checksRequested = [];
     private CollabStore? _pullRequests;
     private CollabStore? _issues;
 
@@ -60,14 +56,14 @@ public sealed partial class RepositoryStore
     /// <summary>Called when accounts were added or removed.</summary>
     public void AccountsChanged()
     {
-        _checks.Clear();
-        _checksRequested.Clear();
+        ResetChecks();
         _pullRequests?.Reset();
         _issues?.Reset();
         NotifyProvider();
         if (Mode is StoreMode.PullRequests) _ = PullRequests.LoadAsync();
         if (Mode is StoreMode.Issues) _ = Issues.LoadAsync();
         if (SelectedCommit is { } commit) _ = LoadChecksAsync(commit.Hash);
+        LoadHeadChecks();
     }
 
     private void NotifyProvider()
@@ -99,38 +95,6 @@ public sealed partial class RepositoryStore
 
     public void AddIssueReference(string keyword, int number) =>
         DraftMessage = Core.CommitMessage.AddReference(keyword, number, DraftMessage);
-
-    // MARK: CI checks
-
-    /// <summary>CI results for a commit, if the server has any.</summary>
-    public CiStatus? Checks(string sha) => _checks.GetValueOrDefault(sha);
-
-    /// <summary>Raises "Checks" when new results arrive. A result is reused for a minute.</summary>
-    public async Task LoadChecksAsync(string sha)
-    {
-        if (sha.Length == 0 || ProviderKindOfRemote is not { } kind || !kind.SupportsChecks()) return;
-        if (_checksRequested.TryGetValue(sha, out var at) && DateTimeOffset.UtcNow - at < ChecksFreshFor) return;
-        if (_checksRequested.Count >= MaxCachedChecks)
-        {
-            _checksRequested.Clear();
-            _checks.Clear();
-        }
-        _checksRequested[sha] = DateTimeOffset.UtcNow;
-        try
-        {
-            if (await ConnectAsync() is not { } connection) return;
-            var (client, path) = (connection.Client, connection.Path);
-            var status = await Task.Run(() => client.CiStatusAsync(path, sha));
-            if (_lifetime.IsCancellationRequested || status.IsEmpty) return;
-            _checks[sha] = status;
-            Notify(nameof(Checks));
-        }
-        catch (ProviderException e)
-        {
-            // Checks are extra information: a commit the server doesn't know simply shows none.
-            Trace.TraceInformation($"No CI status (HTTP {e.Status}).");
-        }
-    }
 
     // MARK: Create and fork
 
