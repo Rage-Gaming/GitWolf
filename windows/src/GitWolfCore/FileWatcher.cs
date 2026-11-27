@@ -71,9 +71,10 @@ public sealed class FileWatcher : IDisposable
     {
         lock (_lock)
         {
-            if (_disposed) return;
-            _pending?.Dispose();
-            _pending = new Timer(_ => Signal(), null, _latency, Timeout.InfiniteTimeSpan);
+            if (_disposed || !_watcher.EnableRaisingEvents) return;
+            // One timer, pushed back by each event: a build or checkout raises thousands.
+            _pending ??= new Timer(_ => Signal(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            _pending.Change(_latency, Timeout.InfiniteTimeSpan);
         }
     }
 

@@ -56,7 +56,7 @@ public sealed partial class CommitDetailView : UserControl
             _ = ShowSignatureAsync(store, commit.Hash);
         }
 
-        Checks.Show(store.Checks(commit.Hash));
+        Checks.Show(store, commit.Hash, commit.Date);
 
         var source = DiffSource.ForCommit(commit.Hash);
         _syncing = true;

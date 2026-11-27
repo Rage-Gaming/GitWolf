@@ -24,7 +24,10 @@ public class GitException(string command, int exitCode, string stderr) : Excepti
 public sealed class GitRunner(string workingDirectory, string? gitPath = null, IReadOnlyDictionary<string, string>? extraEnvironment = null)
 {
     public string WorkingDirectory { get; } = workingDirectory;
-    public string GitPath { get; } = gitPath ?? ResolveDefaultGitPath();
+    public string GitPath { get; } = gitPath ?? DefaultGitPath.Value;
+
+    // Searching PATH once is enough; a runner is created for every command.
+    private static readonly Lazy<string> DefaultGitPath = new(ResolveDefaultGitPath);
 
     /// <summary>Extra environment for every process (e.g. credentials for network commands).</summary>
     public IReadOnlyDictionary<string, string> ExtraEnvironment { get; } = extraEnvironment ?? new Dictionary<string, string>();
@@ -44,7 +47,7 @@ public sealed class GitRunner(string workingDirectory, string? gitPath = null, I
         {
             var candidate = Path.Combine(dir.Trim('"'), exeName);
             // Relative PATH entries could pick up a git.exe planted in the current folder.
-            if (Path.IsPathFullyQualified(candidate) && File.Exists(candidate)) return candidate;
+            if (Path.IsPathFullyQualified(candidate) && File.Exists(candidate)) return WithoutLauncher(candidate);
         }
         if (OperatingSystem.IsWindows())
         {
@@ -56,10 +59,23 @@ public sealed class GitRunner(string workingDirectory, string? gitPath = null, I
             {
                 if (root is null) continue;
                 var candidate = Path.Combine(root, "Git", "cmd", "git.exe");
-                if (File.Exists(candidate)) return candidate;
+                if (File.Exists(candidate)) return WithoutLauncher(candidate);
             }
         }
         return exeName;
+    }
+
+    /// <summary>
+    /// Git for Windows' `cmd\git.exe` only starts the real program, which sets up the same environment
+    /// by itself. Running that directly saves a process on every command.
+    /// </summary>
+    internal static string WithoutLauncher(string git)
+    {
+        var folder = Path.GetDirectoryName(git);
+        if (!"cmd".Equals(Path.GetFileName(folder), StringComparison.OrdinalIgnoreCase)
+            || Path.GetDirectoryName(folder) is not { } installation) return git;
+        var real = Path.Combine(installation, "mingw64", "bin", Path.GetFileName(git));
+        return File.Exists(real) ? real : git;
     }
 
     /// <param name="readOnly">

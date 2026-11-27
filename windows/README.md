@@ -50,7 +50,7 @@ Provider features: OAuth sign-in (`OAuth.cs`, `OAuthLoopback.cs`), pull requests
 (`Collab.cs`, `CollabActions.cs`), CI checks (`CiStatus.cs`), notifications (`Notifications.cs`),
 fork (`Fork.cs`) and a Markdown subset (`Markdown.cs`).
 
-333 tests pass against real git and stubbed HTTP.
+383 tests pass against real git and stubbed HTTP.
 
 Differences from macOS, all deliberately stricter:
 
@@ -111,7 +111,10 @@ UI (`src/GitWolf.App/`):
 - [x] Pull request and issue tabs: filter, search, read with Markdown, comment, create, label,
       close, reopen and merge, as far as the provider supports each
 - [x] Issue references from the commit message menu
-- [x] CI checks in commit and pull request details
+- [x] CI checks in commit and pull request details, refreshed while running; re-run and cancel (GitHub
+      Actions, GitLab); the checked-out commit's result on the repository tile. Polling, the tile mark and the
+      buttons need a connected account
+- [x] After a push, an offer to open a pull request for the branch (needs a connected account)
 - [x] Notifications, with an unread count in the top bar
 - [x] Fork a repository from the jump palette
 - [x] Profile pictures for private GitHub repositories, using the github.com account
@@ -120,19 +123,28 @@ UI (`src/GitWolf.App/`):
 - [x] Manage remotes: add, edit, rename, remove, fetch and push one remote
 - [x] Diff: changed words, ignore whitespace, whole file with folding, image previews
 
+- [x] Open in File Explorer, a terminal or an editor, and custom actions (Settings > Tools), run with Git's
+      `sh` so that commands work as on macOS and branch names are never read as commands
+- [x] In-app updates: a daily check (Settings > General) and *Check for Updates…* in the jump palette, with
+      release notes, then install and relaunch, skip the version or be reminded later. The feed and releases are
+      verified with the project's Ed25519 key (see [docs/RELEASING.md](../docs/RELEASING.md)). Development builds never
+      contact the update server
+
 ### Trusting a repository
 
 A folder's `.git/config` (or a submodule's) can make git run programs, for example through
-`core.fsmonitor`, filters, `diff.external`, `gpg.program` or `remote.<name>.uploadpack`. GitWolf
-reads the configuration first, and if it holds such a setting, or an HTTP or proxy option, runs no
-other git command there until you agree to the listed settings. It asks again when they change.
+`core.fsmonitor`, filters, `diff.external`, `gpg.program`, `core.hooksPath` or
+`remote.<name>.uploadpack`, and so can scripts in `.git/hooks`. GitWolf reads these first, and if it
+finds a hook, such a setting, or an HTTP or proxy option, runs no other git command there until you
+agree to what is listed. It asks again when the list or a hook script changes.
 Answers are kept in `%LOCALAPPDATA%\GitWolf\trusted.json`. `git lfs install --local` is one
 ordinary reason to be asked.
 
 Known limits:
 
-- Hooks in a repository still run on commit, checkout, merge, pull and push, and pull and push hooks
-  can read the account token. Only use those on folders you trust.
+- In a trusted repository, pull and push hooks can read the account token.
+- Only the hook files git runs are checked for changes, not other scripts they call, and not hooks in a
+  network folder or in a submodule's own `core.hooksPath`.
 - A trusted repository's settings run with your rights, including during pull and push.
 
 ## Building

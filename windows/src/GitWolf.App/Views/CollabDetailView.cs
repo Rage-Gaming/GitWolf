@@ -87,8 +87,8 @@ public sealed class CollabDetailView : UserControl
 
     private void ShowChecks()
     {
-        if (_collab?.Selected is { HeadSha.Length: > 0 } item) _checks.Show(_store?.Checks(item.HeadSha));
-        else _checks.Show(null);
+        var item = _collab?.Selected;
+        _checks.Show(_store, item?.HeadSha ?? "", item?.Updated);
     }
 
     private void Render()

@@ -144,11 +144,21 @@ public sealed partial class GitRepository
         }).ToList();
     }
 
-    /// <summary>`https://user:secret@host/x` becomes `https://user@host/x`.</summary>
-    public static string Redact(string url) => UrlPassword().Replace(url,
-        match => match.Groups["user"].Value.Length > 0
+    /// <summary>
+    /// `https://user:secret@host/x` becomes `https://user@host/x`. A web address whose user name is a
+    /// token (`https://token@host/x`) loses the name too.
+    /// </summary>
+    public static string Redact(string url) => UrlUser().Replace(
+        UrlPassword().Replace(url, match => match.Groups["user"].Value.Length > 0
             ? $"{match.Groups["scheme"].Value}{match.Groups["user"].Value}@"
-            : match.Groups["scheme"].Value);
+            : match.Groups["scheme"].Value),
+        match => LooksLikeToken(match.Groups["user"].Value) ? match.Groups["scheme"].Value : match.Value);
+
+    /// <summary>A known token prefix, or a long run of letters and digits that no one picks as a name.</summary>
+    private static bool LooksLikeToken(string user) =>
+        TokenPrefix().IsMatch(user)
+        || (user.Length >= 32 && user.Any(char.IsAsciiDigit)
+            && user.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-'));
 
     public Task AddRemoteAsync(string name, string url) =>
         Git.RunAsync(["remote", "add", RemoteName(name), RemoteUrl(url)]);
@@ -174,11 +184,16 @@ public sealed partial class GitRepository
         // "transport::address" runs a helper program, and "ext::" runs any command.
         if (HelperUrl().IsMatch(trimmed))
             throw new GitException("remote", 1, "Addresses that name a helper program (“::”) aren’t supported.");
-        // Secrets never go into URLs: they would end up in .git/config in plain text.
-        if (UrlPassword().IsMatch(trimmed))
-            throw new GitException("remote", 1,
-                "Don’t put a password in the URL. Connect an account in Settings → Accounts instead.");
+        RefuseSecret("remote", trimmed);
         return trimmed;
+    }
+
+    /// <summary>Secrets never go into URLs: they would end up in .git/config in plain text.</summary>
+    private static void RefuseSecret(string command, string url)
+    {
+        if (UrlPassword().IsMatch(url) || Redact(url) != url)
+            throw new GitException(command, 1,
+                "Don’t put a password or token in the URL. Connect an account in Settings → Accounts instead.");
     }
 
     [GeneratedRegex(@"^(?<name>[^\t]+)\t(?<url>.*) \((?<kind>fetch|push)\)( \[[^\]]*\])?$")]
@@ -186,6 +201,12 @@ public sealed partial class GitRepository
 
     [GeneratedRegex(@"^(?<scheme>[A-Za-z][A-Za-z0-9+.-]*://)(?<user>[^/?#:]*):[^/?#]*@")]
     private static partial Regex UrlPassword();
+
+    [GeneratedRegex(@"^(?<scheme>[Hh][Tt][Tt][Pp][Ss]?://)(?<user>[^/?#:@]+)@")]
+    private static partial Regex UrlUser();
+
+    [GeneratedRegex(@"^(gh[pousr]_|github_pat_|glpat-|gloas-|ATBB|ATATT)")]
+    private static partial Regex TokenPrefix();
 
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9+.-]*::")]
     private static partial Regex HelperUrl();

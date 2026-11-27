@@ -138,12 +138,12 @@ internal static class Dialogs
         }
         // Everything is trusted together, so say when the list is cut short.
         if (risk.Settings.Count > shown)
-            list.Children.Add(new TextBlock { Text = $"and {risk.Settings.Count - shown} more in .git/config" });
+            list.Children.Add(new TextBlock { Text = $"and {risk.Settings.Count - shown} more in the .git folder" });
         var content = new StackPanel { Spacing = 12, Width = 420 };
         content.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
-            Text = "Its configuration makes Git run programs or changes where sign-ins are sent. Trust it only "
+            Text = "Its configuration or hooks make Git run programs, or change where sign-ins are sent. Trust it only "
                 + "if you know where this folder came from."
                 + (risk.BlocksCredential ? " Your saved account won\u2019t be used here while HTTP or proxy options are set." : ""),
         });

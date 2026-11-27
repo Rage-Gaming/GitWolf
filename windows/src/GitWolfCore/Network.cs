@@ -46,7 +46,8 @@ public sealed partial class GitRepository
             {
                 withheld = CredentialWithheld;
             }
-            else if (submodules && risk.Settings.Count > 0)
+            // Hooks don't count: submodule commands run with them switched off.
+            else if (submodules && risk.Settings.Any(s => !s.IsHook))
             {
                 withheld = CredentialWithheldFromSubmodules;
             }

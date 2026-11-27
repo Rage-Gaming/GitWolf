@@ -7,16 +7,20 @@ using System.Text.Json;
 namespace GitWolf.Core;
 
 /// <summary>A setting in the repository's own configuration that runs a program or redirects a sign-in.</summary>
-public sealed record RiskySetting(string Source, string Key, string Value);
+public sealed record RiskySetting(string Source, string Key, string Value)
+{
+    /// <summary>A script in the hooks folder, as opposed to a configuration setting.</summary>
+    public bool IsHook => Key.StartsWith("hooks/", StringComparison.Ordinal);
+}
 
-/// <summary>What a repository's own configuration (and its submodules') asks git to do.</summary>
+/// <summary>What a repository's own configuration and hooks (and its submodules') ask git to do.</summary>
 /// <param name="Fingerprint">Changes whenever the risky settings do, so trust has to be given again.</param>
 /// <param name="BlocksCredential">An HTTP or proxy setting could send an account token somewhere else.</param>
 public sealed record RepositoryRisk(IReadOnlyList<RiskySetting> Settings, string Fingerprint, bool BlocksCredential);
 
 /// <summary>Git would run programs this repository configures, and the user hasn't agreed to that.</summary>
 public sealed class UntrustedRepositoryException(RepositoryRisk risk) : GitException("trust", 128,
-    "This repository’s own configuration runs programs or redirects sign-ins, so GitWolf hasn’t read it. "
+    "This repository’s own configuration or hooks run programs or redirect sign-ins, so GitWolf hasn’t read it. "
     + "Trust it to continue.")
 {
     public RepositoryRisk Risk { get; } = risk;
@@ -79,12 +83,24 @@ public sealed class RepositoryTrust(string path)
 }
 
 /// <summary>
-/// Reads a repository's own configuration without letting it run anything: only `git config` and an
-/// `ls-files` with the file-system monitor switched off.
+/// Reads a repository's own configuration and hooks without letting them run: only `git config`, an
+/// `ls-files` with the file-system monitor switched off, and the hook files themselves.
 /// </summary>
 internal static class RepositoryInspector
 {
     private const int MaxDepth = 8;
+    private const int MaxHashedHook = 1024 * 1024;
+
+    /// <summary>The names git runs from the hooks folder.</summary>
+    private static readonly string[] HookNames =
+    [
+        "applypatch-msg", "pre-applypatch", "post-applypatch", "pre-commit", "pre-merge-commit",
+        "prepare-commit-msg", "commit-msg", "post-commit", "pre-rebase", "post-checkout", "post-merge",
+        "pre-push", "pre-auto-gc", "post-rewrite", "sendemail-validate", "post-index-change",
+        "reference-transaction", "fsmonitor-watchman", "pre-receive", "update", "proc-receive",
+        "post-receive", "post-update", "push-to-checkout", "p4-changelist", "p4-prepare-changelist",
+        "p4-post-changelist", "p4-pre-submit",
+    ];
 
     private sealed record Scan(string Stamp, IReadOnlyList<string> Watched, RepositoryRisk Risk);
 
@@ -120,6 +136,8 @@ internal static class RepositoryInspector
         {
             var info = new FileInfo(file);
             if (info.Exists) text.Append(info.LastWriteTimeUtc.Ticks).Append(':').Append(info.Length);
+            // A folder's time changes when a file in it appears or goes.
+            else if (Directory.Exists(file)) text.Append(Directory.GetLastWriteTimeUtc(file).Ticks);
             text.Append(';');
         }
         return text.ToString();
@@ -135,11 +153,19 @@ internal static class RepositoryInspector
             Path.Combine(common, "config"), Path.Combine(gitDir, "config.worktree"),
             Path.Combine(gitDir, "HEAD"), Path.Combine(gitDir, "index"),
         };
+        var hooks = Path.Combine(common, "hooks");
+        watched.Add(hooks);
+        watched.UnionWith(HookNames.Select(name => Path.Combine(hooks, name)).Where(File.Exists));
         // Stamped before reading, so a change made during the scan is noticed next time.
         var before = watched.ToDictionary(f => f, f => Stamp([f]));
         var found = new List<RiskySetting>();
 
         await ReadConfigAsync(git, root, [], "this repository", watched, found, token).ConfigureAwait(false);
+        ReadHooks(hooks, "this repository", watched, found);
+        // The last value wins, as in git.
+        if (found.LastOrDefault(s => s.Key == "core.hookspath") is { } custom
+            && HooksFolder(root, custom.Value) is { } folder)
+            ReadHooks(folder, "core.hooksPath", watched, found);
 
         var modules = new List<string>();
         FindModules(Path.Combine(common, "modules"), 0, modules);
@@ -151,6 +177,7 @@ internal static class RepositoryInspector
             watched.Add(Path.Combine(module, "config.worktree"));
             var name = Path.GetRelativePath(root, module).Replace('\\', '/');
             await ReadConfigAsync(git, root, [$"--git-dir={module}"], name, watched, found, token).ConfigureAwait(false);
+            ReadHooks(Path.Combine(module, "hooks"), name, watched, found);
         }
 
         var ordered = found.Distinct()
@@ -190,6 +217,61 @@ internal static class RepositoryInspector
                     watched.Add(IncludedFile(file, value));
             }
             if (IsRisky(key, value)) found.Add(new RiskySetting(source, key, value));
+        }
+    }
+
+    /// <summary>
+    /// Hooks present in a hooks folder, identified by their contents so that a changed script is asked
+    /// about again. Git for Windows has no executable bit, so being there is enough.
+    /// </summary>
+    private static void ReadHooks(
+        string directory, string source, HashSet<string> watched, List<RiskySetting> found)
+    {
+        // The folder's own time shows a hook being added; each hook there is watched for edits.
+        watched.Add(directory);
+        foreach (var name in HookNames)
+        {
+            var file = new FileInfo(Path.Combine(directory, name));
+            if (!file.Exists) continue;
+            watched.Add(file.FullName);
+            found.Add(new RiskySetting(source, $"hooks/{name}", Describe(file)));
+        }
+    }
+
+    /// <summary>
+    /// Where `core.hooksPath` points, or null for a network or malformed path: merely looking at a
+    /// network folder would send the Windows sign-in to that server.
+    /// </summary>
+    private static string? HooksFolder(string root, string value)
+    {
+        try
+        {
+            var path = value.StartsWith("~/", StringComparison.Ordinal)
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), value[2..])
+                : value;
+            if (IsNetwork(path)) return null;
+            var full = Path.GetFullPath(Path.Combine(root, path));
+            return IsNetwork(full) && !IsNetwork(root) ? null : full;
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        static bool IsNetwork(string path) => path.Replace('/', '\\').StartsWith(@"\\", StringComparison.Ordinal);
+    }
+
+    private static string Describe(FileInfo file)
+    {
+        try
+        {
+            if (file.Length > MaxHashedHook) return $"{file.Length} bytes, changed {file.LastWriteTimeUtc:O}";
+            return "sha256 " + Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file.FullName)));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Still listed, so it still needs trust.
+            return "unreadable";
         }
     }
 
@@ -270,7 +352,7 @@ internal static class RepositoryInspector
         var isBoolean = value.ToLowerInvariant() is "true" or "false" or "yes" or "no" or "on" or "off" or "0" or "1";
         return section switch
         {
-            "core" => name is "sshcommand" or "gitproxy" or "askpass" or "editor" or "pager" or "alternaterefscommand"
+            "core" => (name == "hookspath" && value != "/dev/null") || name is "sshcommand" or "gitproxy" or "askpass" or "editor" or "pager" or "alternaterefscommand"
                 || (name == "fsmonitor" && !isBoolean),
             "sequence" => name == "editor",
             "interactive" => name == "difffilter",

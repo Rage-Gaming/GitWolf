@@ -130,6 +130,7 @@ public sealed partial class GitRepository
         // "ext::" and similar URLs name a command to run.
         if (url.Contains("::", StringComparison.Ordinal) && !url.Contains("://", StringComparison.Ordinal))
             throw new GitException("clone", 128, "That kind of URL isn’t supported because it can run commands.");
+        RefuseSecret("clone", url.Trim());
         var env = credential is not null && askpassPath is not null && credential.Allows(url)
             ? credential.Environment(askpassPath, url)
             : new Dictionary<string, string>();
@@ -178,8 +179,10 @@ public sealed partial class GitRepository
         var branchesTask = BranchesAsync();
         var tagsTask = TagsAsync();
         var stashesTask = StashesAsync();
-        var remotes = await RemotesAsync();
-        var commits = await LogAsync(commitLimit, new HashSet<string>(remotes));
+        var remotesTask = RemotesAsync();
+        var logTask = ReadLogAsync(commitLimit);
+        var remotes = await remotesTask;
+        var commits = LogParser.Parse(await logTask, new HashSet<string>(remotes));
         var graph = GraphLayout.Layout(commits);
         var (local, remote) = await branchesTask;
 
@@ -232,13 +235,12 @@ public sealed partial class GitRepository
         return RefParser.ParseStashes(data);
     }
 
-    public async Task<List<Commit>> LogAsync(int limit, ISet<string> remotes)
-    {
-        var data = await Git.RunAsync(
-            ["log", "--no-show-signature", "--all", "--topo-order", "-z", "-n", limit.ToString(), $"--format={LogParser.Format}"],
-            readOnly: true);
-        return LogParser.Parse(data, remotes);
-    }
+    public async Task<List<Commit>> LogAsync(int limit, ISet<string> remotes) =>
+        LogParser.Parse(await ReadLogAsync(limit), remotes);
+
+    private Task<byte[]> ReadLogAsync(int limit) => Git.RunAsync(
+        ["log", "--no-show-signature", "--all", "--topo-order", "-z", "-n", limit.ToString(), $"--format={LogParser.Format}"],
+        readOnly: true);
 
     /// <summary>Full commit message (subject + body).</summary>
     public async Task<string> MessageAsync(string hash)

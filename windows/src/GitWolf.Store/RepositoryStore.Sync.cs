@@ -56,11 +56,11 @@ public sealed partial class RepositoryStore
     }
 
     /// <summary>A force push is destructive: the UI must confirm it first.</summary>
-    public Task<bool> PushAsync(PushOptions? options = null)
+    public async Task<bool> PushAsync(PushOptions? options = null)
     {
         var (status, remotes, chosen) = (Status, Remotes, options ?? new PushOptions());
         var label = chosen.Force is not null ? "Force pushing…" : "Pushing…";
-        return AnnounceAsync(PerformAsync(label, r => r.PushAsync(status, remotes, chosen), e =>
+        var pushed = await AnnounceAsync(PerformAsync(label, r => r.PushAsync(status, remotes, chosen), e =>
         {
             if (e is not GitException git || !git.IsPushRejected()) return false;
             if (chosen.Force is not null)
@@ -70,6 +70,13 @@ public sealed partial class RepositoryStore
                 RejectedPush = chosen;
             return true;
         }), "Pushed");
+        // The run for what was just pushed is about to appear.
+        if (pushed)
+        {
+            WatchChecks(status.HeadOid);
+            OfferPullRequest(status);
+        }
+        return pushed;
     }
 
     public Task<bool> FetchRemoteAsync(string remote) =>

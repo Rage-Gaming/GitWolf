@@ -227,6 +227,51 @@ public sealed class CollabTests
     }
 
     [Fact]
+    public async Task GitHubActionsJobsCanBeRerunAndCancelled()
+    {
+        var http = new StubHttp(url => url.Contains("check-runs")
+            ? """{"check_runs":[{"name":"build","status":"completed","conclusion":"failure","html_url":"https://github.com/o/r/actions/runs/11/job/22"},{"name":"test","status":"in_progress","html_url":"https://github.com/o/r/actions/runs/11/job/33"},{"name":"other","status":"completed","conclusion":"success","html_url":"https://github.com/o/r/runs/44"}]}"""
+            : """{"statuses":[]}""");
+        var client = http.Client(ProviderKind.GitHub);
+        var checks = (await client.CiStatusAsync("o/r", "abc")).Checks.ToDictionary(c => c.Name);
+        await client.PerformAsync(CiAction.Rerun, checks["build"], "o/r");
+        Assert.Equal(("POST", "https://api.github.com/repos/o/r/actions/jobs/22/rerun"),
+            (http.Calls[^1].Method, http.Calls[^1].Url));
+        await client.PerformAsync(CiAction.Cancel, checks["test"], "o/r");
+        Assert.Equal("https://api.github.com/repos/o/r/actions/runs/11/cancel", http.Calls[^1].Url);
+
+        var sent = http.Calls.Count;
+        foreach (var (action, check) in new[]
+        {
+            (CiAction.Cancel, checks["build"]), (CiAction.Rerun, checks["test"]), (CiAction.Rerun, checks["other"]),
+            (CiAction.Rerun, checks["build"] with { JobId = "22/../../x" }),
+        })
+            await Assert.ThrowsAsync<ProviderException>(() => client.PerformAsync(action, check, "o/r"));
+        Assert.Equal(sent, http.Calls.Count);
+    }
+
+    [Fact]
+    public async Task GitLabJobsCanBeRetriedAndCancelled()
+    {
+        var http = new StubHttp(_ =>
+            """[{"id":7,"name":"unit","status":"failed"},{"id":8,"name":"e2e","status":"running"}]""");
+        var client = http.Client(ProviderKind.GitLab);
+        var checks = (await client.CiStatusAsync("g/p", "abc")).Checks.ToDictionary(c => c.Name);
+        await client.PerformAsync(CiAction.Rerun, checks["unit"], "g/p");
+        Assert.EndsWith("/projects/g%2Fp/jobs/7/retry", http.Calls[^1].Url);
+        await client.PerformAsync(CiAction.Cancel, checks["e2e"], "g/p");
+        Assert.EndsWith("/projects/g%2Fp/jobs/8/cancel", http.Calls[^1].Url);
+        Assert.False(ProviderKind.Gitea.CanPerform(CiAction.Rerun, checks["unit"]));
+    }
+
+    [Fact]
+    public async Task TheSameAnswerComparesEqual()
+    {
+        var client = Checks(ProviderKind.Gitea, ("status", """{"statuses":[{"context":"ci","status":"pending"}]}"""));
+        Assert.Equal(await client.CiStatusAsync("o/r", "abc"), await client.CiStatusAsync("o/r", "abc"));
+    }
+
+    [Fact]
     public async Task RejectsNonHexShas()
     {
         var http = new StubHttp();
