@@ -91,5 +91,6 @@
                 </ListView.ItemTemplate>
             </ListView>
         </Border>
+        <views:PanelSplitter x:Name="FilesSplitter" Horizontal="True" />
     </StackPanel>
 </UserControl>

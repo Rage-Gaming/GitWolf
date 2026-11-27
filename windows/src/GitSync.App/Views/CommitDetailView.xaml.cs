@@ -63,6 +63,17 @@ public sealed partial class CommitDetailView : UserControl
         _syncing = false;
     }
 
+    internal PanelSplitter HeightSplitter => FilesSplitter;
+
+    internal double FilesListHeight => Files.ActualHeight;
+
+    /// <summary>A height chosen by dragging, or null to fit the files, up to a limit.</summary>
+    internal void SetFilesHeight(double? height)
+    {
+        Files.Height = height ?? double.NaN;
+        Files.MaxHeight = height ?? 190;
+    }
+
     internal void ShowPicture()
     {
         if (_store?.SelectedCommit is { } commit) Avatars.Show(Picture, commit.AuthorEmail);

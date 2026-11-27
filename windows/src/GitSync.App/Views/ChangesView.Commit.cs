@@ -14,6 +14,14 @@ namespace GitSync.App.Views;
 // The commit box: signing, message helpers and ignore rules.
 public sealed partial class ChangesView
 {
+    internal PanelSplitter HeightSplitter => MessageSplitter;
+
+    internal double MessageHeight
+    {
+        get => Message.ActualHeight;
+        set => Message.Height = value;
+    }
+
     internal bool SpellCheck { set => Message.IsSpellCheckEnabled = value; }
 
     private SigningConfig? _signing;

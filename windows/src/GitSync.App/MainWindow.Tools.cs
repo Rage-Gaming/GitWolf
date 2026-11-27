@@ -6,23 +6,31 @@ using Windows.System;
 
 namespace GitSync.App;
 
-/// <summary>Resizable panels and the extra keyboard shortcuts.</summary>
+/// <summary>Resizable panels, the extra keyboard shortcuts and notices.</summary>
 public sealed partial class MainWindow
 {
     private IntPtr WindowHandle => WinRT.Interop.WindowNative.GetWindowHandle(this);
+
+    /// <summary>Confirms something briefly at the bottom of the window.</summary>
+    private void ShowNotice(string message)
+    {
+        NoticeText.Text = message;
+        NoticeAnimation.Begin();
+    }
 
     private void SetUpPanels()
     {
         ToolDialogs.Window = WindowHandle;
         Changes.SpellCheck = _settings.State.SpellCheck;
         ShowPanelSizes(_settings.State);
+        SetUpHeights();
 
         // The widths follow the pointer and are saved once, when the drag ends.
         var sidebar = _settings.State.SidebarWidth;
         var share = _settings.State.ListShare;
         SidebarSplitter.Dragged += dx =>
         {
-            sidebar = Math.Clamp(SidebarColumn.ActualWidth + dx, 180, 480);
+            sidebar = Math.Clamp(SidebarColumn.ActualWidth + dx, 160, 600);
             SidebarColumn.Width = new GridLength(sidebar);
         };
         SidebarSplitter.Finished += () => _settings.Update(_settings.State with { SidebarWidth = sidebar });
@@ -31,7 +39,7 @@ public sealed partial class MainWindow
         {
             var total = ListColumn.ActualWidth + DetailColumn.ActualWidth;
             if (total <= 0) return;
-            share = Math.Clamp((ListColumn.ActualWidth + dx) / total, 0.2, 0.8);
+            share = Math.Clamp((ListColumn.ActualWidth + dx) / total, 0.15, 0.85);
             ShowShare(share);
         };
         ListSplitter.Finished += () => _settings.Update(_settings.State with { ListShare = share });
@@ -43,6 +51,48 @@ public sealed partial class MainWindow
             (sidebar, share) = (_settings.State.SidebarWidth, _settings.State.ListShare);
             ShowPanelSizes(_settings.State);
         }
+    }
+
+    /// <summary>The commit message box and a commit's file list can be dragged taller or shorter.</summary>
+    private void SetUpHeights()
+    {
+        var message = _settings.State.MessageHeight;
+        var files = _settings.State.FilesHeight;
+        // A saved height never crowds out the rest of a smaller window.
+        double MessageLimit() => Math.Max(60, Panels.ActualHeight - 260);
+        double FilesLimit() => Math.Max(52, Panels.ActualHeight - 360);
+        void Show()
+        {
+            Changes.MessageHeight = Math.Min(message, MessageLimit());
+            Detail.SetFilesHeight(files > 0 ? Math.Min(files, FilesLimit()) : null);
+        }
+        Panels.SizeChanged += (_, _) => Show();
+
+        // The message box is below its gap, so dragging up makes it taller.
+        Changes.HeightSplitter.Dragged += dy =>
+        {
+            message = Math.Clamp(Changes.MessageHeight - dy, 60, Math.Min(600, MessageLimit()));
+            Show();
+        };
+        Changes.HeightSplitter.Finished += () => _settings.Update(_settings.State with { MessageHeight = message });
+        Changes.HeightSplitter.Reset += () =>
+        {
+            message = new SettingsState().MessageHeight;
+            _settings.Update(_settings.State with { MessageHeight = message });
+            Show();
+        };
+        Detail.HeightSplitter.Dragged += dy =>
+        {
+            files = Math.Clamp(Detail.FilesListHeight + dy, 52, Math.Min(800, FilesLimit()));
+            Show();
+        };
+        Detail.HeightSplitter.Finished += () => _settings.Update(_settings.State with { FilesHeight = files });
+        Detail.HeightSplitter.Reset += () =>
+        {
+            files = 0;
+            _settings.Update(_settings.State with { FilesHeight = 0 });
+            Show();
+        };
     }
 
     private void ShowPanelSizes(SettingsState state)

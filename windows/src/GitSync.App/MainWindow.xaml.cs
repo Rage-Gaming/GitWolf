@@ -61,7 +61,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) => _workspace.Dispose();
         SetUpPanels();
         // Starts over when something else is copied before it has faded.
-        Dialogs.Copied += () => CopiedNotice.Begin();
+        Dialogs.Copied += () => ShowNotice("Copied");
         Bind();
     }
 
@@ -159,11 +159,16 @@ public sealed partial class MainWindow : Window
         var selected = _workspace.Selected;
         if (!ReferenceEquals(selected, _store))
         {
-            if (_store is not null) _store.PropertyChanged -= OnStoreChanged;
+            if (_store is not null)
+            {
+                _store.PropertyChanged -= OnStoreChanged;
+                _store.Succeeded -= ShowNotice;
+            }
             _store = selected;
             if (selected is not null)
             {
                 selected.PropertyChanged += OnStoreChanged;
+                selected.Succeeded += ShowNotice;
                 History.Attach(selected);
                 Changes.Attach(selected);
                 Sidebar.Attach(selected);
