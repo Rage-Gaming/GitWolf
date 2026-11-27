@@ -359,14 +359,19 @@ private struct SyncButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                SyncIcon(name: icon, motion: motion)
-                if count > 0 {
-                    Text("\(count)").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(Theme.brand)
+            // The icon stays centred; the count is a badge on its corner, so it never pushes the icon aside.
+            SyncIcon(name: icon, motion: motion)
+                .overlay(alignment: .topTrailing) {
+                    if count > 0 {
+                        Text("\(count)").font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4).frame(minWidth: 14, minHeight: 14)
+                            .background(Theme.brand, in: Capsule())
+                            .offset(x: 10, y: -7)
+                    }
                 }
-            }
-            .frame(minWidth: 40, maxHeight: .infinity)
-            .padding(.horizontal, 4)
+                .frame(width: 44)
+                .frame(maxHeight: .infinity)
             .background(hovering && enabled ? Color.primary.opacity(0.07) : .clear)
             .opacity(enabled ? 1 : 0.4)
             .contentShape(Rectangle())
