@@ -56,9 +56,17 @@ public sealed partial class MainWindow : Window
 
         Activated += (_, e) =>
         {
-            if (e.WindowActivationState != WindowActivationState.Deactivated) _ = _store?.RequestRefresh();
+            if (e.WindowActivationState == WindowActivationState.Deactivated) return;
+            _ = _store?.RequestRefresh();
+            // Pictures on screen are checked for changes, and authors looked up if due.
+            Avatars.Refresh();
+            if (_store is { } store) _ = Avatars.LoadAsync(store.RemoteLocation, store.Commits);
         };
-        Closed += (_, _) => _workspace.Dispose();
+        Closed += (_, _) =>
+        {
+            Avatars.Save();
+            _workspace.Dispose();
+        };
         SetUpPanels();
         // Starts over when something else is copied before it has faded.
         Dialogs.Copied += () => ShowNotice("Copied");
@@ -207,7 +215,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(loaded ? (UIElement)TopBar.DragRegion : HomeDragArea);
         ShowBusy();
         if (store is null || !loaded) return;
-        _ = Avatars.LoadAsync(store.RemoteLocation);
+        _ = Avatars.LoadAsync(store.RemoteLocation, store.Commits);
         Banner.Show(store);
         ToolBanners.Show(store);
 
@@ -271,6 +279,7 @@ public sealed partial class MainWindow : Window
             case nameof(RepositoryStore.Commits):
             case nameof(RepositoryStore.Graph):
                 History.ShowCommits();
+                _ = Avatars.LoadAsync(store.RemoteLocation, store.Commits);
                 break;
             case nameof(RepositoryStore.CommitFiles):
             case nameof(RepositoryStore.CommitMessage):
@@ -309,7 +318,7 @@ public sealed partial class MainWindow : Window
                 TopBar.Show(store);
                 break;
             case nameof(RepositoryStore.RemoteLocation):
-                _ = Avatars.LoadAsync(store.RemoteLocation);
+                _ = Avatars.LoadAsync(store.RemoteLocation, store.Commits);
                 Sidebar.Show();
                 break;
             case nameof(RepositoryStore.LocalBranches):
@@ -462,7 +471,7 @@ public sealed partial class MainWindow : Window
         {
             Avatars.Enabled = now.ProfilePictures;
             Avatars.Refresh();
-            _ = Avatars.LoadAsync(_store?.RemoteLocation);
+            if (_store is { } store) _ = Avatars.LoadAsync(store.RemoteLocation, store.Commits);
         }
         if (old.CommitPageSize == now.CommitPageSize && old.DiffContext == now.DiffContext && old.GitPath == now.GitPath)
             return;

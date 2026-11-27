@@ -107,7 +107,7 @@ public sealed partial class SettingsView : UserControl
             Row("Check spelling", "Underline misspelled words while typing", spelling));
 
         Group("History & diffs",
-            Row("Profile pictures", "Fetch author pictures from GitHub for github.com repositories", pictures),
+            Row("Profile pictures", "From GitHub, for github.com repositories. Turning this off deletes saved pictures", pictures),
             Row("Commits per page", "How many commits to load at a time", Picker(s.CommitPageSize,
                 [("500", 500), ("1,000", 1000), ("2,000", 2000), ("5,000", 5000)],
                 v => Set(x => x with { CommitPageSize = v }))),
