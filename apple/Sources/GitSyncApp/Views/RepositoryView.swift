@@ -41,7 +41,10 @@ struct RepositoryView: View {
         .environment(store.avatars)
         .animation(.snappy, value: store.bisect.isActive)
         .task { store.start(); NotificationsStore.shared.startPolling() }
-        .overlay(alignment: .bottom) { if let label = store.busyLabel { BusyPill(label: label) } }
+        .overlay(alignment: .bottom) {
+            if let label = store.busyLabel { BusyPill(label: label) }
+            else if let branch = store.pushOffer { PushOfferBanner(store: store, branch: branch).padding(.bottom, 18).transition(.move(edge: .bottom).combined(with: .opacity)) }
+        }
         .animation(.snappy, value: store.busyLabel)
         .animation(.snappy, value: store.operation)
         .alert("Git Error", isPresented: Binding(
@@ -381,5 +384,34 @@ private struct SyncButton: View {
         .accessibilityLabel(help.components(separatedBy: " (").first ?? help)
         .accessibilityValue(count > 0 ? "\(count)" : "")
         .onHover { hovering = $0 }
+    }
+}
+
+
+/// Shown after pushing a branch that has no pull request: one click opens the new pull request form.
+struct PushOfferBanner: View {
+    let store: RepositoryStore
+    let branch: String
+
+    var body: some View {
+        let word = store.webLinks?.pullRequestsWord ?? "Pull Request"
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.pull").foregroundStyle(Theme.brand)
+            Text("Pushed ").foregroundStyle(.secondary) + Text(branch).font(.system(.callout, design: .monospaced).weight(.medium))
+            Button("Open \(word)") { store.pushOffer = nil; store.sheet = .newCollab(.pullRequest) }
+                .buttonStyle(.borderedProminent).controlSize(.small)
+            Button { withAnimation(.snappy) { store.pushOffer = nil } } label: { Image(systemName: "xmark").font(.caption.weight(.bold)) }
+                .buttonStyle(.plain).foregroundStyle(.secondary).help("Dismiss").accessibilityLabel("Dismiss")
+        }
+        .font(.callout)
+        .padding(.leading, 16).padding(.trailing, 12).padding(.vertical, 9)
+        .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.14)))
+        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        .task(id: branch) {
+            try? await Task.sleep(for: .seconds(30))
+            if store.pushOffer == branch { withAnimation(.snappy) { store.pushOffer = nil } }
+        }
+        .onChange(of: store.status.branch) { store.pushOffer = nil }
     }
 }

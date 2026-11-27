@@ -217,6 +217,9 @@ final class RepositoryStore: Identifiable {
         }
     }
 
+    /// The branch just pushed that has no pull request yet; drives the "Open Pull Request" banner.
+    var pushOffer: String?
+
     /// Checks being re-run or cancelled right now, as "sha/name".
     private(set) var ciBusy: Set<String> = []
 
@@ -746,13 +749,14 @@ final class RepositoryStore: Identifiable {
 
     // MARK: Operations
 
-    func perform(_ label: String, pushOptions: PushOptions? = nil, _ op: @escaping @Sendable (GitRepository) async throws -> Void) {
+    func perform(_ label: String, pushOptions: PushOptions? = nil, onSuccess: (@MainActor () -> Void)? = nil,
+                 _ op: @escaping @Sendable (GitRepository) async throws -> Void) {
         guard !isBusy else { return }
         isBusy = true
         busyLabel = label
         Task {
             var rejectedPush = false
-            do { try await op(repo) } catch let failure as HookFailedError {
+            do { try await op(repo); onSuccess?() } catch let failure as HookFailedError {
                 sheet = .hookFailure(failure)
             } catch let failure as GitError where pushOptions != nil && failure.isPushRejected {
                 rejectedPush = true
@@ -852,9 +856,21 @@ final class RepositoryStore: Identifiable {
     func push(options: PushOptions = PushOptions()) {
         let (s, r) = (status, remotes)
         watchChecks(sha: s.headOID)
-        perform(options.forceWithLease ? "Force pushing…" : "Pushing…", pushOptions: options) {
+        let firstPush = s.upstream == nil, branch = s.branch
+        perform(options.forceWithLease ? "Force pushing…" : "Pushing…", pushOptions: options,
+                onSuccess: { [weak self] in self?.offerPullRequest(branch: branch, firstPush: firstPush) }) {
             try await $0.push(status: s, remotes: r, options: options)
         }
+    }
+
+    /// After a push: offer to open a pull request for a feature branch that has none yet.
+    private func offerPullRequest(branch: String?, firstPush: Bool) {
+        guard let branch, !["main", "master", "develop", "trunk"].contains(branch),
+              let kind = providerKind, let host = remoteLocation?.host, kind.supportsWriting(.pullRequest, host: host) else { return }
+        // A first push can't have a pull request yet. Later pushes only when the loaded list shows none for this branch.
+        let known = pullRequests.items
+        guard firstPush || (!known.isEmpty && !known.contains { $0.sourceBranch == branch && $0.state == .open }) else { return }
+        withAnimation(.snappy) { pushOffer = branch }
     }
 
     /// Force push with a lease, after saying what it does.
