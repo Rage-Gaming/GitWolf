@@ -20,6 +20,14 @@ struct DashboardView: View {
         }
     }
 
+    /// The shared look of the buttons under the title: same font, same padding, same height.
+    private func homeLabel<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .font(.body.weight(.semibold))
+            .padding(.horizontal, 6)
+            .frame(height: Theme.barControlHeight - 8)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 34) {
@@ -33,25 +41,26 @@ struct DashboardView: View {
                 }
                 .padding(.top, 70)
 
+                // One height, one font weight and one padding for every action, so they line up exactly.
                 HStack(spacing: 10) {
                     Button { workspace.openPanel() } label: {
-                        Label("Open Repository", systemImage: "folder.badge.plus")
-                            .font(.body.weight(.semibold)).padding(.horizontal, 8).padding(.vertical, 4)
+                        homeLabel { Label("Open Repository", systemImage: "folder.badge.plus") }
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .buttonStyle(.borderedProminent)
                     Button { workspace.sheet = .clone } label: {
-                        Label("Clone", systemImage: "square.and.arrow.down").padding(.vertical, 4)
+                        homeLabel { Label("Clone", systemImage: "square.and.arrow.down") }
                     }
-                    .buttonStyle(.bordered).controlSize(.large)
+                    .buttonStyle(.bordered)
                     Button { workspace.sheet = .create } label: {
-                        Label("New", systemImage: "plus.rectangle.on.folder").padding(.vertical, 4)
+                        homeLabel { Label("New", systemImage: "plus.rectangle.on.folder") }
                     }
-                    .buttonStyle(.bordered).controlSize(.large)
+                    .buttonStyle(.bordered)
                     Button { workspace.showPalette = true } label: {
-                        HStack(spacing: 6) { Text("Jump to…"); Kbd(text: "⌘K") }.padding(.vertical, 4)
+                        homeLabel { HStack(spacing: 8) { Text("Jump to…"); Kbd(text: "⌘K") } }
                     }
-                    .buttonStyle(.bordered).controlSize(.large)
+                    .buttonStyle(.bordered)
                 }
+                .controlSize(.large)
 
                 VStack(alignment: .leading, spacing: 26) {
                     if !workspace.home.pinned.isEmpty {
