@@ -38,6 +38,9 @@ struct RepoRail: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
+                // The CI mark and the change badge stick out 4 pt past a tile; the scroll view clips at its edge,
+                // so leave room for them above the first tile and below the last.
+                .padding(.vertical, 6)
             }
 
             AddMenu(workspace: workspace)

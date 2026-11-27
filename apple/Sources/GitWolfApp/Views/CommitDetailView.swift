@@ -53,7 +53,7 @@ struct CommitDetailView: View {
                 Spacer()
                 CopyButton(text: c.hash) { copied in
                     HStack(spacing: 5) {
-                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
                             .foregroundStyle(copied ? Color.green : Color.primary)
                             .contentTransition(.symbolEffect(.replace))
                         // Both texts are laid out so the pill keeps its width while the words swap.
