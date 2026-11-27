@@ -43,11 +43,11 @@ struct ChecksSection: View {
                 }
             }
         }
-        // While a run is still going, look again every 15 seconds so it turns green or red by itself.
+        // While a run is going, or right after a push, look again every 15 seconds so the result appears by itself.
         .task(id: sha) {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
-                if store.checksBySHA[sha]?.overall == .pending { store.loadChecks(sha: sha, force: true) }
+                if store.shouldPollChecks(sha: sha) { store.loadChecks(sha: sha, force: true) }
             }
         }
     }
@@ -67,13 +67,21 @@ private struct CheckIcon: View {
     }
 }
 
+/// An indeterminate ring like the Windows one: the arc grows ahead, then the tail catches up, while the whole ring turns.
 private struct Spinner: View {
+    private static let cycle = 1.4
+
+    private func ease(_ x: Double) -> Double { let c = min(max(x, 0), 1); return c * c * (3 - 2 * c) }
+
     var body: some View {
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            Circle().trim(from: 0, to: 0.72)
+            let p = (t / Self.cycle).truncatingRemainder(dividingBy: 1)
+            let head = ease(p / 0.7)
+            let tail = ease((p - 0.3) / 0.7)
+            Circle().trim(from: tail, to: max(head, tail + 0.001))
                 .stroke(Color.orange, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .rotationEffect(.degrees((t * 360 / 0.9).truncatingRemainder(dividingBy: 360)))
+                .rotationEffect(.degrees(t * 360 / 1.1))
                 .padding(1.5)
                 .frame(width: 14, height: 14)
         }

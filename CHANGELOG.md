@@ -20,7 +20,7 @@ All notable changes are documented here. Format based on
 
 ### Added
 - Sync buttons animate while they run: Fetch spins, Pull and Push slide their arrow in the direction of travel.
-- CI checks update on their own: a commit with a running check is polled every 15 seconds and the running state shows a spinner instead of a clock.
+- CI checks update on their own: a commit with a running check is polled every 15 seconds, and a just-pushed commit is looked up for 5 minutes until its run appears. The running state shows an indeterminate ring spinner (the arc stretches and shrinks as it turns) instead of a clock.
 - Repository icons: right-click a tile in the rail and choose *Change Icon…* to pick a symbol from a curated set or *Choose Image…* to use your own picture from a built-in file browser (the system open panel hangs inside the app on some Macs) (cropped to a square and stored as a 128 px PNG in Application Support, never in the repository). *Remove Icon* goes back to initials. You can also drop an image file onto a tile, or drop or paste one in the picker, without using the file dialog.
 - Menu bar icon: shows the branch symbol and the total changed-file count, and lists open repositories (branch and changes; click to jump to one), recents, Open Repository and Quit. Turn it off in Settings > General > Menu bar icon.
 - Update check: *GitSync > Check for Updates…* and a once-a-day background check (Settings > General > Check for updates) compare the app version with GitHub's latest release and offer to open its page, or skip that version. Nothing is downloaded or installed automatically.

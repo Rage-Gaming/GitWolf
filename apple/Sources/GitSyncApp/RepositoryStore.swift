@@ -183,6 +183,20 @@ final class RepositoryStore: Identifiable {
     /// CI results by commit, fetched from the hosting provider. Commits the server doesn't know stay absent.
     private(set) var checksBySHA: [String: CIStatus] = [:]
     private var checksRequested: [String: Date] = [:]
+    /// Commits just pushed: their runs may not exist on the server yet, so they are looked up for a few minutes.
+    private var checksWatchedUntil: [String: Date] = [:]
+
+    func watchChecks(sha: String?) {
+        guard let sha else { return }
+        checksWatchedUntil[sha] = Date().addingTimeInterval(5 * 60)
+        loadChecks(sha: sha, force: true)
+    }
+
+    /// Whether the checks of this commit should be polled: a run is going, or it was just pushed.
+    func shouldPollChecks(sha: String) -> Bool {
+        if checksBySHA[sha]?.overall == .pending { return true }
+        return (checksWatchedUntil[sha] ?? .distantPast) > Date()
+    }
 
     func loadChecks(sha: String, force: Bool = false) {
         guard !sha.isEmpty else { return }
@@ -787,6 +801,7 @@ final class RepositoryStore: Identifiable {
     func rebase(onto target: String) { perform("Rebasing…") { try await $0.rebase(onto: target) } }
     func push(options: PushOptions = PushOptions()) {
         let (s, r) = (status, remotes)
+        watchChecks(sha: s.headOID)
         perform(options.forceWithLease ? "Force pushing…" : "Pushing…", pushOptions: options) {
             try await $0.push(status: s, remotes: r, options: options)
         }
