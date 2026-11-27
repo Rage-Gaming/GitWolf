@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 namespace GitSync.App.Views;
 
 /// <summary>A file, or (when <see cref="File"/> is null) a section header.</summary>
-internal sealed record FileRow(FileChange? File, DiffSource Source, string? Header = null);
+internal sealed record FileRow(FileChange? File, DiffSource Source, string? Header = null, bool IsLfs = false);
 
 public sealed partial class FileRowView : UserControl
 {
@@ -19,6 +19,7 @@ public sealed partial class FileRowView : UserControl
         Action.Content = actionLabel;
         Action.Visibility = actionLabel is null ? Visibility.Collapsed : Visibility.Visible;
         Header.Text = row.Header ?? "";
+        Lfs.Visibility = row.IsLfs ? Visibility.Visible : Visibility.Collapsed;
 
         if (row.File is not { } file)
         {

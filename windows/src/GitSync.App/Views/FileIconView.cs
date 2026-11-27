@@ -20,6 +20,30 @@ public sealed partial class FileIconView : UserControl
     {
         Width = Height = 17;
         VerticalAlignment = VerticalAlignment.Center;
+        ActualThemeChanged += (_, _) => Redraw();
+        Loaded += (_, _) => Redraw();
+    }
+
+    private bool _light;
+
+    private void Redraw()
+    {
+        if (_icon is { } icon && _light != (ActualTheme == ElementTheme.Light)) Render(icon);
+    }
+
+    private void Render(FileIcon icon)
+    {
+        _light = ActualTheme == ElementTheme.Light;
+        // Tiles carry their own text colour; bare shapes sit directly on the panel.
+        var bare = icon.Glyph != IconGlyph.Letters && icon.Value != "swift";
+        Content = Draw(_light && bare ? icon with { Color = OnLight(icon.Color) } : icon, Width);
+    }
+
+    private static uint OnLight(uint rgb)
+    {
+        uint r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+        if (0.299 * r + 0.587 * g + 0.114 * b < 150) return rgb;
+        return (r * 7 / 10 << 16) | (g * 7 / 10 << 8) | (b * 7 / 10);
     }
 
     /// <summary>Redraws only when the icon changes, so recycled rows cost little.</summary>
@@ -28,7 +52,7 @@ public sealed partial class FileIconView : UserControl
         Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
         if (icon is null || icon == _icon) return;
         _icon = icon;
-        Content = Draw(icon, Width);
+        Render(icon);
         ToolTipService.SetToolTip(this, icon.Name);
         AutomationProperties.SetName(this, icon.Name);
     }

@@ -100,6 +100,12 @@ public sealed partial class SettingsView : UserControl
         var pictures = new ToggleSwitch { IsOn = s.ProfilePictures, MinWidth = 0, OnContent = null, OffContent = null };
         pictures.Toggled += (_, _) => Set(x => x with { ProfilePictures = pictures.IsOn });
 
+        var spelling = new ToggleSwitch { IsOn = s.SpellCheck, MinWidth = 0, OnContent = null, OffContent = null };
+        spelling.Toggled += (_, _) => Set(x => x with { SpellCheck = spelling.IsOn });
+
+        Group("Commit message",
+            Row("Check spelling", "Underline misspelled words while typing", spelling));
+
         Group("History & diffs",
             Row("Profile pictures", "Fetch author pictures from GitHub for github.com repositories", pictures),
             Row("Commits per page", "How many commits to load at a time", Picker(s.CommitPageSize,

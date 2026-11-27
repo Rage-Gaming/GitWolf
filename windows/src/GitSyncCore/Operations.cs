@@ -1,6 +1,6 @@
 namespace GitSync.Core;
 
-public enum OperationKind { Merge, Rebase, CherryPick, Revert }
+public enum OperationKind { Merge, Rebase, CherryPick, Revert, Am }
 
 /// <summary>
 /// A multi-step git operation that stopped and is waiting for the user, usually because of conflicts.
@@ -18,6 +18,7 @@ public sealed record InProgressOperation(OperationKind Kind, int? Step = null, i
         OperationKind.Merge => "Merging",
         OperationKind.Rebase => "Rebasing",
         OperationKind.CherryPick => "Cherry-picking",
+        OperationKind.Am => "Applying patches",
         _ => "Reverting",
     };
 
@@ -37,6 +38,7 @@ public sealed record InProgressOperation(OperationKind Kind, int? Step = null, i
         OperationKind.Merge => "merge",
         OperationKind.Rebase => "rebase",
         OperationKind.CherryPick => "cherry-pick",
+        OperationKind.Am => "am",
         _ => "revert",
     };
 }
@@ -64,6 +66,8 @@ internal static class OperationDetector
         if (Exists("rebase-merge"))
             return new(OperationKind.Rebase, Number("rebase-merge/msgnum"), Number("rebase-merge/end"),
                 BranchName("rebase-merge/head-name"));
+        if (Exists("rebase-apply/applying"))
+            return new(OperationKind.Am, Number("rebase-apply/next"), Number("rebase-apply/last"));
         if (Exists("rebase-apply"))
             return new(OperationKind.Rebase, Number("rebase-apply/next"), Number("rebase-apply/last"),
                 BranchName("rebase-apply/head-name"));

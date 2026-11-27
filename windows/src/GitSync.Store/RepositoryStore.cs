@@ -245,8 +245,15 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
         {
             var repo = Repo;
             var limit = _commitLimit;
-            var snapshot = await Task.Run(() => repo.SnapshotAsync(limit));
-            if (!_lifetime.IsCancellationRequested) Apply(snapshot);
+            var (snapshot, extras) = await Task.Run(async () =>
+            {
+                var read = await repo.SnapshotAsync(limit);
+                return (read, await ReadExtrasAsync(repo, read.Status));
+            });
+            if (_lifetime.IsCancellationRequested) return;
+            // Before the snapshot, so rows drawn for it already know which files use LFS.
+            ApplyExtras(extras.Bisect, extras.Lfs, extras.Shallow);
+            Apply(snapshot);
         }
         catch (Exception e)
         {

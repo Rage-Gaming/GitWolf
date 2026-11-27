@@ -44,7 +44,7 @@ Store layer:
 - [ ] `Accounts.swift` -> Credential Manager, writing the askpass script with LF endings and no BOM
 - [x] `Workspace.swift` (open and recent repositories) -> `src/GitSync.App/Services/Workspace.cs`
 
-193 tests pass against real git and stubbed HTTP.
+201 tests pass against real git and stubbed HTTP.
 
 UI (`src/GitSync.App/`):
 
@@ -59,7 +59,8 @@ UI (`src/GitSync.App/`):
 - [x] Commit search and context menu; new branch, tag and stash
 - [x] Multiple repositories, restored between launches
       (`%LOCALAPPDATA%\GitSync\workspace.json`, paths and view preferences only)
-- [x] Jump palette (Ctrl+K), Ctrl+O, Ctrl+Shift+F/L/P
+- [x] Jump palette (Ctrl+K), Ctrl+O, Ctrl+Shift+F/L/P (all shortcuts are in `MainWindow.xaml.cs` and
+      `MainWindow.Tools.cs`)
 - [x] File type, folder and branch icons
 - [x] Hunk and line staging; discard a file, hunk or lines after a confirmation
 - [x] Home dashboard: open, jump, recent repositories, drop a folder to open
@@ -72,7 +73,10 @@ UI (`src/GitSync.App/`):
 - [x] Compare refs, interactive rebase and rebase onto a branch
 - [x] Rename branches, upstream tracking, branch cleanup, annotated tags
 - [x] Stash preview and per-hunk stash
-- [ ] Resizable panels
+- [x] Bisect, patches (export, create, apply), worktrees, submodules, LFS badges, clone options and
+      fetching the full history of a shallow clone
+- [x] Resizable panels (drag the gap, double-click to reset), keyboard shortcuts, commit message
+      spell check, light-theme file icons
 - [x] Settings (Ctrl+,): theme, accent colour, background fetch, history and diff options, git path
       (`%LOCALAPPDATA%\GitSync\settings.json`)
 - [ ] Provider accounts
