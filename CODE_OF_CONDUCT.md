@@ -1,6 +1,6 @@
 # Code of Conduct
 
-We want GitSync to be a welcoming, harassment-free community for everyone, regardless of
+We want GitWolf to be a welcoming, harassment-free community for everyone, regardless of
 experience, background, identity or beliefs.
 
 ## Expected behaviour

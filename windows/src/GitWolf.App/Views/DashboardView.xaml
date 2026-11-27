@@ -1,0 +1,71 @@
+<UserControl
+    x:Class="GitWolf.App.Views.DashboardView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <UserControl.Resources>
+        <!-- A style, so the theme brushes follow the app's theme on cards created in code. -->
+        <Style x:Key="CardStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="Background" Value="{ThemeResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource PanelBorderBrush}" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="Transparent" AllowDrop="True" DragOver="OnDragOver" DragLeave="OnDragLeave" Drop="OnDrop">
+        <ScrollViewer>
+            <StackPanel Padding="32,22,32,30" Spacing="34">
+                <StackPanel Spacing="14" HorizontalAlignment="Center">
+                    <Border x:Name="Logo" Width="84" Height="84" CornerRadius="24" HorizontalAlignment="Center">
+                        <Viewbox x:Name="LogoIcon" Width="44" Height="44" />
+                    </Border>
+                    <TextBlock Text="GitWolf" FontSize="34" FontWeight="Bold" HorizontalAlignment="Center" />
+                    <TextBlock Text="Your repositories, always in sync." FontSize="18" HorizontalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                    <Button x:Name="OpenButton" Style="{StaticResource AccentButtonStyle}" Height="36" Padding="16,0"
+                            CornerRadius="10" Click="OnOpen" AutomationProperties.Name="Open repository"
+                            ToolTipService.ToolTip="Open repository (Ctrl+O)">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE8F4;" FontSize="15" />
+                            <TextBlock Text="Open Repository" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+                    <Button Content="Clone…" Height="36" Padding="14,0" CornerRadius="10" Click="OnClone" />
+                    <Button Content="New…" Height="36" Padding="14,0" CornerRadius="10" Click="OnNew" />
+                    <Button Height="36" Padding="14,0" CornerRadius="10" Click="OnJump"
+                            AutomationProperties.Name="Jump to">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Jump to…" />
+                            <Border CornerRadius="5" Padding="6,1" VerticalAlignment="Center"
+                                    Background="{ThemeResource PillFillBrush}">
+                                <TextBlock Text="Ctrl K" FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Border>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <StackPanel x:Name="RecentSection" MaxWidth="820" Spacing="12">
+                    <TextBlock Text="RECENT" FontSize="11" FontWeight="SemiBold" CharacterSpacing="70"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Grid x:Name="Cards" ColumnSpacing="12" RowSpacing="12" SizeChanged="OnCardsSized" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid x:Name="DropHint" Visibility="Collapsed" IsHitTestVisible="False" Margin="14">
+            <Rectangle x:Name="DropOutline" RadiusX="20" RadiusY="20" StrokeThickness="2" StrokeDashArray="4,3" />
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="12" Padding="18,10"
+                    Style="{StaticResource PanelStyle}">
+                <TextBlock x:Name="DropText" Text="Drop a folder to open" FontSize="18" FontWeight="SemiBold"
+                           Foreground="{ThemeResource AccentLabelBrush}" />
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

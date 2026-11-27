@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <key>CFBundleName</key><string>GitSync</string>
-    <key>CFBundleDisplayName</key><string>GitSync</string>
-    <key>CFBundleIdentifier</key><string>org.gitsync.GitSync</string>
+    <key>CFBundleName</key><string>GitWolf</string>
+    <key>CFBundleDisplayName</key><string>GitWolf</string>
+    <key>CFBundleIdentifier</key><string>org.gitwolf.GitWolf</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
-    <key>CFBundleExecutable</key><string>GitSync</string>
+    <key>CFBundleExecutable</key><string>GitWolf</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>

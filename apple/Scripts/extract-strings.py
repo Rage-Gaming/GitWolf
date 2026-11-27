@@ -14,7 +14,7 @@ handling: SwiftUI keys them as "%@"/"%lld" formats, and which one depends on the
 import pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SOURCES = ROOT / "Sources" / "GitSyncApp"
+SOURCES = ROOT / "Sources" / "GitWolfApp"
 OUT = ROOT / "Resources" / "en.lproj"
 
 CALLS = r'(?:Text|Button|Label|Toggle|TextField|SecureField|Section|Menu|Picker|Link|ContentUnavailableView|DisclosureGroup|GroupBox|Window|CommandMenu)'

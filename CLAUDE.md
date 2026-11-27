@@ -1,6 +1,6 @@
-# GitSync: instructions for AI assistants
+# GitWolf: instructions for AI assistants
 
-GitSync is an open-source, native Git client. macOS (`apple/`, Swift/SwiftUI) is the reference
+GitWolf is an open-source, native Git client. macOS (`apple/`, Swift/SwiftUI) is the reference
 implementation. Other platforms (`windows/`, `linux/`) are separate native implementations that must
 match its behaviour.
 
@@ -15,7 +15,7 @@ Rules:
 - Shell out to the system `git`; never reimplement git or use libgit2.
 - Do not modify `apple/` when working on another platform; no shared UI code between platforms.
 - Never put secrets in URLs, command lines, logs or config files.
-- Port the engine tests (`apple/Tests/GitSyncCoreTests`) and keep them passing against real git.
+- Port the engine tests (`apple/Tests/GitWolfCoreTests`) and keep them passing against real git.
 - Conventional commit prefixes (`feat:`, `fix:`, `chore:`, `docs:`). Commit only when asked; do not push.
 
 macOS build/test: `cd apple && swift build && swift test` (needs Xcode 16+; set

@@ -1,6 +1,6 @@
 # Design language
 
-GitSync should feel like a calm, modern, native app: premium but never "AI-generated".
+GitWolf should feel like a calm, modern, native app: premium but never "AI-generated".
 
 ## Rules
 
@@ -43,7 +43,7 @@ GitSync should feel like a calm, modern, native app: premium but never "AI-gener
 
 ## Testing visually (macOS)
 
-A DEBUG-only hook renders the window to a PNG: `GITSYNC_SNAPSHOT=/path.png`, with
-`GITSYNC_APPEARANCE=dark|light`, `GITSYNC_SNAPSHOT_WINDOW=settings|sheet:<menu title>`,
-`GITSYNC_SHEET=clone|create|account`. Other platforms should offer something equivalent so UI work
+A DEBUG-only hook renders the window to a PNG: `GITWOLF_SNAPSHOT=/path.png`, with
+`GITWOLF_APPEARANCE=dark|light`, `GITWOLF_SNAPSHOT_WINDOW=settings|sheet:<menu title>`,
+`GITWOLF_SHEET=clone|create|account`. Other platforms should offer something equivalent so UI work
 can be checked without manual clicking.

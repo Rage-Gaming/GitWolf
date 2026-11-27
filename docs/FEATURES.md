@@ -1,8 +1,8 @@
 # Feature specification
 
-This is the behavioural spec for GitSync. The macOS app (`apple/`) is the reference implementation;
+This is the behavioural spec for GitWolf. The macOS app (`apple/`) is the reference implementation;
 every other platform should match what is described here. Where the spec says "see source", the
-Swift file is the ground truth (it is tested; the tests in `apple/Tests/GitSyncCoreTests` are a
+Swift file is the ground truth (it is tested; the tests in `apple/Tests/GitWolfCoreTests` are a
 ready-made conformance suite to port).
 
 Legend: **[core]** lives in the UI-free engine and must be ported as logic; **[ui]** is presentation
@@ -27,7 +27,7 @@ and should follow each platform's native idioms.
   (pinned paths, groups of paths) persisted as JSON; missing folders are pruned on load.
 - **Menu bar / tray icon** [ui]. Status item (a native status item built when the menu opens; a declarative, observing tray scene caused a redraw loop on macOS) with the branch symbol and the total changed-file count
   (`BadgeLabel`); menu: open repositories (name, branch, changes; selecting one focuses it), Open Recent,
-  Open Repository…, Show GitSync, Quit. Setting `showMenuBarExtra` (default on). Windows/Linux: the
+  Open Repository…, Show GitWolf, Quit. Setting `showMenuBarExtra` (default on). Windows/Linux: the
   notification-area / tray icon with the same menu.
 - Menu bar hygiene: only menus that apply are shown (no New Window, toolbar/sidebar toggles or Format).
 - Open set and selection are persisted and restored on launch.
@@ -99,7 +99,7 @@ and should follow each platform's native idioms.
 - Implementation [core `RebasePlan`]: writes the todo file and runs `git rebase -i --autostash
   <parent>` (or `--root`) with `GIT_SEQUENCE_EDITOR="cp <todo>"`, so no editor opens. A reword is
   `pick` plus `exec git commit --amend -F <file>` after any squash/fixup folded into it; messages
-  live in `<gitdir>/gitsync-rebase/`, removed when the rebase ends, and are never put on a command line.
+  live in `<gitdir>/gitwolf-rebase/`, removed when the rebase ends, and are never put on a command line.
 - **Rebase Current Branch onto This** (branch context menu): `git rebase --autostash <branch>`.
 - **Pull strategy** setting: Merge (default) or Rebase (`git pull --rebase --autostash`).
 - A conflict is not an error: the rebase stays in progress and the operation banner takes over.
@@ -317,7 +317,7 @@ Tags [`FileIcons.tagIcon(named:isAnnotated:)`], first match wins: `nightly`/`dai
   Code). macOS uses `open -a <app> <path>` with the path as an argument. Shortcuts ⌥⌘T / ⌥⌘E / ⇧⌥⌘R.
 - **Custom actions** [core `CustomAction`, `CustomActionRunner`]. Named shell commands stored in
   settings. Run through the system shell (`/bin/sh -c`; `cmd`/`sh` on other platforms) with the repo
-  root as working directory and `GITSYNC_REPO` / `GITSYNC_BRANCH` in the environment. Values are never
+  root as working directory and `GITWOLF_REPO` / `GITWOLF_BRANCH` in the environment. Values are never
   interpolated into the command text. Non-zero exit shows the code and the last 600 characters of
   output. Listed in the toolbar menu, Repository menu and ⌘K palette.
 

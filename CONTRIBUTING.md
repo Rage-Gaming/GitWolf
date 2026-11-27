@@ -1,4 +1,4 @@
-# Contributing to GitSync
+# Contributing to GitWolf
 
 Thanks for helping out! This guide covers the basics.
 
@@ -17,7 +17,7 @@ Thanks for helping out! This guide covers the basics.
 - **Parse with `-z` / `--porcelain`.** Never parse human-oriented git output.
 - **UI must not flicker.** Only assign state that actually changed; keep row heights fixed.
 - **Add tests** for parsers, graph layout and git operations. UI-free logic lives in
-  `GitSyncCore` so it can be tested.
+  `GitWolfCore` so it can be tested.
 
 ## Pull requests
 

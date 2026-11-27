@@ -1,4 +1,4 @@
-# Porting GitSync to another platform
+# Porting GitWolf to another platform
 
 This guide is written for whoever builds the **Windows** (or Linux) client, human or AI. Read it
 first, then [FEATURES.md](FEATURES.md) (what to build), [DESIGN.md](DESIGN.md) (how it must look and
@@ -25,7 +25,7 @@ feel), [PROVIDERS.md](PROVIDERS.md) and [ARCHITECTURE.md](ARCHITECTURE.md) (how 
 ## Suggested order
 
 1. **Engine** (no UI) in your language, with a test suite ported from
-   `apple/Tests/GitSyncCoreTests/GitSyncCoreTests.swift` (build throw-away temp repos, run real git).
+   `apple/Tests/GitWolfCoreTests/GitWolfCoreTests.swift` (build throw-away temp repos, run real git).
 2. **Store layer**: the refresh/selection state machine (see ARCHITECTURE.md).
 3. **Main window**: repo rail, sidebar, history with graph, changes + diff.
 4. **Staging by hunk/line**, commit, amend.
@@ -37,7 +37,7 @@ feel), [PROVIDERS.md](PROVIDERS.md) and [ARCHITECTURE.md](ARCHITECTURE.md) (how 
 
 ## Engine file map (what to port, in order)
 
-All paths under `apple/Sources/GitSyncCore/`.
+All paths under `apple/Sources/GitWolfCore/`.
 
 | File | What it does | Port notes |
 |---|---|---|
@@ -63,8 +63,8 @@ helper), `Views/*` (layout and interactions).
 |---|---|---|
 | FSEvents (`FileWatcher`) | `ReadDirectoryChangesW` / `FileSystemWatcher` | inotify |
 | Keychain (`Accounts.swift`) | Credential Manager (`PasswordVault` / `CredWrite`) | Secret Service (libsecret) |
-| `GIT_ASKPASS` shell script | `askpass.cmd` (or a tiny exe) in `%LOCALAPPDATA%\GitSync` | `askpass.sh`, mode 0700 |
-| UserDefaults | `ApplicationData.LocalSettings` / JSON file | GSettings / JSON in `~/.config/gitsync` |
+| `GIT_ASKPASS` shell script | `askpass.cmd` (or a tiny exe) in `%LOCALAPPDATA%\GitWolf` | `askpass.sh`, mode 0700 |
+| UserDefaults | `ApplicationData.LocalSettings` / JSON file | GSettings / JSON in `~/.config/gitwolf` |
 | `NSApp.appearance` | `RequestedTheme` on the root element | libadwaita `StyleManager` |
 | Translucent window material | Mica / Acrylic backdrop (flat fallback) | plain solid surface |
 | ⌘ shortcuts | map ⌘ → Ctrl, ⌥ → Alt | same |

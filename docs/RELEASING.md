@@ -1,6 +1,6 @@
-# Releasing GitSync (macOS)
+# Releasing GitWolf (macOS)
 
-A release is a signed, notarised, stapled `GitSync-<version>.dmg` attached to a GitHub release. The
+A release is a signed, notarised, stapled `GitWolf-<version>.dmg` attached to a GitHub release. The
 app's *Check for Updates…* command (and a once-a-day background check, switchable in Settings) asks
 GitHub's public releases API (`UpdateChecker` in core) for the latest non-draft, non-pre-release tag,
 compares it with the app's `CFBundleShortVersionString`, and offers to open the release page. It never
@@ -12,7 +12,7 @@ Sparkle-style in-place updater would be a separate, later decision.
 1. An Apple Developer Program membership and a **Developer ID Application** certificate in your login
    keychain (Xcode > Settings > Accounts > Manage Certificates, or developer.apple.com).
 2. Notarisation credentials stored in the keychain, not in files or on a command line:
-   `xcrun notarytool store-credentials gitsync-notary --apple-id <you> --team-id <TEAMID>`
+   `xcrun notarytool store-credentials gitwolf-notary --apple-id <you> --team-id <TEAMID>`
    (it prompts for an app-specific password), or use an App Store Connect API key with `--key`.
 
 ## Local release
@@ -20,15 +20,15 @@ Sparkle-style in-place updater would be a separate, later decision.
 ```bash
 cd apple
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-NOTARY_PROFILE=gitsync-notary \
+NOTARY_PROFILE=gitwolf-notary \
 Scripts/release.sh 1.0.0
 ```
 
 `Scripts/release.sh` builds a release binary, wraps it with `Scripts/bundle.sh` (icon, `Info.plist`,
 `*.lproj`, version stamped from the argument), signs it with the hardened runtime and
-`Resources/GitSync.entitlements`, submits it to Apple's notary service, staples the ticket, builds a
+`Resources/GitWolf.entitlements`, submits it to Apple's notary service, staples the ticket, builds a
 disk image, signs/notarises/staples that too, and writes a `.sha256` next to it. The app is **not**
-sandboxed: GitSync runs the system `git` and opens arbitrary folders.
+sandboxed: GitWolf runs the system `git` and opens arbitrary folders.
 
 ## Release from CI
 

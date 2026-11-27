@@ -1,8 +1,8 @@
 # Hosting providers
 
-Spec for provider accounts. Reference code: `apple/Sources/GitSyncCore/Providers.swift`,
+Spec for provider accounts. Reference code: `apple/Sources/GitWolfCore/Providers.swift`,
 `ProviderClient.swift` (portable logic, tested with stub transports) and
-`apple/Sources/GitSyncApp/Accounts.swift` (macOS-only storage).
+`apple/Sources/GitWolfApp/Accounts.swift` (macOS-only storage).
 
 ## Account model
 
@@ -24,12 +24,12 @@ ProviderAccount { id, kind, host, username, usesPassword?, scheme? }
 
 Never put secrets in URLs, command lines or config files. Use `GIT_ASKPASS`:
 
-1. Write a tiny helper script/exe that prints `$GITSYNC_ASKPASS_USER` when git asks for a username
-   and `$GITSYNC_ASKPASS_TOKEN` otherwise (`GitCredential.askpassScript`; on Windows use a `.cmd`
+1. Write a tiny helper script/exe that prints `$GITWOLF_ASKPASS_USER` when git asks for a username
+   and `$GITWOLF_ASKPASS_TOKEN` otherwise (`GitCredential.askpassScript`; on Windows use a `.cmd`
    or a small exe that does the same).
 2. For fetch / pull / push / clone, find the account whose `hostName` equals the host of the
    `origin` remote (else the first remote) and run git with
-   `GIT_ASKPASS=<helper>`, `GITSYNC_ASKPASS_USER`, `GITSYNC_ASKPASS_TOKEN`,
+   `GIT_ASKPASS=<helper>`, `GITWOLF_ASKPASS_USER`, `GITWOLF_ASKPASS_TOKEN`,
    `GIT_CONFIG_COUNT=1`, `GIT_CONFIG_KEY_0=credential.helper`, `GIT_CONFIG_VALUE_0=` (empty) so a
    stale system credential helper cannot interfere. `GIT_TERMINAL_PROMPT=0` stays set.
 3. No matching account → run git normally (user's own helpers/SSH keys keep working).
@@ -39,10 +39,10 @@ This was verified against a local HTTP server: git sends the first request unaut
 
 ## OAuth sign-in (browser)
 
-Reference: `apple/Sources/GitSyncCore/OAuth.swift` (portable; uses SHA-256 for PKCE) and
-`apple/Sources/GitSyncApp/OAuthSignIn.swift` (loopback listener, session driver).
+Reference: `apple/Sources/GitWolfCore/OAuth.swift` (portable; uses SHA-256 for PKCE) and
+`apple/Sources/GitWolfApp/OAuthSignIn.swift` (loopback listener, session driver).
 
-Only **public-client** flows are used, so GitSync never needs (or ships) a client secret:
+Only **public-client** flows are used, so GitWolf never needs (or ships) a client secret:
 
 | Provider | Flow | Endpoints (`<origin>` = scheme + host) |
 |---|---|---|
@@ -55,7 +55,7 @@ Only **public-client** flows are used, so GitSync never needs (or ships) a clien
 - **Loopback redirect** is fixed: `http://127.0.0.1:53682/callback` (`OAuthLoopback`). GitLab and
   Gitea require the exact redirect URI to be registered. Listen on the loopback interface only,
   verify `state`, answer with a small "you can close this tab" page, time out after 5 minutes.
-- **Client IDs.** A client ID is public but belongs to an application registered on a host. GitSync
+- **Client IDs.** A client ID is public but belongs to an application registered on a host. GitWolf
   ships none by default (`OAuthClients.builtIn` is empty; maintainers add IDs for github.com,
   gitlab.com, codeberg.org). Otherwise the user pastes their own client ID, remembered per host, with
   an inline hint on how to register the app (public client, redirect URI, scopes: GitHub `repo`;
@@ -95,7 +95,7 @@ into https clone URLs; strip it so our credential is used.
 ## Pull requests and issues
 
 Reference: end of `ProviderClient.swift` (`CollabItem`, `ProviderClient.collab`, `parse*Collab`),
-`apple/Sources/GitSyncApp/Collab.swift` (state) and `Views/CollabViews.swift` (UI). Page size 30,
+`apple/Sources/GitWolfApp/Collab.swift` (state) and `Views/CollabViews.swift` (UI). Page size 30,
 1-based `page`. Normalised model: number, title, author, state (open/closed/merged), draft, labels,
 comment count, created/updated, web URL, body, source/target branch.
 
@@ -204,5 +204,5 @@ Settings → Accounts lists accounts (flat brand tile, `@user · host`, Remove w
 Add Account: provider tiles, a *Token* / *Username & password* switch, host (with a hint for
 enterprise servers), username (when needed), secret field, "create a token" link with the scope
 hint, inline verification errors. Brand marks are Simple Icons (CC0) in
-`apple/Sources/GitSyncApp/ProviderLogos.swift`; on a light tile/dark tile choose the contrasting
+`apple/Sources/GitWolfApp/ProviderLogos.swift`; on a light tile/dark tile choose the contrasting
 colour (GitHub's mark is black).

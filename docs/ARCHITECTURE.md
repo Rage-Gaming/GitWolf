@@ -1,14 +1,14 @@
 # Architecture
 
-GitSync is split into a **UI-free engine** and a **platform UI**. Each platform has its own folder and
+GitWolf is split into a **UI-free engine** and a **platform UI**. Each platform has its own folder and
 its own native implementation of both (see [PORTING.md](PORTING.md)). Today only `apple/` exists.
 
 ```
-apple/Sources/GitSyncCore   engine (Foundation + CoreServices only)
-apple/Sources/GitSyncApp    SwiftUI app
+apple/Sources/GitWolfCore   engine (Foundation + CoreServices only)
+apple/Sources/GitWolfApp    SwiftUI app
 ```
 
-## Engine (`GitSyncCore`)
+## Engine (`GitWolfCore`)
 
 | Piece | Responsibility |
 |---|---|

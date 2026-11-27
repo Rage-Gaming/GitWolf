@@ -112,7 +112,7 @@
 "Forking…" = "Forking…";
 "From" = "From";
 "Git Error" = "Git Error";
-"GitSync" = "GitSync";
+"GitWolf" = "GitWolf";
 "Good" = "Good";
 "Group options" = "Group options";
 "HEAD" = "HEAD";
@@ -246,7 +246,7 @@
 "Revert" = "Revert";
 "Right-click a repository and choose Add to Group." = "Right-click a repository and choose Add to Group.";
 "Runs git commit --no-verify" = "Runs git commit --no-verify";
-"Runs with /bin/sh in the repository’s root folder. The environment has GITSYNC_REPO (the root path) and GITSYNC_BRANCH. Actions appear in the Open In menu, the Repository menu and the ⌘K palette." = "Runs with /bin/sh in the repository’s root folder. The environment has GITSYNC_REPO (the root path) and GITSYNC_BRANCH. Actions appear in the Open In menu, the Repository menu and the ⌘K palette.";
+"Runs with /bin/sh in the repository’s root folder. The environment has GITWOLF_REPO (the root path) and GITWOLF_BRANCH. Actions appear in the Open In menu, the Repository menu and the ⌘K palette." = "Runs with /bin/sh in the repository’s root folder. The environment has GITWOLF_REPO (the root path) and GITWOLF_BRANCH. Actions appear in the Open In menu, the Repository menu and the ⌘K palette.";
 "Save" = "Save";
 "Search Options" = "Search Options";
 "Search options: scope, file and dates" = "Search options: scope, file and dates";
@@ -311,7 +311,7 @@
 "Worktrees" = "Worktrees";
 "Worktrees & Submodules…" = "Worktrees & Submodules…";
 "Your repositories, always in sync." = "Your repositories, always in sync.";
-"You’ll approve GitSync in your browser. No token to copy." = "You’ll approve GitSync in your browser. No token to copy.";
+"You’ll approve GitWolf in your browser. No token to copy." = "You’ll approve GitWolf in your browser. No token to copy.";
 "branch (default)" = "branch (default)";
 "folder (e.g. vendor/lib)" = "folder (e.g. vendor/lib)";
 "https://github.com/owner/repo.git" = "https://github.com/owner/repo.git";

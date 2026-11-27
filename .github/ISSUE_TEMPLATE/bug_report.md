@@ -11,6 +11,6 @@ labels: bug
 **Expected behaviour**
 
 **Environment**
-- GitSync version:
+- GitWolf version:
 - macOS version:
 - `git --version`:
