@@ -1,11 +1,14 @@
 #!/usr/bin/env swift
-// Renders the app icon (flat indigo squircle, white branch symbol, no gradients) to
-// Resources/AppIcon.icns. Usage: swift Scripts/make-icon.swift
+// Renders the app icon (flat blue squircle with the white wolf from ../assets/gitwolf-mark.svg, no gradients)
+// to Resources/AppIcon.icns. Usage: swift Scripts/make-icon.swift
 import AppKit
 
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
 let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("AppIcon-\(UUID().uuidString).iconset")
 try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
+
+let markURL = root.deletingLastPathComponent().appendingPathComponent("assets/gitwolf-mark.svg")
+guard let mark = NSImage(contentsOf: markURL) else { fatalError("missing \(markURL.path)") }
 
 func render(_ size: Int) -> Data {
     let s = CGFloat(size)
@@ -16,15 +19,13 @@ func render(_ size: Int) -> Data {
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
     let inset = s * 0.098
     let body = NSRect(x: inset, y: inset, width: s - 2 * inset, height: s - 2 * inset)
-    NSColor(srgbRed: 0.388, green: 0.400, blue: 0.945, alpha: 1).setFill() // #6366F1
+    NSColor(srgbRed: 1 / 255, green: 42 / 255, blue: 165 / 255, alpha: 1).setFill() // #012AA5
     NSBezierPath(roundedRect: body, xRadius: body.width * 0.225, yRadius: body.width * 0.225).fill()
 
-    let config = NSImage.SymbolConfiguration(pointSize: s * 0.42, weight: .bold)
-        .applying(.init(paletteColors: [.white]))
-    if let symbol = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: nil)?.withSymbolConfiguration(config) {
-        let w = symbol.size.width, h = symbol.size.height
-        symbol.draw(in: NSRect(x: (s - w) / 2, y: (s - h) / 2, width: w, height: h))
-    }
+    // The wolf, centred, about 58% of the icon wide.
+    let aspect = mark.size.height / mark.size.width
+    let w = s * 0.58, h = w * aspect
+    mark.draw(in: NSRect(x: (s - w) / 2, y: (s - h) / 2, width: w, height: h))
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!
 }

@@ -23,7 +23,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let wanted = UserDefaults.standard.object(forKey: MenuBarSetting.key) as? Bool ?? true
         if wanted, item == nil {
             let created = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            created.button?.image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: "GitWolf")
+            if let mark = BrandArt.mark?.copy() as? NSImage {
+                mark.size = NSSize(width: 18, height: 17.3)
+                mark.accessibilityDescription = "GitWolf"
+                created.button?.image = mark
+            } else {
+                created.button?.image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: "GitWolf")
+            }
             created.button?.imagePosition = .imageLeading
             let menu = NSMenu()
             menu.delegate = self

@@ -5,6 +5,8 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        // A packaged app carries AppIcon.icns; a development build has none, so draw the same artwork.
+        if !Bundle.main.bundlePath.hasSuffix(".app"), let icon = BrandArt.icon { NSApp.applicationIconImage = icon }
         NSApp.activate(ignoringOtherApps: true)
         Task { @MainActor in UpdateManager.start() }
         StatusItemController.shared.sync()

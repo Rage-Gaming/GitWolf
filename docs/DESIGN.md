@@ -47,3 +47,11 @@ A DEBUG-only hook renders the window to a PNG: `GITWOLF_SNAPSHOT=/path.png`, wit
 `GITWOLF_APPEARANCE=dark|light`, `GITWOLF_SNAPSHOT_WINDOW=settings|sheet:<menu title>`,
 `GITWOLF_SHEET=clone|create|account`. Other platforms should offer something equivalent so UI work
 can be checked without manual clicking.
+
+## Brand artwork
+
+The logo is vector only: `assets/gitwolf-mark.svg` (white wolf, transparent) and `assets/gitwolf-icon.svg` (the mark on the
+`#012AA5` tile). Prefer the SVG everywhere; do not add PNG copies. macOS draws the app icon from the mark
+(`apple/Scripts/make-icon.swift`) and embeds both files as vectors for the dashboard, the menu-bar item and development
+builds (`apple/Scripts/embed-brand.py` regenerates `BrandArt.swift` after the artwork changes). Flat colour only, no gradients,
+no shadows.

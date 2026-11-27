@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/gitwolf-icon.svg" width="128" alt="GitWolf"></p>
+
 # GitWolf
 
 A fast, clean, native Git client. Think Sourcetree, without the rough edges.

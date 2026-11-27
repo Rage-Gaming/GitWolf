@@ -24,11 +24,10 @@ struct DashboardView: View {
         ScrollView {
             VStack(spacing: 34) {
                 VStack(spacing: 14) {
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.system(size: 38, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 84, height: 84)
-                        .background(Theme.brand, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    if let art = BrandArt.icon {
+                        Image(nsImage: art).resizable().scaledToFit().frame(width: 104, height: 104)
+                            .accessibilityHidden(true)
+                    }
                     Text("GitWolf").font(.system(size: 34, weight: .bold, design: .rounded))
                     Text("Your repositories, always in sync.").font(.title3).foregroundStyle(.secondary)
                 }
