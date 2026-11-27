@@ -7,10 +7,6 @@ import SwiftUI
 /// shown by a solid tile plus an edge marker; nothing scales or moves on hover.
 struct RepoRail: View {
     let workspace: Workspace
-    /// The repository whose icon image is being chosen; the file dialog is a sheet on the window,
-    /// because a panel opened from inside a popover can end up behind the app.
-    @State private var importFor: String?
-    @State private var showImporter = false
 
     fileprivate static let width: CGFloat = 64
     fileprivate static let tile: CGFloat = 40
@@ -34,9 +30,8 @@ struct RepoRail: View {
                                  icon: workspace.repoIcons.icon(for: store.id),
                                  setIcon: { workspace.setIcon($0, for: store.id) },
                                  chooseImage: {
-                                     importFor = store.id
-                                     // Let the popover finish closing before the sheet opens.
-                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showImporter = true }
+                                     // Let the popover finish closing before the dialog opens.
+                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { workspace.chooseIconImage(for: store.id) }
                                  },
                                  dropImage: { workspace.setIconImage(from: $0, for: store.id) })
                     }
@@ -50,10 +45,6 @@ struct RepoRail: View {
         .frame(width: Self.width)
         .background(.black.opacity(0.04))
         .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.07)).frame(width: 1) }
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.image]) { result in
-            if case .success(let url) = result, let path = importFor { workspace.setIconImage(from: url, for: path) }
-            importFor = nil
-        }
     }
 }
 
@@ -141,7 +132,10 @@ private struct RepoTile: View {
             return true
         }
         .contextMenu {
-            Button("Change Icon…") { picking = true }
+            Button("Change Icon…") {
+                // A popover opened while the context menu is still closing is dropped by AppKit.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { picking = true }
+            }
             if icon != nil { Button("Remove Icon") { setIcon(nil) } }
             Divider()
             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.repo.root]) }
