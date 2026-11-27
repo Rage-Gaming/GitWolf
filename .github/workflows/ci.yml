@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# The jobs only read the code.
+permissions:
+  contents: read
+
 jobs:
   macos:
     runs-on: macos-latest
@@ -19,3 +23,24 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Test
+        run: dotnet test tests/GitWolfCore.Tests/GitWolfCore.Tests.csproj --nologo --blame-hang-timeout 5m
+      # The WinUI app needs the MSBuild that ships with Visual Studio.
+      - name: Build app
+        shell: pwsh
+        run: |
+          $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          if (-not $msbuild) { throw 'MSBuild was not found' }
+          & $msbuild src\GitWolf.App\GitWolf.App.csproj -restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal -nologo
