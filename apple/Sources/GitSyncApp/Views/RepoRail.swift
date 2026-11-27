@@ -43,8 +43,6 @@ struct RepoRail: View {
         }
         .padding(.bottom, 12)
         .frame(width: Self.width)
-        .background(.black.opacity(0.04))
-        .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.07)).frame(width: 1) }
         // A sheet on the window, not a popover: popovers opened from a rail tile detach from the window.
         .sheet(item: $pickerFor) { target in
             RepoIconPicker(current: workspace.repoIcons.icon(for: target.id),

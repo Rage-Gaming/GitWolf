@@ -103,15 +103,20 @@ final class Workspace {
         RepoIconStore.save(repoIcons)
     }
 
-    /// Uses a picture file as the repository's tile icon.
+    /// Uses a picture file as the repository's tile icon. The picture is decoded off the main thread.
     func setIconImage(from url: URL, for path: String) {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let name = RepoIconStore.importImage(from: url) else {
-            errorMessage = "That file couldn’t be read as an image."
-            return
+        Task {
+            let name = await Task.detached(priority: .userInitiated) { () -> String? in
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                return RepoIconStore.importImage(from: url)
+            }.value
+            guard let name else {
+                errorMessage = "That file couldn’t be read as an image."
+                return
+            }
+            setIcon(.image(name), for: path)
         }
-        setIcon(.image(name), for: path)
     }
 
     func clearRecents() {

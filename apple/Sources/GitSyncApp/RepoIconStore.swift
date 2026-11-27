@@ -26,26 +26,33 @@ enum RepoIconStore {
     static func deleteImage(_ name: String) { try? FileManager.default.removeItem(at: imageURL(name)) }
 
     /// Reads any picture, crops it to a centred square and saves a small PNG. Returns the stored file name.
-    static func importImage(from url: URL) -> String? {
-        guard let source = NSImage(contentsOf: url), source.size.width > 0, source.size.height > 0 else { return nil }
-        let side = min(source.size.width, source.size.height)
-        let crop = NSRect(x: (source.size.width - side) / 2, y: (source.size.height - side) / 2, width: side, height: side)
+    /// Uses ImageIO's thumbnail decoder, which reads only what it needs, so huge photos import quickly.
+    /// Safe to call off the main thread.
+    nonisolated static func importImage(from url: URL) -> String? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let px = imageSize
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8,
-                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        NSGraphicsContext.current?.imageInterpolation = .high
-        source.draw(in: NSRect(x: 0, y: 0, width: px, height: px), from: crop, operation: .copy, fraction: 1)
-        NSGraphicsContext.restoreGraphicsState()
-        guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: px * 4,
+        ]
+        guard let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        let side = min(thumb.width, thumb.height)
+        guard side > 0,
+              let square = thumb.cropping(to: CGRect(x: (thumb.width - side) / 2, y: (thumb.height - side) / 2, width: side, height: side)),
+              let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.interpolationQuality = .high
+        ctx.draw(square, in: CGRect(x: 0, y: 0, width: px, height: px))
+        guard let out = ctx.makeImage() else { return nil }
         let name = UUID().uuidString + ".png"
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try png.write(to: imageURL(name), options: .atomic)
-            return name
-        } catch { return nil }
+        let folder = Self.folder
+        do { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) } catch { return nil }
+        guard let dest = CGImageDestinationCreateWithURL(folder.appendingPathComponent(name) as CFURL,
+                                                         "public.png" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, out, nil)
+        return CGImageDestinationFinalize(dest) ? name : nil
     }
 }
 
