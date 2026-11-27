@@ -31,6 +31,7 @@ struct RepoRail: View {
                                  select: { workspace.select(store.id) },
                                  close: { workspace.close(store) },
                                  icon: workspace.repoIcons.icon(for: store.id),
+                                 tint: workspace.repoIcons.tint(for: store.id),
                                  setIcon: { workspace.setIcon($0, for: store.id) },
                                  changeIcon: { pickerFor = PickerTarget(id: store.id) },
                                  dropImage: { workspace.setIconImage(from: $0, for: store.id) })
@@ -46,6 +47,8 @@ struct RepoRail: View {
         // A sheet on the window, not a popover: popovers opened from a rail tile detach from the window.
         .sheet(item: $pickerFor) { target in
             RepoIconPicker(current: workspace.repoIcons.icon(for: target.id),
+                           tint: workspace.repoIcons.tint(for: target.id),
+                           chooseTint: { workspace.setTint($0, for: target.id) },
                            choose: { workspace.setIcon($0, for: target.id) },
                            importURL: { workspace.setIconImage(from: $0, for: target.id) })
         }
@@ -95,6 +98,7 @@ private struct RepoTile: View {
     let select: () -> Void
     let close: () -> Void
     let icon: RepoIcon?
+    let tint: RepoTint?
     let setIcon: (RepoIcon?) -> Void
     let changeIcon: () -> Void
     let dropImage: (URL) -> Void
@@ -109,7 +113,7 @@ private struct RepoTile: View {
     private var changes: Int { store.status.changeCount }
 
     var body: some View {
-        let color = avatarColor(for: store.name)
+        let color = tint?.color ?? avatarColor(for: store.name)
         let shape = RoundedRectangle(cornerRadius: RepoRail.radius, style: .continuous)
         Button(action: select) {
             tileContent(color: color)

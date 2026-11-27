@@ -2574,3 +2574,24 @@ private func makeTempDir() throws -> URL {
         #expect(!gh.canPerform(.rerun, on: CICheck(name: "old", state: .failure, url: nil)))
     }
 }
+
+
+@Suite struct RepoTintTests {
+    @Test func tintsRoundTripAndPrune() throws {
+        var icons = RepoIcons()
+        icons.setTint(.teal, for: "/a")
+        icons.setTint(.pink, for: "/b")
+        icons.setTint(nil, for: "/b")
+        #expect(icons.tint(for: "/a") == .teal && icons.tint(for: "/b") == nil)
+        let back = try JSONDecoder().decode(RepoIcons.self, from: JSONEncoder().encode(icons))
+        #expect(back == icons)
+        _ = icons.pruned(keeping: { _ in false })
+        #expect(icons.tint(for: "/a") == nil)
+    }
+
+    @Test func settingsSavedBeforeColoursStillLoad() throws {
+        let old = #"{"icons":{"/a":{"symbol":{"_0":"star"}}}}"#
+        let icons = try JSONDecoder().decode(RepoIcons.self, from: Data(old.utf8))
+        #expect(icons.icon(for: "/a") == .symbol("star") && icons.tints.isEmpty)
+    }
+}

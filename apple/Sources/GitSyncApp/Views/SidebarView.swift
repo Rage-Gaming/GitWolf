@@ -7,8 +7,26 @@ struct SidebarView: View {
     @State private var showRemote = true
     @State private var showTags = ProcessInfo.processInfo.environment["GITSYNC_TAGS"] != nil
     @State private var showStashes = true
+    /// A branch dropped on the current branch, waiting for the choice of merge or rebase.
+    @State private var droppedBranch: String?
+    @State private var dropTargeted = false
 
     var body: some View {
+        list
+            .confirmationDialog(droppedBranch.map { "Bring “\($0)” into “\(store.status.branch ?? "HEAD")”?" } ?? "",
+                                isPresented: Binding(get: { droppedBranch != nil }, set: { if !$0 { droppedBranch = nil } }),
+                                titleVisibility: .visible) {
+                if let name = droppedBranch {
+                    Button("Merge “\(name)” into Current Branch") { store.merge(name) }
+                    Button("Rebase Current Branch onto “\(name)”") { store.rebase(onto: name) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Merge keeps both histories and adds a merge commit. Rebase replays your commits on top of the other branch.")
+            }
+    }
+
+    private var list: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 header
@@ -18,6 +36,15 @@ struct SidebarView: View {
                                    trailing: syncText(branch), current: branch.isCurrent, emphasized: branch.isCurrent,
                                    onTap: { store.reveal(hash: branch.hash) },
                                    onDoubleTap: { store.checkout(branch) })
+                            .draggable(branch.name)
+                            .dropDestination(for: String.self) { names, _ in
+                                // Only the current branch takes a drop, and only a real local branch counts.
+                                guard branch.isCurrent, let name = names.first, name != branch.name,
+                                      store.localBranches.contains(where: { $0.name == name }) else { return false }
+                                droppedBranch = name
+                                return true
+                            } isTargeted: { if branch.isCurrent { dropTargeted = $0 } }
+                            .overlay { if branch.isCurrent && dropTargeted { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.brand, lineWidth: 2) } }
                             .contextMenu {
                                 Button("Checkout") { store.checkout(branch) }.disabled(branch.isCurrent)
                                 Button("Merge into Current Branch") { store.merge(branch.name) }.disabled(branch.isCurrent)

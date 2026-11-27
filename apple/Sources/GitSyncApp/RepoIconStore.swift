@@ -72,6 +72,8 @@ enum RepoIconImages {
 /// The sheet for choosing a repository's tile icon.
 struct RepoIconPicker: View {
     let current: RepoIcon?
+    let tint: RepoTint?
+    let chooseTint: (RepoTint?) -> Void
     let choose: (RepoIcon?) -> Void
     let importURL: (URL) -> Void
     @State private var browsing = false
@@ -84,6 +86,28 @@ struct RepoIconPicker: View {
             ImageFileBrowser(pick: { importURL($0); dismiss() }, back: { browsing = false })
         } else {
             pickerBody
+        }
+    }
+
+    /// Swatches for the tile colour; the first one goes back to the colour taken from the repository's name.
+    private var colourRow: some View {
+        HStack(spacing: 8) {
+            Text("COLOUR").font(.system(size: 10, weight: .semibold)).tracking(0.7).foregroundStyle(.secondary)
+            Spacer(minLength: 6)
+            Button { chooseTint(nil) } label: {
+                Image(systemName: "wand.and.stars").font(.system(size: 11, weight: .semibold))
+                    .frame(width: 22, height: 22).foregroundStyle(.secondary)
+                    .background(Color.primary.opacity(0.07), in: Circle())
+                    .overlay(Circle().strokeBorder(Theme.brand, lineWidth: tint == nil ? 2 : 0))
+            }
+            .buttonStyle(.plain).help("Automatic").accessibilityLabel("Automatic colour")
+            ForEach(RepoTint.allCases, id: \.self) { t in
+                Button { chooseTint(t) } label: {
+                    Circle().fill(t.color).frame(width: 22, height: 22)
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.8), lineWidth: tint == t ? 2 : 0).padding(-3))
+                }
+                .buttonStyle(.plain).help(t.rawValue.capitalized).accessibilityLabel("\(t.rawValue) colour")
+            }
         }
     }
 
@@ -116,6 +140,7 @@ struct RepoIconPicker: View {
             }
             .frame(height: 300)
             Divider()
+            colourRow
             HStack {
                 Button("Paste") { pasteImage() }
                 Button("Choose Image…") { browsing = true }
@@ -157,6 +182,10 @@ struct ImageFileBrowser: View {
 
     private static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
     private static var start: URL {
+        // Back to the folder used last time, if it is still there.
+        if let last = UserDefaults.standard.string(forKey: "iconBrowserFolder"), FileManager.default.fileExists(atPath: last) {
+            return URL(fileURLWithPath: last)
+        }
         let pictures = home.appendingPathComponent("Pictures")
         return FileManager.default.fileExists(atPath: pictures.path) ? pictures : home
     }
@@ -221,7 +250,10 @@ struct ImageFileBrowser: View {
     }
 
     private func isFolder(_ url: URL) -> Bool { (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
-    private func go(_ url: URL) { selected = nil; folder = url }
+    private func go(_ url: URL) {
+        selected = nil; folder = url
+        UserDefaults.standard.set(url.path, forKey: "iconBrowserFolder")
+    }
     private func open(_ url: URL) { if isFolder(url) { go(url) } else { pick(url) } }
 
     private func loadPreview() async {
@@ -257,5 +289,23 @@ struct ImageFileBrowser: View {
         }.value
         failed = found == nil
         entries = found ?? []
+    }
+}
+
+
+extension RepoTint {
+    /// The flat colour for each named tile tint.
+    var color: Color {
+        switch self {
+        case .red: .red
+        case .orange: .orange
+        case .yellow: Color(red: 0.93, green: 0.72, blue: 0.10)
+        case .green: .green
+        case .teal: .teal
+        case .blue: .blue
+        case .purple: .purple
+        case .pink: .pink
+        case .gray: .gray
+        }
     }
 }

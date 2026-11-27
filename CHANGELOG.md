@@ -21,6 +21,8 @@ All notable changes are documented here. Format based on
 ### Added
 - Sync buttons animate while they run: Fetch spins, Pull and Push slide their arrow in the direction of travel.
 - CI checks update on their own: a commit with a running check is polled every 15 seconds, and a just-pushed commit (from the app or a terminal) or one made in the last 30 minutes is looked up every 15 seconds until its run appears. The running state shows an indeterminate ring spinner (the arc stretches and shrinks as it turns) instead of a clock.
+- Tile colours: pick a colour for a repository's tile in the icon picker (nine flat colours, or Automatic). The image browser remembers the last folder.
+- Merge or rebase by dragging: drag a local branch in the sidebar onto the current branch and choose Merge or Rebase.
 - Open a pull request after pushing: when you push a feature branch that has no pull request (first push, or the loaded list shows none), a banner offers *Open Pull Request* with the form prefilled from the branch's commits. It goes away after 30 seconds or when you switch branch.
 - CI actions: expand the checks pill to re-run a finished check or cancel a running one (GitHub Actions and GitLab).
 - CI on the rail: each repository tile shows the result of its latest commit's checks (spinner, tick or cross) and updates by itself.

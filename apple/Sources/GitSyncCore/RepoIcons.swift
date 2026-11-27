@@ -9,11 +9,31 @@ public enum RepoIcon: Codable, Equatable, Sendable {
     case image(String)
 }
 
-/// Which icon each repository uses, keyed by the repository's root path.
+/// A named colour for a repository's tile. The platform maps each name to its own flat colour.
+public enum RepoTint: String, Codable, CaseIterable, Sendable {
+    case red, orange, yellow, green, teal, blue, purple, pink, gray
+}
+
+/// Which icon and colour each repository uses, keyed by the repository's root path.
 public struct RepoIcons: Codable, Equatable, Sendable {
     public private(set) var icons: [String: RepoIcon] = [:]
+    /// Tile colours; a repository without one gets a colour derived from its name.
+    public private(set) var tints: [String: RepoTint] = [:]
 
     public init() {}
+
+    // Settings saved before colours existed have no `tints`.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        icons = try c.decodeIfPresent([String: RepoIcon].self, forKey: .icons) ?? [:]
+        tints = try c.decodeIfPresent([String: RepoTint].self, forKey: .tints) ?? [:]
+    }
+
+    public func tint(for path: String) -> RepoTint? { tints[path] }
+
+    public mutating func setTint(_ tint: RepoTint?, for path: String) {
+        if let tint { tints[path] = tint } else { tints.removeValue(forKey: path) }
+    }
 
     public func icon(for path: String) -> RepoIcon? { icons[path] }
 
@@ -33,6 +53,7 @@ public struct RepoIcons: Codable, Equatable, Sendable {
             if case .image(let name) = icon { unused.append(name) }
             icons.removeValue(forKey: path)
         }
+        for path in tints.keys where !exists(path) { tints.removeValue(forKey: path) }
         return unused
     }
 

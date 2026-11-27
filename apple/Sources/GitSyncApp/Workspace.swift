@@ -98,6 +98,11 @@ final class Workspace {
         setIcon(nil, for: path)
     }
 
+    func setTint(_ tint: RepoTint?, for path: String) {
+        repoIcons.setTint(tint, for: path)
+        RepoIconStore.save(repoIcons)
+    }
+
     func setIcon(_ icon: RepoIcon?, for path: String) {
         if let unused = repoIcons.set(icon, for: path) { RepoIconStore.deleteImage(unused) }
         RepoIconStore.save(repoIcons)

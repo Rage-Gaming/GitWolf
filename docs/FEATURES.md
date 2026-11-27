@@ -374,6 +374,10 @@ Repository menu and palette: **Fork Repository…** (needs a connected account o
 
 Bell button in the repository toolbar (only when a GitHub, GitLab or Gitea account exists), Repository menu and palette. Loads from every connected account at start and every 5 minutes; the badge counts unread items. The sheet lists title, `owner/repo`, age and a reason chip (Review requested, Mentioned, Assigned, Activity). Clicking a row opens it on the web and marks it read; **Mark All as Read** clears everything. A GitHub token without the `notifications` scope shows a warning instead of an empty list. Bitbucket and Azure DevOps have no notifications API. Endpoints in [PROVIDERS.md](PROVIDERS.md#notifications).
 
+### Tile colours and branch drag
+
+The icon picker has a colour row (red, orange, yellow, green, teal, blue, purple, pink, gray, or Automatic, which derives a colour from the repository name). Colours are saved with the icons (`RepoIcons.tints`); settings saved earlier still load. In the sidebar, dragging a local branch onto the **current** branch asks whether to merge it into the current branch or rebase the current branch onto it; other drop targets are ignored. ⌘1 to ⌘9 already switch between open repositories.
+
 ### Open a pull request after pushing
 
 After a successful push of a branch other than `main`, `master`, `develop` or `trunk` on a provider that can create pull requests, a banner at the bottom offers **Open Pull Request** (Merge Request on GitLab), which opens the new pull request form. Offered on the first push of a branch, or on a later push when the loaded list shows no open pull request for it. Dismissed by the × button, after 30 s, or when the branch changes.
