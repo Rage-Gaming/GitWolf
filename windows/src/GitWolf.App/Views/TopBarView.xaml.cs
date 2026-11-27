@@ -19,6 +19,9 @@ public sealed partial class TopBarView : UserControl
 
     internal event Action? JumpRequested;
     internal event Action? NotificationsRequested;
+    internal event Action<FrameworkElement>? OpenInRequested;
+
+    private void OnOpenIn(object sender, RoutedEventArgs e) => OpenInRequested?.Invoke((FrameworkElement)sender);
 
     /// <summary>The unread count beside the bell.</summary>
     internal void ShowUnread(int count)

@@ -36,10 +36,14 @@ public sealed partial class SettingsView : UserControl
         _workspace = workspace;
     }
 
-    internal void Open()
+    internal void Open() => Open(null);
+
+    /// <summary>Shows the settings, on the named pane or the last one used.</summary>
+    internal void Open(string? pane)
     {
         Visibility = Visibility.Visible;
-        if (Panes.SelectedIndex < 0) Panes.SelectedIndex = 0;
+        if (pane is not null && !Equals(Panes.SelectedItem, pane)) Panes.SelectedItem = pane;
+        else if (Panes.SelectedIndex < 0) Panes.SelectedIndex = 0;
         else Build();
         // Focus can only move once the view is visible.
         DispatcherQueue.TryEnqueue(() => CloseButton.Focus(FocusState.Programmatic));
@@ -71,6 +75,7 @@ public sealed partial class SettingsView : UserControl
         Body.Children.Add(new TextBlock { Text = pane, FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.Bold });
         if (pane == "General") General(_settings);
         else if (pane == "Git") Git(_settings);
+        else if (pane == "Tools") Tools(_settings);
         else if (pane == "Accounts") Accounts(_settings.Accounts);
         else Shortcuts();
     }
@@ -226,7 +231,7 @@ public sealed partial class SettingsView : UserControl
         void Describe()
         {
             var value = settings.State.GitPath;
-            var valid = value.Length == 0 || AppSettings.IsUsableGit(value);
+            var valid = value.Length == 0 || AppSettings.IsLocalProgram(value);
             status.Text = valid
                 ? $"Using {settings.CustomGitPath ?? path.PlaceholderText}"
                 : "Not a local .exe file given as a full path. Using the default Git.";
@@ -298,6 +303,8 @@ public sealed partial class SettingsView : UserControl
 
         Section("Repositories", ("Open repository…", "Ctrl O"), ("Jump to…", "Ctrl K"));
         Section("Sync", ("Fetch", "Ctrl Shift F"), ("Pull", "Ctrl Shift L"), ("Push", "Ctrl Shift P"));
+        Section("Open in", ("Terminal", "Ctrl Alt T"), ("Editor", "Ctrl Alt E"),
+            ("File Explorer", "Ctrl Alt Shift R"));
         Section("App", ("Settings", "Ctrl ,"));
     }
 

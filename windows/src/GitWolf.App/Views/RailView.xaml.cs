@@ -128,10 +128,7 @@ public sealed partial class RailView : UserControl
     {
         try
         {
-            var start = new ProcessStartInfo(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"));
-            start.ArgumentList.Add(Path.GetFullPath(path));
-            using var process = Process.Start(start);
+            using var process = Process.Start(Core.OpenIn.Explorer(path));
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or IOException)
         {

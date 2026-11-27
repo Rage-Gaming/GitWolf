@@ -58,6 +58,7 @@ public sealed partial class MainWindow : Window
         AddShortcuts();
         AttachProvider();
         SetUpUpdates();
+        SetUpOpenIn();
 
         Activated += (_, e) =>
         {
@@ -500,6 +501,7 @@ public sealed partial class MainWindow : Window
             foreach (var branch in s.LocalBranches.Where(b => !b.IsCurrent))
                 Add(Icons.Branch, branch.Name, "Check out branch", () => _ = s.CheckoutAsync(branch));
         }
+        AddOpenInItems(items);
         items.Add(new PaletteItem(Icons.Plus, "Open repository…", "Workspace", () => _ = PickAsync()));
         items.Add(new PaletteItem(Icons.Plus, "Clone repository\u2026", "Workspace", () => _ = CreateAsync(clone: true)));
         items.Add(new PaletteItem(Icons.Plus, "New repository\u2026", "Workspace", () => _ = CreateAsync(clone: false)));

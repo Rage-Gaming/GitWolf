@@ -21,7 +21,8 @@ internal sealed record SettingsState(
     bool IgnoreWhitespace = false, bool FullFileDiffs = false,
     bool SpellCheck = true, double SidebarWidth = 248, double ListShare = 0.45,
     double MessageHeight = 90, double FilesHeight = 0,
-    bool CheckForUpdates = true, long LastUpdateCheck = 0, string SkippedUpdate = "");
+    bool CheckForUpdates = true, long LastUpdateCheck = 0, string SkippedUpdate = "",
+    string EditorPath = "", IReadOnlyList<CustomAction>? CustomActions = null);
 
 /// <summary>
 /// User settings, kept in %LOCALAPPDATA%\GitWolf\settings.json and read on every use so changes
@@ -54,7 +55,19 @@ internal sealed class AppSettings : IStoreSettings
     public bool PullRebase => State.PullRebase;
 
     /// <summary>The custom git executable, or null to use the one found on PATH.</summary>
-    public string? CustomGitPath => IsUsableGit(State.GitPath) ? State.GitPath : null;
+    public string? CustomGitPath => IsLocalProgram(State.GitPath) ? State.GitPath : null;
+
+    public const int MaxActions = 50;
+
+    /// <summary>The custom actions that have both a name and a command.</summary>
+    public IEnumerable<CustomAction> Actions => (State.CustomActions ?? []).Where(a => a.IsValid);
+
+    /// <summary>The editor to open repositories in, or null when the chosen or default one can't be used.</summary>
+    public string? Editor => State.EditorPath.Length == 0 ? OpenIn.FindDefaultEditor()
+        : IsLocalProgram(State.EditorPath) ? State.EditorPath : null;
+
+    public string EditorName => State.EditorPath.Length == 0
+        ? "Visual Studio Code" : Path.GetFileNameWithoutExtension(State.EditorPath);
 
     public GitRepository Configure(GitRepository repo) => new(repo.Root, CustomGitPath, State.DiffContext)
     {
@@ -78,7 +91,7 @@ internal sealed class AppSettings : IStoreSettings
     /// <summary>
     /// A full path to a local .exe. Relative and network paths are refused: the app runs this file.
     /// </summary>
-    public static bool IsUsableGit(string path) =>
+    public static bool IsLocalProgram(string path) =>
         Path.IsPathFullyQualified(path) && !path.StartsWith(@"\\", StringComparison.Ordinal)
         && !path.StartsWith("//", StringComparison.Ordinal)
         && path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(path);
@@ -105,10 +118,20 @@ internal sealed class AppSettings : IStoreSettings
         SidebarWidth = double.IsFinite(s.SidebarWidth) ? Math.Clamp(s.SidebarWidth, 160, 600) : 248,
         ListShare = double.IsFinite(s.ListShare) ? Math.Clamp(s.ListShare, 0.15, 0.85) : 0.45,
         SkippedUpdate = s.SkippedUpdate ?? "",
+        EditorPath = (s.EditorPath ?? "").Trim().Trim('"'),
+        CustomActions = Complete(s.CustomActions),
         MessageHeight = double.IsFinite(s.MessageHeight) ? Math.Clamp(s.MessageHeight, 60, 600) : 90,
         // Zero means the list fits its files.
         FilesHeight = double.IsFinite(s.FilesHeight) && s.FilesHeight > 0 ? Math.Clamp(s.FilesHeight, 52, 800) : 0,
     };
+
+    /// <summary>The same list when nothing is missing, so an unchanged state still compares as equal.</summary>
+    private static IReadOnlyList<CustomAction>? Complete(IReadOnlyList<CustomAction>? actions) =>
+        actions is null || (actions.Count <= MaxActions
+            && actions.All(a => a is { Name: not null, Command: not null }))
+            ? actions
+            : actions.OfType<CustomAction>().Take(MaxActions)
+                .Select(a => a with { Name = a.Name ?? "", Command = a.Command ?? "" }).ToList();
 
     private static SettingsState Load()
     {
