@@ -32,6 +32,8 @@ struct ChecksSection: View {
                                     CheckIcon(state: check.state).frame(width: 16)
                                     Text(check.name).lineLimit(1)
                                     Spacer(minLength: 8)
+                                    if store.canPerformCI(.cancel, on: check) { ciButton(.cancel, check) }
+                                    if store.canPerformCI(.rerun, on: check) { ciButton(.rerun, check) }
                                     if let url = check.url {
                                         Button("Details") { NSWorkspace.shared.open(url) }.buttonStyle(.link).font(.caption)
                                     }
@@ -52,6 +54,17 @@ struct ChecksSection: View {
             }
         }
     }
+
+    private func ciButton(_ action: CIAction, _ check: CICheck) -> some View {
+        let busy = store.isCIBusy(sha: sha, check: check)
+        return Button { store.performCI(action, on: check, sha: sha) } label: {
+            Image(systemName: action == .rerun ? "arrow.clockwise" : "stop.circle")
+                .font(.system(size: 12, weight: .semibold)).frame(width: 20, height: 20)
+        }
+        .buttonStyle(.plain).foregroundStyle(.secondary).disabled(busy).opacity(busy ? 0.4 : 1)
+        .help(action == .rerun ? "Re-run this check" : "Cancel this run")
+        .accessibilityLabel(action == .rerun ? "Re-run \(check.name)" : "Cancel \(check.name)")
+    }
 }
 
 /// The icon for one check state. A running check shows a spinning arc instead of a clock.
@@ -60,7 +73,7 @@ private struct CheckIcon: View {
 
     var body: some View {
         switch state {
-        case .pending: Spinner()
+        case .pending: CISpinner()
         case .success: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .failure: Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
         case .neutral: Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
@@ -69,7 +82,9 @@ private struct CheckIcon: View {
 }
 
 /// An indeterminate ring like the Windows one: the arc grows ahead, then the tail catches up, while the whole ring turns.
-private struct Spinner: View {
+struct CISpinner: View {
+    var size: CGFloat = 14
+    var lineWidth: CGFloat = 2
     private static let cycle = 1.4
 
     private func ease(_ x: Double) -> Double { let c = min(max(x, 0), 1); return c * c * (3 - 2 * c) }
@@ -81,10 +96,10 @@ private struct Spinner: View {
             let head = ease(p / 0.7)
             let tail = ease((p - 0.3) / 0.7)
             Circle().trim(from: tail, to: max(head, tail + 0.001))
-                .stroke(Color.orange, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .stroke(Color.orange, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(t * 360 / 1.1))
-                .padding(1.5)
-                .frame(width: 14, height: 14)
+                .padding(lineWidth / 2 + 0.5)
+                .frame(width: size, height: size)
         }
         .accessibilityLabel("Running")
     }

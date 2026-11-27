@@ -31,7 +31,7 @@ apple/Sources/GitSyncApp    SwiftUI app
 | `Sync` | `PullStrategy`, `PushOptions`, `GitError.isPushRejected/isDivergedPull`, `RemoteInfo`, remote add/rename/set-url/remove. |
 | `Fork` | `ProviderClient.fork`, `GitRepository.adoptFork` (rename/add remotes, fetch), `ForkRemoteMode`. |
 | `Notifications` | `ProviderNotification`, `ProviderClient.notifications()`, `markRead`, `markAllRead`. App side: `NotificationsStore` polls every account. |
-| `CIStatus` | `CICheck`, `CIStatus` (overall state, summary), `ProviderClient.ciStatus(repoPath:sha:)`. `CollabItem.headSHA` is the pull request tip. |
+| `CIStatus` | `CICheck`, `CIStatus` (overall state, summary), `ProviderClient.ciStatus(repoPath:sha:)`, `CIAction` with `canPerform`/`perform` (re-run, cancel). `CollabItem.headSHA` is the pull request tip. |
 | `CollabActions` | Write calls on `ProviderClient` (create PR/issue, comments, merge, close/reopen, labels) with a shared `send` that reports the server's error text. |
 | `Providers`, `ProviderClient` | Hosting provider kinds, remote URL parsing, web links, askpass credential environment, REST clients for listing/verifying. See [PROVIDERS.md](PROVIDERS.md). |
 | `Operations` | Detects an in-progress merge/rebase/cherry-pick/revert from files in the git dir and runs `--continue`, `--abort`, `--skip`. The snapshot carries it so the UI banner follows the refresh loop. |

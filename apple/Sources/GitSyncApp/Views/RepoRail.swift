@@ -117,13 +117,15 @@ private struct RepoTile: View {
                 .background(tileFill(color), in: shape)
                 .clipShape(shape)
                 .overlay(alignment: .bottomTrailing) { badge }
+                .overlay(alignment: .topTrailing) { ciMark }
         }
         .buttonStyle(.plain)
         .frame(width: RepoRail.width, height: RepoRail.tile)
         .overlay(alignment: .leading) { SelectionMarker(selected: selected) }
         .help("\(store.name) · \(store.status.branchDisplay)")
         .accessibilityLabel(store.name)
-        .accessibilityValue("\(store.status.branchDisplay), " + (changes == 0 ? "no changes" : "\(changes) changes"))
+        .accessibilityValue("\(store.status.branchDisplay), " + (changes == 0 ? "no changes" : "\(changes) changes")
+                            + (store.headChecks.map { $0 == .pending ? ", CI running" : ($0 == .success ? ", CI passed" : ($0 == .failure ? ", CI failed" : "")) } ?? ""))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
         .dropDestination(for: URL.self) { urls, _ in
@@ -171,6 +173,27 @@ private struct RepoTile: View {
         Text(initials)
             .font(.system(size: 14, weight: .bold, design: .rounded))
             .foregroundStyle(selected ? Color.white : color)
+    }
+
+    /// CI result of the checked-out commit, on the tile's top-right corner: a spinner while running, a tick or a cross when done.
+    @ViewBuilder private var ciMark: some View {
+        if let state = store.headChecks, state != .neutral {
+            Group {
+                switch state {
+                case .pending: CISpinner(size: 12, lineWidth: 1.8)
+                case .success: Image(systemName: "checkmark").font(.system(size: 7, weight: .heavy)).foregroundStyle(.white)
+                        .frame(width: 12, height: 12).background(Color.green, in: Circle())
+                case .failure: Image(systemName: "xmark").font(.system(size: 7, weight: .heavy)).foregroundStyle(.white)
+                        .frame(width: 12, height: 12).background(Color.red, in: Circle())
+                case .neutral: EmptyView()
+                }
+            }
+            .padding(1.5)
+            .background(Color(nsColor: .windowBackgroundColor), in: Circle())
+            .offset(x: 4, y: -4)
+            .transition(.scale.combined(with: .opacity))
+            .help(state == .pending ? "CI running" : (state == .success ? "CI passed" : "CI failed"))
+        }
     }
 
     /// Uncommitted-change count, tucked into the tile's bottom-right corner.

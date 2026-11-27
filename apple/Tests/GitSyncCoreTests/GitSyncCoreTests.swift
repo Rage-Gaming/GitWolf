@@ -2531,3 +2531,46 @@ private func makeTempDir() throws -> URL {
         #expect(back == icons)
     }
 }
+
+
+@Suite struct CIActionTests {
+    private func client(_ kind: ProviderKind, log: @escaping @Sendable (String) -> Void) -> ProviderClient {
+        ProviderClient(account: ProviderAccount(kind: kind, host: kind.defaultHost, username: "me"), token: "t", transport: { r in
+            log("\(r.httpMethod ?? "GET") \(r.url!.absoluteString)")
+            return (Data("{}".utf8), HTTPURLResponse(url: r.url!, statusCode: 201, httpVersion: nil, headerFields: nil)!)
+        })
+    }
+
+    @Test func githubRunAndJobIDsComeFromTheCheckLink() throws {
+        let json = #"{"check_runs":[{"name":"macos","status":"in_progress","html_url":"https://github.com/o/r/actions/runs/123/job/456"}]}"#
+        let checks = try ProviderClient.parseGitHubCheckRuns(Data(json.utf8))
+        #expect(checks[0].runID == "123" && checks[0].jobID == "456")
+    }
+
+    @Test func rerunAndCancelHitTheRightEndpoints() async throws {
+        final class Log: @unchecked Sendable { var calls: [String] = [] }
+        let log = Log()
+        let gh = client(.github) { log.calls.append($0) }
+        let gl = client(.gitlab) { log.calls.append($0) }
+        let done = CICheck(name: "a", state: .failure, url: nil, runID: "1", jobID: "2")
+        let running = CICheck(name: "b", state: .pending, url: nil, runID: "1", jobID: "2")
+        try await gh.perform(.rerun, on: done, repoPath: "o/r")
+        try await gh.perform(.cancel, on: running, repoPath: "o/r")
+        try await gl.perform(.rerun, on: done, repoPath: "g/p")
+        try await gl.perform(.cancel, on: running, repoPath: "g/p")
+        #expect(log.calls == ["POST https://api.github.com/repos/o/r/actions/jobs/2/rerun",
+                              "POST https://api.github.com/repos/o/r/actions/runs/1/cancel",
+                              "POST https://gitlab.com/api/v4/projects/g%2Fp/jobs/2/retry",
+                              "POST https://gitlab.com/api/v4/projects/g%2Fp/jobs/2/cancel"])
+    }
+
+    @Test func onlyMatchingStatesOfferAnAction() {
+        let gh = client(.github) { _ in }
+        let running = CICheck(name: "b", state: .pending, url: nil, runID: "1", jobID: "2")
+        let done = CICheck(name: "a", state: .success, url: nil, runID: "1", jobID: "2")
+        #expect(gh.canPerform(.cancel, on: running) && !gh.canPerform(.rerun, on: running))
+        #expect(gh.canPerform(.rerun, on: done) && !gh.canPerform(.cancel, on: done))
+        #expect(!client(.gitea) { _ in }.canPerform(.rerun, on: done))
+        #expect(!gh.canPerform(.rerun, on: CICheck(name: "old", state: .failure, url: nil)))
+    }
+}

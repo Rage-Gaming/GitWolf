@@ -378,6 +378,12 @@ Bell button in the repository toolbar (only when a GitHub, GitLab or Gitea accou
 
 Selecting a pushed commit (History) or a pull request shows a pill with the overall result (worst state wins: failure, then pending, then success) that expands to each check with a **Details** link. Looked up by commit SHA (a pull request uses its head commit), cached for 60 s, hidden when the server has no checks or doesn't know the commit. Works without an account on public repositories. Endpoints in [PROVIDERS.md](PROVIDERS.md#ci-checks).
 
+Live: a commit with a running check is looked up again every 15 s; a commit just pushed (from the app or a terminal, detected when the branch's ahead count drops to 0) or made in the last 30 minutes is looked up until its run appears. A running check shows an indeterminate ring spinner.
+
+Actions: in the expanded list, a finished check has **Re-run** and a running one has **Cancel** (GitHub Actions: re-run a job, cancel a workflow run; GitLab: retry or cancel a job; other providers show no buttons). The check turns to running at once and the commit is watched for 5 minutes.
+
+Rail: each repository's tile shows the result of its checked-out commit in the top-right corner: a ring spinner while running, a green tick or a red cross when done (nothing when there are no checks or no account). Updated every 20 s while running.
+
 ### Actions (need a connected account)
 
 - **New Pull Request…** / **New Issue…**: "+" in the list header, Repository menu, palette. The PR form

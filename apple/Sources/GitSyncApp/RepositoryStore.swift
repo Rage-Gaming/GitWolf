@@ -186,6 +186,9 @@ final class RepositoryStore: Identifiable {
     /// Commits just pushed: their runs may not exist on the server yet, so they are looked up for a few minutes.
     private var checksWatchedUntil: [String: Date] = [:]
 
+    /// The CI result of the checked-out commit, for the repository's tile. Nil when unknown or there are no checks.
+    var headChecks: CheckState? { status.headOID.flatMap { checksBySHA[$0]?.overall } }
+
     func watchChecks(sha: String?) {
         guard let sha else { return }
         checksWatchedUntil[sha] = Date().addingTimeInterval(5 * 60)
@@ -211,6 +214,38 @@ final class RepositoryStore: Identifiable {
             if let status = try? await client.ciStatus(repoPath: path, sha: sha), !status.isEmpty {
                 withAnimation(.snappy(duration: 0.2)) { checksBySHA[sha] = status }
             }
+        }
+    }
+
+    /// Checks being re-run or cancelled right now, as "sha/name".
+    private(set) var ciBusy: Set<String> = []
+
+    func canPerformCI(_ action: CIAction, on check: CICheck) -> Bool {
+        guard let kind = providerKind else { return false }
+        return ProviderClient.canPerform(action, on: check, kind: kind)
+    }
+
+    func isCIBusy(sha: String, check: CICheck) -> Bool { ciBusy.contains("\(sha)/\(check.name)") }
+
+    /// Re-runs a finished check or cancels a running one, then watches the commit until the new state shows.
+    func performCI(_ action: CIAction, on check: CICheck, sha: String) {
+        let key = "\(sha)/\(check.name)"
+        guard !ciBusy.contains(key) else { return }
+        ciBusy.insert(key)
+        Task {
+            defer { ciBusy.remove(key) }
+            guard let (client, path) = await providerClient() else { return }
+            do {
+                try await client.perform(action, on: check, repoPath: path)
+                // Show the new state right away; the lookup a moment later confirms it.
+                if action == .rerun, var status = checksBySHA[sha], let i = status.checks.firstIndex(where: { $0.name == check.name }) {
+                    status.checks[i].state = .pending
+                    withAnimation(.snappy(duration: 0.2)) { checksBySHA[sha] = status }
+                }
+                checksWatchedUntil[sha] = Date().addingTimeInterval(5 * 60)
+                try? await Task.sleep(for: .seconds(3))
+                loadChecks(sha: sha, force: true)
+            } catch { errorMessage = error.localizedDescription }
         }
     }
 
@@ -254,6 +289,14 @@ final class RepositoryStore: Identifiable {
                 self.requestRefresh()
             }
         })
+        // Keep the latest commit's run fresh while it is going, so the rail tile turns green or red by itself.
+        bag.tasks.append(Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(20))
+                guard let self, let head = self.status.headOID, self.shouldPollChecks(sha: head) else { continue }
+                self.loadChecks(sha: head, force: true)
+            }
+        })
         // Background fetch keeps ahead/behind counts honest without user action.
         bag.tasks.append(Task { [weak self] in
             var elapsed = 0
@@ -281,6 +324,7 @@ final class RepositoryStore: Identifiable {
                 self.remoteLocation = location
                 // Commits selected before the provider was known can be looked up now.
                 if let id = self.selectedCommitID { self.loadChecks(sha: id) }
+                if let head = self.status.headOID { self.loadChecks(sha: head) }
             }
         }
     }
@@ -345,6 +389,8 @@ final class RepositoryStore: Identifiable {
         // Only assign what changed so SwiftUI doesn't re-render (and flicker) needlessly.
         // The branch just got fully pushed (from here or from a terminal): its CI run is about to appear.
         if status.ahead > 0, s.status.ahead == 0, s.status.branch == status.branch { watchChecks(sha: s.status.headOID) }
+        // The latest commit's CI result feeds the repository's tile in the rail.
+        if status.headOID != s.status.headOID, let head = s.status.headOID { loadChecks(sha: head) }
         if status != s.status { status = s.status }
         if commits != s.commits { commits = s.commits; graph = s.graph }
         if localBranches != s.localBranches { localBranches = s.localBranches }
