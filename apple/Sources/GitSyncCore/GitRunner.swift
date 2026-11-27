@@ -138,7 +138,9 @@ public struct GitRunner: Sendable {
         let group = DispatchGroup()
         let errorHandle = stderr.fileHandleForReading
         group.enter()
-        DispatchQueue.global().async {
+        // Dedicated threads, not the shared dispatch pool: this thread blocks until they run, so with
+        // many calls in flight a full pool would never start them and every call would hang.
+        Thread.detachNewThread {
             // Read in chunks so progress (git writes it to stderr) can be reported as it arrives.
             while true {
                 let chunk = errorHandle.availableData
@@ -150,7 +152,7 @@ public struct GitRunner: Sendable {
         }
         if let stdin, let input {
             let writer = stdin.fileHandleForWriting
-            DispatchQueue.global().async {
+            Thread.detachNewThread {
                 try? writer.write(contentsOf: input)
                 try? writer.close()
             }
