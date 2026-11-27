@@ -25,6 +25,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "GitWolf";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico"));
         ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
 
