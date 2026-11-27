@@ -20,6 +20,7 @@ All notable changes are documented here. Format based on
 - Removed menu items that don't apply: File > New Window, the View menu's toolbar and sidebar toggles, the Format menu, and the empty Help book (replaced by links to the documentation and issue tracker).
 
 ### Added
+- A first-run welcome (also Help > Welcome to GitWolf): checks that Git is installed (offering Apple's command line tools if not), connects an account, finds and opens the repositories inside a folder you pick, and sets appearance and accent. Every step can be skipped, and anyone who already uses GitWolf is never shown it on update.
 - Copy buttons confirm: the commit hash pill turns into a green tick and "Copied" for a moment (keeping its width), and *Copy Output* in the hook failure sheet says "Copied".
 - A *GitWolf* accent colour, the blue of the logo (a lighter shade in dark mode), is now the default. Anyone who chose an accent keeps it.
 - Help > Contributors lists everyone who has contributed (names, pictures, commit counts, links to their profiles), starting with the maintainer. Read from GitHub's public contributors list without sending anything about you, cached for a day and shown offline from the last copy.

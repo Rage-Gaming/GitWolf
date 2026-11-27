@@ -216,18 +216,27 @@ struct RootView: View {
         .frame(minWidth: 1080, minHeight: 640)
         .containerBackground(for: .window) { WindowBackdrop() }
         .overlay { if workspace.showPalette { CommandPalette(workspace: workspace) } }
+        // The appearance modifier rebuilds its content when the accent changes, so it sits below the sheet:
+        // a sheet attached above it keeps its state (the welcome walkthrough would otherwise restart).
+        .modifier(AppearanceModifier())
         .sheet(item: Binding(get: { workspace.sheet }, set: { workspace.sheet = $0 })) { sheet in
             switch sheet {
             case .clone: CloneSheet(workspace: workspace)
             case .create: CreateRepositorySheet(workspace: workspace)
             case .account: AddAccountSheet()
+            case .welcome: WelcomeSheet(workspace: workspace).tint(Theme.brand)
             }
         }
         .focusedSceneValue(\.workspace, workspace)
-        .modifier(AppearanceModifier())
         .task {
             workspace.activate()
             await workspace.bootstrap()
+            // First run: a Mac with no repositories and no accounts gets the walkthrough. Anyone who already uses
+            // GitWolf is marked as having seen it, so an update never interrupts them.
+            if !UserDefaults.standard.bool(forKey: WelcomeSheet.seenKey) {
+                if workspace.repos.isEmpty && AccountStore.shared.accounts.isEmpty { workspace.sheet = .welcome }
+                else { UserDefaults.standard.set(true, forKey: WelcomeSheet.seenKey) }
+            }
             #if DEBUG
             if let name = ProcessInfo.processInfo.environment["GITWOLF_SHEET"] { workspace.sheet = WorkspaceSheet(rawValue: name) }
             // GITWOLF_ICON_IMPORT=/path/to/image imports it as the selected repository's icon.
@@ -268,6 +277,7 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .sidebar) {}
         CommandGroup(replacing: .textFormatting) {}
         CommandGroup(replacing: .help) {
+            Button("Welcome to GitWolf") { workspace?.sheet = .welcome }
             Button("Contributors") { openWindow(id: "contributors") }
             Link("GitWolf Documentation", destination: URL(string: "https://github.com/ipuppyyt/GitWolf/tree/main/docs")!)
             Link("Report an Issue", destination: URL(string: "https://github.com/ipuppyyt/GitWolf/issues")!)

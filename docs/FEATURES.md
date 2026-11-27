@@ -434,6 +434,13 @@ Rail: each repository's tile shows the result of its checked-out commit in the t
   is always listed, labelled *Maintainer*. Refreshed at most once a day, last answer cached for offline use; each row opens the
   GitHub profile.
 
+- **First-run welcome** [core `RepositoryScanner`; ui `WelcomeSheet`]. Shown once, when the app starts with no open
+  repositories and no accounts (otherwise the flag `welcomeSeen` is set silently); Help > Welcome to GitWolf reopens it.
+  Four skippable steps: welcome plus a Git check (`xcode-select -p`, never running `/usr/bin/git`, which would trigger
+  Apple's installer; offers `xcode-select --install`), accounts (the normal add-account sheet), repositories (find
+  repositories under a chosen folder to depth 2, skipping hidden, `node_modules` and build folders and a repository's own
+  subfolders; open the chosen ones; or open/clone one), and appearance plus accent.
+
 ## 9b. Accessibility and localisation
 
 - Every interactive element has a spoken label; icon-only buttons use their tooltip text. Rows that

@@ -2652,3 +2652,35 @@ private func makeTempDir() throws -> URL {
         #expect(Contributors.parse(Data("not json".utf8)).map(\.login) == ["ipuppyyt"])
     }
 }
+
+
+@Suite struct RepositoryScannerTests {
+    private func makeTree() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("scan-\(UUID().uuidString)")
+        let fm = FileManager.default
+        for path in ["a/.git", "b/inner/.git", "c/.git", "c/nested/.git", "plain/notes", "node_modules/x/.git", ".hidden/.git", "d/e/f/.git"] {
+            try fm.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true)
+        }
+        // A worktree or submodule has a `.git` file instead of a folder.
+        try fm.createDirectory(at: root.appendingPathComponent("wt"), withIntermediateDirectories: true)
+        try Data("gitdir: ../x".utf8).write(to: root.appendingPathComponent("wt/.git"))
+        return root
+    }
+
+    @Test func findsRepositoriesTwoLevelsDown() throws {
+        let root = try makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // The temp folder is listed as /private/var… while the root says /var…, so compare relative to the resolved path.
+        let base = root.resolvingSymlinksInPath().path + "/"
+        let names = RepositoryScanner.find(in: root).map { $0.resolvingSymlinksInPath().path.replacingOccurrences(of: base, with: "") }
+        // Not: c/nested (inside a repository), node_modules, hidden folders, d/e/f (too deep).
+        #expect(names == ["a", "b/inner", "c", "wt"])
+    }
+
+    @Test func aRepositoryRootIsItselfTheResultAndTheLimitHolds() throws {
+        let root = try makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(RepositoryScanner.find(in: root.appendingPathComponent("a")).count == 1)
+        #expect(RepositoryScanner.find(in: root, limit: 2).count == 2)
+    }
+}
