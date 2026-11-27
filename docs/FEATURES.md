@@ -435,7 +435,7 @@ Rail: each repository's tile shows the result of its checked-out commit in the t
   GitHub profile.
 
 - **First-run welcome** [core `RepositoryScanner`; ui `WelcomeSheet`]. Shown once, when the app starts with no open
-  repositories and no accounts (otherwise the flag `welcomeSeen` is set silently); Help > Welcome to GitWolf reopens it.
+  repositories and no accounts (otherwise the flag `welcomeSeen` is set silently); it is not reachable from any menu afterwards.
   Four skippable steps: welcome plus a Git check (`xcode-select -p`, never running `/usr/bin/git`, which would trigger
   Apple's installer; offers `xcode-select --install`), accounts (the normal add-account sheet), repositories (find
   repositories under a chosen folder to depth 2, skipping hidden, `node_modules` and build folders and a repository's own

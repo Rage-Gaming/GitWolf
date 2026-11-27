@@ -278,7 +278,6 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .sidebar) {}
         CommandGroup(replacing: .textFormatting) {}
         CommandGroup(replacing: .help) {
-            Button("Welcome to GitWolf") { workspace?.sheet = .welcome }
             Button("Contributors") { openWindow(id: "contributors") }
             Link("GitWolf Documentation", destination: URL(string: "https://github.com/ipuppyyt/GitWolf/tree/main/docs")!)
             Link("Report an Issue", destination: URL(string: "https://github.com/ipuppyyt/GitWolf/issues")!)
