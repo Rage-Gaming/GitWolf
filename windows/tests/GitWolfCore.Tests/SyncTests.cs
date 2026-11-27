@@ -183,6 +183,24 @@ public sealed partial class RemoteTests
     }
 
     [Theory]
+    [InlineData("https://me:secret@example.invalid/a.git")]
+    [InlineData("https://ghp_abc123@example.invalid/a.git")]
+    public async Task CloningRefusesASecretInTheAddress(string url)
+    {
+        var parent = Directory.CreateTempSubdirectory("gitwolf-clone-").FullName;
+        try
+        {
+            var error = await Assert.ThrowsAsync<GitException>(() => GitRepository.CloneAsync(url, parent, "a"));
+            Assert.DoesNotContain("secret", error.Message);
+            Assert.Empty(Directory.GetFileSystemEntries(parent));
+        }
+        finally
+        {
+            Directory.Delete(parent);
+        }
+    }
+
+    [Theory]
     [InlineData("https://me:pw@e.com/a", "https://me@e.com/a")]
     [InlineData("https://me:p@ss@e.com/a", "https://me@e.com/a")]
     [InlineData("https://:token@e.com/a", "https://e.com/a")]

@@ -184,11 +184,16 @@ public sealed partial class GitRepository
         // "transport::address" runs a helper program, and "ext::" runs any command.
         if (HelperUrl().IsMatch(trimmed))
             throw new GitException("remote", 1, "Addresses that name a helper program (“::”) aren’t supported.");
-        // Secrets never go into URLs: they would end up in .git/config in plain text.
-        if (UrlPassword().IsMatch(trimmed) || Redact(trimmed) != trimmed)
-            throw new GitException("remote", 1,
-                "Don’t put a password or token in the URL. Connect an account in Settings → Accounts instead.");
+        RefuseSecret("remote", trimmed);
         return trimmed;
+    }
+
+    /// <summary>Secrets never go into URLs: they would end up in .git/config in plain text.</summary>
+    private static void RefuseSecret(string command, string url)
+    {
+        if (UrlPassword().IsMatch(url) || Redact(url) != url)
+            throw new GitException(command, 1,
+                "Don’t put a password or token in the URL. Connect an account in Settings → Accounts instead.");
     }
 
     [GeneratedRegex(@"^(?<name>[^\t]+)\t(?<url>.*) \((?<kind>fetch|push)\)( \[[^\]]*\])?$")]

@@ -127,7 +127,8 @@ public class UpdateTests
             Content = new ByteArrayContent(url == Updater.Feed ? feed : archive ?? []),
         })), V(current), Public, new Version(10, 0, 19045));
 
-    private static byte[] Feed(params AppcastItem[] items) => Encoding.UTF8.GetBytes(Appcast.Render(items));
+    private static byte[] Feed(params AppcastItem[] items) =>
+        Encoding.UTF8.GetBytes(Appcast.Sign(Appcast.Render(items), Key));
 
     [Fact]
     public async Task ChecksOfferOnlyNewerInstallableReleases()
@@ -152,6 +153,26 @@ public class UpdateTests
         await Assert.ThrowsAsync<UpdateException>(() => Serving(new byte[Appcast.MaxBytes + 1]).CheckAsync());
         var missing = new Updater(new HttpClient(new Server(_ => new(HttpStatusCode.NotFound))), V("1.0.0"));
         await Assert.ThrowsAsync<UpdateException>(() => missing.CheckAsync());
+    }
+
+    [Fact]
+    public async Task OnlyASignedFeedIsRead()
+    {
+        var signed = Appcast.Sign(Appcast.Render([Item("1.2.0")]), Key);
+        var other = Convert.ToBase64String(new byte[32]);
+        Assert.Single(Read(signed));
+        foreach (var feed in new[]
+        {
+            Appcast.Render([Item("1.2.0")]),
+            signed.Replace("1.2.0", "1.3.0"),
+            signed + "<!-- more -->",
+            Appcast.Sign(Appcast.Render([Item("1.2.0")]), other),
+            "<!-- gitwolf-signature: ",
+        })
+            await Assert.ThrowsAsync<UpdateException>(() => Serving(Encoding.UTF8.GetBytes(feed)).CheckAsync());
+        // The release tool won't sign an edited feed again.
+        Assert.Throws<FormatException>(() => UpdatePublisher.Publish([1], "1.3.0", Url, "",
+            signed.Replace("1.2.0", "1.1.0"), Key, DateTimeOffset.UtcNow, Public));
     }
 
     [Fact]

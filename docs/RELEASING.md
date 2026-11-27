@@ -90,8 +90,12 @@ symbol, no gradients).
 
 ## Windows
 
-The same tag releases Windows: the `windows` job in `release.yml` runs after the macOS one. No extra setup or
-secret is needed, because archives are signed with the same update key (`GITWOLF_UPDATE_KEY`).
+The same tag releases Windows: the `windows` job in `release.yml` runs after the macOS one. No extra secret is
+required, because the archive and the feed are signed with the same update key (`GITWOLF_UPDATE_KEY`).
+
+To Authenticode-sign the Windows program, add `WINDOWS_CERTIFICATE_PFX` (base64 of a code-signing `.pfx`) and
+`WINDOWS_CERTIFICATE_PASSWORD`. Without them the release is built unsigned, with a warning in the log. This
+covers certificates held in a file; one kept on a hardware token or cloud service needs its own signing step.
 
 | Piece | Where |
 | --- | --- |
@@ -102,10 +106,12 @@ secret is needed, because archives are signed with the same update key (`GITWOLF
 - The app embeds the public key in `windows/src/GitWolfCore/Updater.cs`. If the key changes, change it there
   and in `Info.plist`; the tool refuses to sign with a key that doesn't match.
 - Only builds made with `-p:GitWolfUpdates=true -p:Version=1.2.3` check for updates.
+- The feed ends in a signature over its contents; the app ignores a feed without a valid one, so don't edit
+  it by hand.
 - Nothing is unpacked until the signature verifies. A release is installed only if its version matches the
   feed and is newer, and the old files are renamed aside so that a failed install is undone.
 - The zip may be unpacked anywhere the user can write to. Files that a new release no longer ships stay behind.
-- First install: unzip to a folder and run `GitWolf.App.exe`. The program is not Authenticode-signed, so
+- First install: unzip to a folder and run `GitWolf.App.exe`. If the program is not Authenticode-signed,
   Windows SmartScreen asks once (*More info > Run anyway*).
 
 ## For Linux

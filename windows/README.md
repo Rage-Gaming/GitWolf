@@ -123,8 +123,8 @@ UI (`src/GitWolf.App/`):
 - [x] Open in File Explorer, a terminal or an editor, and custom actions (Settings > Tools), run with Git's
       `sh` so that commands work as on macOS and branch names are never read as commands
 - [x] In-app updates: a daily check (Settings > General) and *Check for Updates…* in the jump palette, with
-      release notes, then install and relaunch, skip the version or be reminded later. Releases are verified
-      with the project's Ed25519 key (see [docs/RELEASING.md](../docs/RELEASING.md)). Development builds never
+      release notes, then install and relaunch, skip the version or be reminded later. The feed and releases are
+      verified with the project's Ed25519 key (see [docs/RELEASING.md](../docs/RELEASING.md)). Development builds never
       contact the update server
 
 ### Trusting a repository
@@ -140,7 +140,8 @@ ordinary reason to be asked.
 Known limits:
 
 - In a trusted repository, pull and push hooks can read the account token.
-- Scripts that `core.hooksPath` points to aren't checked for changes, only the setting itself.
+- Only the hook files git runs are checked for changes, not other scripts they call, and not hooks in a
+  network folder or in a submodule's own `core.hooksPath`.
 - A trusted repository's settings run with your rights, including during pull and push.
 
 ## Building

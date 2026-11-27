@@ -155,13 +155,17 @@ internal static class RepositoryInspector
         };
         var hooks = Path.Combine(common, "hooks");
         watched.Add(hooks);
-        watched.UnionWith(HookNames.Select(name => Path.Combine(hooks, name)));
+        watched.UnionWith(HookNames.Select(name => Path.Combine(hooks, name)).Where(File.Exists));
         // Stamped before reading, so a change made during the scan is noticed next time.
         var before = watched.ToDictionary(f => f, f => Stamp([f]));
         var found = new List<RiskySetting>();
 
         await ReadConfigAsync(git, root, [], "this repository", watched, found, token).ConfigureAwait(false);
         ReadHooks(hooks, "this repository", watched, found);
+        // The last value wins, as in git.
+        if (found.LastOrDefault(s => s.Key == "core.hookspath") is { } custom
+            && HooksFolder(root, custom.Value) is { } folder)
+            ReadHooks(folder, "core.hooksPath", watched, found);
 
         var modules = new List<string>();
         FindModules(Path.Combine(common, "modules"), 0, modules);
@@ -223,13 +227,38 @@ internal static class RepositoryInspector
     private static void ReadHooks(
         string directory, string source, HashSet<string> watched, List<RiskySetting> found)
     {
+        // The folder's own time shows a hook being added; each hook there is watched for edits.
         watched.Add(directory);
         foreach (var name in HookNames)
         {
             var file = new FileInfo(Path.Combine(directory, name));
+            if (!file.Exists) continue;
             watched.Add(file.FullName);
-            if (file.Exists) found.Add(new RiskySetting(source, $"hooks/{name}", Describe(file)));
+            found.Add(new RiskySetting(source, $"hooks/{name}", Describe(file)));
         }
+    }
+
+    /// <summary>
+    /// Where `core.hooksPath` points, or null for a network or malformed path: merely looking at a
+    /// network folder would send the Windows sign-in to that server.
+    /// </summary>
+    private static string? HooksFolder(string root, string value)
+    {
+        try
+        {
+            var path = value.StartsWith("~/", StringComparison.Ordinal)
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), value[2..])
+                : value;
+            if (IsNetwork(path)) return null;
+            var full = Path.GetFullPath(Path.Combine(root, path));
+            return IsNetwork(full) && !IsNetwork(root) ? null : full;
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        static bool IsNetwork(string path) => path.Replace('/', '\\').StartsWith(@"\\", StringComparison.Ordinal);
     }
 
     private static string Describe(FileInfo file)

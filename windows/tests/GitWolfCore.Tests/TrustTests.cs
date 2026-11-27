@@ -99,6 +99,25 @@ public sealed class TrustTests : IDisposable
         await Assert.ThrowsAsync<UntrustedRepositoryException>(() => Guarded().SnapshotAsync(10));
     }
 
+    [Fact]
+    public async Task AChangedScriptInTheHooksFolderAsksAgain()
+    {
+        var git = await InitAsync(_work);
+        await git.RunAsync(["config", "core.hooksPath", "scripts"]);
+        Directory.CreateDirectory(Path.Combine(_work, "scripts"));
+        var hook = Path.Combine(_work, "scripts", "pre-commit");
+        File.WriteAllText(hook, "#!/bin/sh\nexit 0\n");
+        var trust = new RepositoryTrust(Path.Combine(_dir, "trusted.json"));
+        var repo = new GitRepository(_work) { Trust = trust };
+        var error = await Assert.ThrowsAsync<UntrustedRepositoryException>(() => repo.SnapshotAsync(10));
+        Assert.Contains(error.Risk.Settings, s => s is { Source: "core.hooksPath", Key: "hooks/pre-commit" });
+        trust.Trust(_work, error.Risk.Fingerprint);
+        await repo.SnapshotAsync(10);
+
+        File.WriteAllText(hook, "#!/bin/sh\nexit 1\n# changed\n");
+        await Assert.ThrowsAsync<UntrustedRepositoryException>(() => repo.SnapshotAsync(10));
+    }
+
     [Theory]
     [InlineData("core.fsmonitor")]
     [InlineData("filter.x.clean")]

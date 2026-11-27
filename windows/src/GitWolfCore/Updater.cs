@@ -16,8 +16,8 @@ public sealed class VerifiedUpdate
 }
 
 /// <summary>
-/// Finds, downloads and verifies a newer release. The feed only says where an archive is: nothing is
-/// unpacked unless the archive carries a signature from the release key.
+/// Finds, downloads and verifies a newer release. The feed must be signed with the release key, and
+/// nothing is unpacked unless the archive carries a signature from it too.
 /// </summary>
 public sealed class Updater
 {
@@ -56,6 +56,8 @@ public sealed class Updater
     public async Task<AppcastItem?> CheckAsync(CancellationToken token = default)
     {
         var feed = await ReadAsync(Feed, Appcast.MaxBytes, exact: false, null, token).ConfigureAwait(false);
+        if (!Appcast.IsSigned(feed, _publicKey))
+            throw new UpdateException("The update feed’s signature doesn’t match, so it was ignored.");
         IReadOnlyList<AppcastItem> items;
         try
         {

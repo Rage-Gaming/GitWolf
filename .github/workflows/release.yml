@@ -5,8 +5,11 @@ name: Release
 #   MACOS_CERTIFICATE_P12       base64 of the self-signed "GitWolf Release" certificate (.p12)
 #   MACOS_CERTIFICATE_PASSWORD  password of that .p12
 #   GITWOLF_UPDATE_KEY          the private update-signing key (gitwolf-release keys export)
-# Both secrets come from the one-time setup in docs/RELEASING.md. The feed is served by GitHub Pages
+# The first three come from the one-time setup in docs/RELEASING.md. The feed is served by GitHub Pages
 # from the gh-pages branch.
+# Optional, to Authenticode-sign the Windows program (the release is unsigned without them):
+#   WINDOWS_CERTIFICATE_PFX       base64 of a code-signing certificate (.pfx) for Windows
+#   WINDOWS_CERTIFICATE_PASSWORD  password of that .pfx
 on:
   push:
     tags: ['v*']
@@ -100,14 +103,46 @@ jobs:
       - name: Build and package
         working-directory: windows
         shell: pwsh
+        env:
+          CERT_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
           if (-not $msbuild) { throw 'MSBuild was not found' }
           $out = Join-Path $env:RUNNER_TEMP 'app'
-          & $msbuild src\GitWolf.App\GitWolf.App.csproj -restore -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=true "-p:Version=$env:VERSION" -p:GitWolfUpdates=true -v:minimal -nologo
+          & $msbuild src\GitWolf.App\GitWolf.App.csproj -restore -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=true "-p:Version=$env:VERSION" -p:GitWolfUpdates=true -t:Publish "-p:PublishDir=$env:RUNNER_TEMP\publish\" -v:minimal -nologo
           if ($LASTEXITCODE -ne 0) { throw 'The build failed' }
           Copy-Item src\GitWolf.App\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64 $out -Recurse
+          # Only publishing compiles ahead of time, but its folder lacks the interface files of an
+          # unpackaged WinUI app. So the build is shipped, with the published libraries over it.
+          Copy-Item "$env:RUNNER_TEMP\publish\*.dll" $out -Force
           Get-ChildItem $out -Recurse -Filter *.pdb | Remove-Item
+          if ($env:CERT_PFX) {
+            $pfx = Join-Path $env:RUNNER_TEMP 'cert.pfx'
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_PFX))
+            $certificate = $null
+            try {
+              # Imported into the store, so the password never appears on a command line.
+              $password = ConvertTo-SecureString $env:CERT_PASSWORD -AsPlainText -Force
+              $certificate = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password |
+                Where-Object HasPrivateKey | Select-Object -First 1
+              if (-not $certificate) { throw 'The certificate has no private key' }
+              $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+                Sort-Object FullName | Select-Object -Last 1
+              if (-not $signtool) { throw 'signtool was not found' }
+              $files = 'GitWolf.App.exe', 'GitWolf.App.dll', 'GitWolf.Store.dll', 'GitWolfCore.dll' |
+                ForEach-Object { Join-Path $out $_ }
+              & $signtool.FullName sign /sha1 $certificate.Thumbprint /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $files
+              if ($LASTEXITCODE -ne 0) { throw 'Signing failed' }
+            }
+            finally {
+              Remove-Item $pfx
+              if ($certificate) { Remove-Item $certificate.PSPath -DeleteKey }
+            }
+          }
+          else {
+            Write-Output '::warning::No Windows certificate is configured, so the app is not code signed.'
+          }
           $zip = Join-Path $env:RUNNER_TEMP "GitWolf-$env:VERSION-windows-x64.zip"
           Compress-Archive -Path "$out\*" -DestinationPath $zip
           (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  $(Split-Path $zip -Leaf)" | Set-Content "$zip.sha256" -Encoding ascii

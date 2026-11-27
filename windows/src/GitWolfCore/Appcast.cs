@@ -29,6 +29,28 @@ public static class Appcast
 
     private const string Sparkle = "http://www.andymatuschak.org/xml-namespaces/sparkle";
     private const string DateFormat = "ddd, dd MMM yyyy HH:mm:ss";
+    private const string SignatureStart = "<!-- gitwolf-signature: ";
+    private const string SignatureEnd = " -->\n";
+
+    /// <summary>
+    /// Appends a signature over the feed's bytes, as a comment so that it is still plain XML. One file,
+    /// so the feed and its signature can't be published out of step.
+    /// </summary>
+    public static string Sign(string feed, string privateKey) =>
+        feed + SignatureStart + UpdateSigning.Sign(Encoding.UTF8.GetBytes(feed), privateKey) + SignatureEnd;
+
+    /// <summary>Whether the feed ends in a signature, by this key, over everything before it.</summary>
+    public static bool IsSigned(ReadOnlySpan<byte> feed, string publicKey)
+    {
+        var end = Encoding.ASCII.GetBytes(SignatureEnd);
+        var start = Encoding.ASCII.GetBytes(SignatureStart);
+        var at = feed.LastIndexOf(start);
+        if (at < 0 || !feed.EndsWith(end)) return false;
+        var from = at + start.Length;
+        var length = feed.Length - end.Length - from;
+        return length > 0 && UpdateSigning.Verify(feed[..at].ToArray(),
+            Encoding.ASCII.GetString(feed.Slice(from, length)), publicKey);
+    }
 
     /// <summary>The whole feed, newest first.</summary>
     public static string Render(IEnumerable<AppcastItem> items, string title = "GitWolf",
