@@ -259,8 +259,9 @@ private struct GeneralSettings: View {
                 Toggle("", isOn: $menuBarExtra).labelsHidden().toggleStyle(.switch)
             }
             Row(icon: "arrow.down.app", tint: .green, title: "Check for updates",
-                detail: "Once a day, asks GitHub for a newer release. Nothing is installed automatically", divider: false) {
+                detail: "Once a day. When a new version is found you choose to install it; it is verified before it replaces the app", divider: false) {
                 Toggle("", isOn: $checkUpdates).labelsHidden().toggleStyle(.switch)
+                    .onChange(of: checkUpdates) { _, on in UpdateManager.setAutomaticChecks(on) }
             }
         }
 

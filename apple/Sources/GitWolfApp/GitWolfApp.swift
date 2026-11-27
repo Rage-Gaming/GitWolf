@@ -6,7 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        Task { @MainActor in UpdateManager.checkInBackground() }
+        Task { @MainActor in UpdateManager.start() }
         StatusItemController.shared.sync()
         NSWindow.allowsAutomaticWindowTabbing = false
         MainMenuTidier.start()
@@ -247,7 +247,7 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
-            Button("Check for Updates…") { Task { await UpdateManager.check(userInitiated: true) } }
+            Button("Check for Updates…") { UpdateManager.checkForUpdates() }
         }
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { openWindow(id: "settings") }

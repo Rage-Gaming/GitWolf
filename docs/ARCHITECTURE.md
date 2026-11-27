@@ -20,7 +20,7 @@ apple/Sources/GitWolfApp    SwiftUI app
 | `Bisect` | `BisectState` (from `BISECT_LOG`), start/mark/reset. |
 | `Patches` | format-patch, working diff, apply/check, `am`. |
 | `Worktrees`, `Submodules` | list/add/remove worktrees; submodule status, update, add. |
-| `UpdateChecker` | `AppVersion` ordering and the GitHub latest-release lookup (injectable transport). |
+| `AppVersion`, `UpdateSigning`, `Appcast` | version ordering and build numbers; Ed25519 update signatures (Sparkle's scheme); appcast XML render/merge/parse. The app embeds Sparkle; the `gitwolf-release` tool signs archives and writes the feed. |
 | `CustomActions` | `CustomAction` and `CustomActionRunner` (shell command at repo root, env vars). |
 | `InlineDiff` | Word-level changed ranges, line pairing, folding of long unchanged runs. |
 | `RepoIcons` / `RepoIcon` | Which tile icon each repository uses in the rail: a named symbol or an imported image file (Codable, keyed by repo path). |

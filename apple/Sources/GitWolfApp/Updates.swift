@@ -1,63 +1,35 @@
 import AppKit
-import GitWolfCore
+import Sparkle
 
-/// Checks GitHub for a newer release and tells the user. It never downloads or installs anything:
-/// "Download" opens the release page in the browser, where the notarised build is attached.
+/// In-app updates with Sparkle: it checks the update feed, downloads the new version, verifies its EdDSA
+/// signature against the public key in Info.plist, replaces the app and relaunches it. Nothing is sent
+/// about the user or their repositories. A build run with `swift run` has no feed, so it never checks.
 @MainActor
 enum UpdateManager {
-    static let autoKey = "settings.checkForUpdates"
-    private static let lastCheckKey = "update.lastCheck"
-    private static let skippedKey = "update.skippedVersion"
+    /// Sparkle's own preference for checking automatically (once a day); the Settings toggle writes it.
+    static let autoKey = "SUEnableAutomaticChecks"
+    private static var controller: SPUStandardUpdaterController?
 
-    static var currentVersion: AppVersion? {
-        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String).flatMap(AppVersion.init)
+    /// Only a packaged app has the feed address and public key in its Info.plist.
+    static var isPackaged: Bool {
+        Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil && Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil
     }
 
-    /// Once a day at most, and only for packaged builds (a `swift run` binary has no version).
-    static func checkInBackground() {
-        let defaults = UserDefaults.standard
-        guard defaults.object(forKey: autoKey) as? Bool ?? true, currentVersion != nil else { return }
-        if let last = defaults.object(forKey: lastCheckKey) as? Date, Date().timeIntervalSince(last) < 86_400 { return }
-        Task { await check(userInitiated: false) }
+    static func start() {
+        guard isPackaged, controller == nil else { return }
+        controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
     }
 
-    static func check(userInitiated: Bool) async {
-        guard let current = currentVersion else {
-            if userInitiated { inform("This is a development build", "It has no version number to compare with.") }
+    static func checkForUpdates() {
+        guard let controller else {
+            let alert = NSAlert()
+            alert.messageText = "This is a development build"
+            alert.informativeText = "Updates are only available in the packaged app."
+            alert.runModal()
             return
         }
-        UserDefaults.standard.set(Date(), forKey: lastCheckKey)
-        do {
-            let release = try await UpdateChecker().newerRelease(than: current)
-            guard let release else {
-                if userInitiated { inform("GitWolf is up to date", "You have version \(current), the latest release.") }
-                return
-            }
-            if !userInitiated, UserDefaults.standard.string(forKey: skippedKey) == release.tag { return }
-            offer(release, current: current)
-        } catch {
-            if userInitiated { inform("Couldn’t check for updates", error.localizedDescription) }
-        }
+        controller.checkForUpdates(nil)
     }
 
-    private static func offer(_ release: ReleaseInfo, current: AppVersion) {
-        let alert = NSAlert()
-        alert.messageText = "GitWolf \(release.version) is available"
-        alert.informativeText = "You have \(current). " + String(release.notes.prefix(500))
-        alert.addButton(withTitle: "Download")
-        alert.addButton(withTitle: "Later")
-        alert.addButton(withTitle: "Skip This Version")
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: NSWorkspace.shared.open(release.url)
-        case .alertThirdButtonReturn: UserDefaults.standard.set(release.tag, forKey: skippedKey)
-        default: break
-        }
-    }
-
-    private static func inform(_ title: String, _ detail: String) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = detail
-        alert.runModal()
-    }
+    static func setAutomaticChecks(_ on: Bool) { controller?.updater.automaticallyChecksForUpdates = on }
 }

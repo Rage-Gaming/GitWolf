@@ -1,12 +1,12 @@
 name: Release
 
-# Pushing a tag like v1.0.0 builds, signs, notarises and publishes a macOS disk image.
-# Required repository secrets (see docs/RELEASING.md):
-#   MACOS_CERTIFICATE_P12     base64 of the Developer ID Application certificate (.p12)
-#   MACOS_CERTIFICATE_PASSWORD password of that .p12
-#   MACOS_SIGN_IDENTITY       e.g. "Developer ID Application: Your Name (TEAMID)"
-#   NOTARY_KEY_P8             contents of an App Store Connect API key (.p8)
-#   NOTARY_KEY_ID, NOTARY_ISSUER_ID   that key's id and issuer id
+# Pushing a tag like v1.0.0 builds, signs and publishes GitWolf for macOS, then updates the feed that the
+# in-app updater reads. No Apple Developer account is needed (see docs/RELEASING.md). Repository secrets:
+#   MACOS_CERTIFICATE_P12       base64 of the self-signed "GitWolf Release" certificate (.p12)
+#   MACOS_CERTIFICATE_PASSWORD  password of that .p12
+#   GITWOLF_UPDATE_KEY          the private update-signing key (gitwolf-release keys export)
+# Both secrets come from the one-time setup in docs/RELEASING.md. The feed is served by GitHub Pages
+# from the gh-pages branch.
 on:
   push:
     tags: ['v*']
@@ -16,9 +16,11 @@ permissions:
 
 jobs:
   macos:
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Test
         working-directory: apple
         run: swift test
@@ -40,22 +42,37 @@ jobs:
           list-keychains -d user -s "$KC" login.keychain-db
           EOS
           rm "$RUNNER_TEMP/cert.p12"
-      - name: Store notarytool credentials
-        env:
-          KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
-          KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+      - name: Previous feed and release notes
         run: |
-          printf '%s' "$KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
-          xcrun notarytool store-credentials gitwolf-notary --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$KEY_ID" --issuer "$ISSUER"
-          rm "$RUNNER_TEMP/AuthKey.p8"
-      - name: Build, sign, notarise
+          git fetch origin gh-pages 2>/dev/null && git show origin/gh-pages:appcast.xml > "$RUNNER_TEMP/previous-appcast.xml" || : > "$RUNNER_TEMP/previous-appcast.xml"
+          VERSION="${GITHUB_REF_NAME#v}"
+          # This version's section of the changelog, if there is one.
+          awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ {on=0} on' CHANGELOG.md > "$RUNNER_TEMP/notes.md" || true
+      - name: Build, sign, package
         working-directory: apple
         env:
-          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-          NOTARY_PROFILE: gitwolf-notary
+          SIGN_IDENTITY: GitWolf Release
+          GITWOLF_UPDATE_KEY: ${{ secrets.GITWOLF_UPDATE_KEY }}
+          PREVIOUS_APPCAST: ${{ runner.temp }}/previous-appcast.xml
+          RELEASE_NOTES: ${{ runner.temp }}/notes.md
         run: Scripts/release.sh "${GITHUB_REF_NAME#v}"
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" apple/build/release/GitWolf-*.dmg* --generate-notes --title "GitWolf ${GITHUB_REF_NAME#v}"
+        run: gh release create "$GITHUB_REF_NAME" apple/build/release/GitWolf-*.zip apple/build/release/GitWolf-*.dmg apple/build/release/GitWolf-*.sha256 --generate-notes --title "GitWolf ${GITHUB_REF_NAME#v}"
+      - name: Publish the update feed
+        run: |
+          cp apple/build/release/appcast.xml "$RUNNER_TEMP/appcast.xml"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git switch -C gh-pages origin/gh-pages
+          else
+            git switch --orphan gh-pages
+          fi
+          git rm -rfq --ignore-unmatch . || true
+          cp "$RUNNER_TEMP/appcast.xml" appcast.xml
+          touch .nojekyll
+          git add appcast.xml .nojekyll
+          git commit -m "Update the feed for $GITHUB_REF_NAME"
+          git push origin gh-pages

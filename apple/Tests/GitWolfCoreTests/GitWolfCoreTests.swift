@@ -2458,15 +2458,7 @@ private func makeTempDir() throws -> URL {
     }
 }
 
-@Suite struct UpdateCheckerTests {
-    private func checker(status: Int = 200, body: String) -> UpdateChecker {
-        UpdateChecker(repository: "o/r") { request in
-            #expect(request.url?.absoluteString == "https://api.github.com/repos/o/r/releases/latest")
-            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
-            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
-        }
-    }
-
+@Suite struct AppVersionTests {
     @Test func versionOrdering() throws {
         let v = { try #require(AppVersion($0)) }
         #expect(try v("1.10.0") > v("1.9.9"))
@@ -2474,23 +2466,6 @@ private func makeTempDir() throws -> URL {
         #expect(try v("2.0.0-beta.2") < v("2.0.0"))
         #expect(try v("2.0.0-beta.2") < v("2.0.0-beta.10"))
         #expect(AppVersion("dev") == nil)
-    }
-
-    @Test func reportsNewerRelease() async throws {
-        let body = #"{"tag_name":"v1.2.0","html_url":"https://github.com/o/r/releases/tag/v1.2.0","body":"Notes","draft":false,"prerelease":false}"#
-        let found = try await checker(body: body).newerRelease(than: try #require(AppVersion("1.1.0")))
-        #expect(found?.tag == "v1.2.0" && found?.notes == "Notes")
-        #expect(try await checker(body: body).newerRelease(than: try #require(AppVersion("1.2.0"))) == nil)
-    }
-
-    @Test func ignoresPrereleasesMissingReleasesAndForeignLinks() async throws {
-        let current = try #require(AppVersion("1.0.0"))
-        let pre = #"{"tag_name":"v9.0.0","html_url":"https://github.com/o/r/x","prerelease":true}"#
-        #expect(try await checker(body: pre).newerRelease(than: current) == nil)
-        #expect(try await checker(status: 404, body: "{}").newerRelease(than: current) == nil)
-        let evil = #"{"tag_name":"v9.0.0","html_url":"https://evil.example/download"}"#
-        #expect(try await checker(body: evil).newerRelease(than: current) == nil)
-        await #expect(throws: URLError.self) { try await checker(status: 500, body: "").newerRelease(than: current) }
     }
 }
 
@@ -2593,5 +2568,54 @@ private func makeTempDir() throws -> URL {
         let old = #"{"icons":{"/a":{"symbol":{"_0":"star"}}}}"#
         let icons = try JSONDecoder().decode(RepoIcons.self, from: Data(old.utf8))
         #expect(icons.icon(for: "/a") == .symbol("star") && icons.tints.isEmpty)
+    }
+}
+
+
+@Suite struct UpdateFeedTests {
+    @Test func signaturesVerifyAndTamperingIsCaught() throws {
+        let pair = UpdateSigning.generate()
+        let archive = Data("GitWolf-1.0.0.zip bytes".utf8)
+        let signature = try UpdateSigning.sign(archive, privateKey: pair.privateKey)
+        #expect(UpdateSigning.verify(signature, for: archive, publicKey: pair.publicKey))
+        #expect(!UpdateSigning.verify(signature, for: Data("tampered".utf8), publicKey: pair.publicKey))
+        #expect(!UpdateSigning.verify(signature, for: archive, publicKey: UpdateSigning.generate().publicKey))
+        #expect(try UpdateSigning.publicKey(forPrivateKey: pair.privateKey) == pair.publicKey)
+        #expect(Data(base64Encoded: pair.publicKey)?.count == 32 && Data(base64Encoded: signature)?.count == 64)
+        #expect(throws: UpdateSigning.Failure.self) { _ = try UpdateSigning.sign(archive, privateKey: "not a key") }
+    }
+
+    @Test func buildNumbersSortLikeVersions() {
+        #expect(AppVersion("1.2.3")?.buildNumber == 1_002_003)
+        #expect(AppVersion("v2.0")!.buildNumber > AppVersion("1.99.99")!.buildNumber)
+        #expect(AppVersion("0.1.0")!.buildNumber < AppVersion("0.1.1")!.buildNumber)
+    }
+
+    @Test func feedRoundTripsAndKeepsNewestFirst() {
+        func item(_ v: String, notes: String = "") -> AppcastItem {
+            AppcastItem(version: v, build: String(AppVersion(v)!.buildNumber), url: "https://x/GitWolf-\(v).zip", length: 10,
+                        signature: "c2ln", notesHTML: notes, date: Date(timeIntervalSince1970: 1_700_000_000))
+        }
+        var feed: [AppcastItem] = []
+        for v in ["0.1.0", "0.3.0", "0.2.0"] { feed = Appcast.merging(item(v), into: feed) }
+        #expect(feed.map(\.version) == ["0.3.0", "0.2.0", "0.1.0"])
+        feed = Appcast.merging(item("0.2.0", notes: "<p>fixed</p>"), into: feed)   // same version replaces
+        #expect(feed.count == 3 && feed[1].notesHTML == "<p>fixed</p>")
+
+        let xml = Appcast.render(feed)
+        #expect(xml.contains("sparkle:edSignature=\"c2ln\"") && xml.contains("<sparkle:shortVersionString>0.3.0<"))
+        let back = Appcast.parse(Data(xml.utf8))
+        #expect(back.map(\.version) == ["0.3.0", "0.2.0", "0.1.0"])
+        #expect(back[1].notesHTML == "<p>fixed</p>" && back[0].url == "https://x/GitWolf-0.3.0.zip" && back[0].length == 10)
+        #expect(back[0].signature == "c2ln" && back[0].build == "3000")
+    }
+
+    @Test func feedIsCappedAndEscaped() {
+        var feed: [AppcastItem] = []
+        for i in 0..<30 {
+            feed = Appcast.merging(AppcastItem(version: "1.0.\(i)", build: "\(1_000_000 + i)", url: "https://x/a?b=1&c=2", length: 1, signature: "s"), into: feed)
+        }
+        #expect(feed.count == Appcast.maxItems && feed[0].version == "1.0.29")
+        #expect(Appcast.render([feed[0]]).contains("a?b=1&amp;c=2"))
     }
 }

@@ -420,12 +420,14 @@ Rail: each repository's tile shows the result of its checked-out commit in the t
 
 ## 9a. Updates and releases
 
-- **Update check** [core `UpdateChecker`, `AppVersion`; ui `UpdateManager`]. `GET /repos/<repo>/releases/latest`
-  with no credentials. Ignored: drafts, pre-releases, 404 (no releases), and any `html_url` that is not
-  `https://github.com/...`. Offered through an alert with Download (opens the page), Later, Skip This
-  Version. Automatic check at most once a day, only for packaged builds that have a version; setting
-  `checkForUpdates` (default on). Also a menu command. Never downloads or installs.
-- Releases are produced by `Scripts/release.sh` / `docs/RELEASING.md`.
+- **In-app updates** [core `UpdateSigning`, `Appcast`, `AppVersion`; ui `UpdateManager` wrapping Sparkle's
+  `SPUStandardUpdaterController`]. The app reads an appcast (`SUFeedURL`), verifies each archive's EdDSA
+  signature against `SUPublicEDKey`, and installs it in place after the user confirms (Sparkle's standard
+  window with release notes, *Install and Relaunch*, *Skip This Version*, *Remind Me Later*). Automatic
+  check once a day, setting `SUEnableAutomaticChecks` (Settings > Check for updates, default on); also
+  *GitWolf > Check for Updates…*. Builds without a feed or key (development builds) show an explanatory alert.
+  No network access happens in development builds.
+- Releases are produced by `Scripts/release.sh` / `docs/RELEASING.md` (self-signed, free; no notarisation).
 
 ## 9b. Accessibility and localisation
 

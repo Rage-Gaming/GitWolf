@@ -1,44 +1,72 @@
 #!/usr/bin/env bash
-# Builds a signed, notarised, stapled GitWolf-<version>.dmg in build/release/.
+# Builds a release: GitWolf-<version>.zip (what the in-app updater downloads), GitWolf-<version>.dmg (first
+# install), checksums, and an updated appcast.xml signed with your update key. Output: build/release/.
 #
-#   SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-#   NOTARY_PROFILE=gitwolf-notary \
 #   Scripts/release.sh 1.0.0
 #
-# One-time setup (credentials stay in your keychain, never in this repo or on a command line):
-#   xcrun notarytool store-credentials gitwolf-notary --apple-id you@example.com --team-id TEAMID
-# (it prompts for an app-specific password). See docs/RELEASING.md.
+# Environment:
+#   SIGN_IDENTITY     default "GitWolf Release", the self-signed certificate from Scripts/make-signing-cert.sh.
+#                     A Developer ID Application identity works too.
+#   NOTARY_PROFILE    optional: also notarise (needs a paid Apple Developer ID; sets the hardened runtime)
+#   GITWOLF_UPDATE_KEY  private update-signing key; defaults to the one in your login Keychain
+#   PREVIOUS_APPCAST  existing appcast.xml to add this release to (so earlier releases stay listed)
+#   RELEASE_NOTES     file with this release's notes (Markdown/plain text), shown in the update window
+#   DOWNLOAD_BASE     default https://github.com/ipuppyyt/GitWolf/releases/download
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="${1:?usage: release.sh <version>, e.g. 1.0.0}"
-: "${SIGN_IDENTITY:?set SIGN_IDENTITY to your Developer ID Application identity}"
-: "${NOTARY_PROFILE:?set NOTARY_PROFILE to a notarytool keychain profile}"
+export SIGN_IDENTITY="${SIGN_IDENTITY:-GitWolf Release}"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+BASE="${DOWNLOAD_BASE:-https://github.com/ipuppyyt/GitWolf/releases/download}"
 
 OUT="build/release"
 rm -rf "$OUT"; mkdir -p "$OUT"
 
-VERSION="$VERSION" SIGN_IDENTITY="$SIGN_IDENTITY" Scripts/bundle.sh release
-codesign --verify --deep --strict --verbose=2 build/GitWolf.app
+if [ -n "${NOTARY_PROFILE:-}" ]; then export HARDENED=1; fi
+VERSION="$VERSION" Scripts/bundle.sh release
 
-# Notarise the app (zipped), then staple the ticket to it.
-ditto -c -k --keepParent build/GitWolf.app "$OUT/GitWolf-notarize.zip"
-xcrun notarytool submit "$OUT/GitWolf-notarize.zip" --keychain-profile "$NOTARY_PROFILE" --wait
-xcrun stapler staple build/GitWolf.app
-rm "$OUT/GitWolf-notarize.zip"
+if [ -n "${NOTARY_PROFILE:-}" ]; then
+  ditto -c -k --keepParent build/GitWolf.app "$OUT/GitWolf-notarize.zip"
+  xcrun notarytool submit "$OUT/GitWolf-notarize.zip" --keychain-profile "$NOTARY_PROFILE" --wait
+  xcrun stapler staple build/GitWolf.app
+  rm "$OUT/GitWolf-notarize.zip"
+fi
 
-# Disk image with an Applications shortcut; sign, notarise and staple it as well.
+# The archive the updater downloads. ditto keeps the bundle's symlinks and attributes intact.
+ZIP="$OUT/GitWolf-$VERSION.zip"
+ditto -c -k --sequesterRsrc --keepParent build/GitWolf.app "$ZIP"
+
+# Disk image for the first install, with a note on opening an app that isn't notarised.
 STAGE="$(mktemp -d)"
 cp -R build/GitWolf.app "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
+cat > "$STAGE/Read Me First.txt" <<'TXT'
+Drag GitWolf to Applications.
+
+The first time you open it, macOS may say it can't verify the app (GitWolf is free and open source and
+isn't notarised by Apple). To open it once:
+  1. Try to open GitWolf, then click Done.
+  2. Open System Settings > Privacy & Security, scroll down, and click "Open Anyway" next to GitWolf.
+Or run this in Terminal:  xattr -dr com.apple.quarantine /Applications/GitWolf.app
+
+You only do this once. Updates arrive inside the app and don't ask again.
+TXT
 DMG="$OUT/GitWolf-$VERSION.dmg"
 hdiutil create -volname "GitWolf" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 rm -rf "$STAGE"
-codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
-xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
-xcrun stapler staple "$DMG"
+if [ -n "${NOTARY_PROFILE:-}" ]; then
+  codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
+  xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+  xcrun stapler staple "$DMG"
+fi
 
-( cd "$OUT" && shasum -a 256 "GitWolf-$VERSION.dmg" > "GitWolf-$VERSION.dmg.sha256" )
-spctl --assess --type open --context context:primary-signature --verbose "$DMG" || true
-echo "Done: $DMG"
+( cd "$OUT" && shasum -a 256 "GitWolf-$VERSION.zip" "GitWolf-$VERSION.dmg" > "GitWolf-$VERSION.sha256" )
+
+# Sign the archive with the update key and add it to the feed.
+ARGS=(appcast --version "$VERSION" --archive "$ZIP" --url "$BASE/v$VERSION/GitWolf-$VERSION.zip" --out "$OUT/appcast.xml")
+[ -n "${PREVIOUS_APPCAST:-}" ] && [ -s "$PREVIOUS_APPCAST" ] && ARGS+=(--feed "$PREVIOUS_APPCAST")
+[ -n "${RELEASE_NOTES:-}" ] && [ -s "$RELEASE_NOTES" ] && ARGS+=(--notes "$RELEASE_NOTES")
+swift run -c release gitwolf-release "${ARGS[@]}"
+
+echo "Done. Upload GitWolf-$VERSION.zip, .dmg and .sha256 to the GitHub release, and publish appcast.xml."

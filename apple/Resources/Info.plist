@@ -15,5 +15,12 @@
     <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <!-- In-app updates (Sparkle). The feed is published on GitHub Pages by the release workflow; updates are
+         accepted only when signed with the private half of this public key (see docs/RELEASING.md). -->
+    <key>SUFeedURL</key><string>https://ipuppyyt.github.io/GitWolf/appcast.xml</string>
+    <key>SUPublicEDKey</key><string>762/jLI7hK4y8xJgidyDo4SK96Gt8lFRbZcAp/sycXI=</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUScheduledCheckInterval</key><integer>86400</integer>
+    <key>SUAllowsAutomaticUpdates</key><false/>
 </dict>
 </plist>
