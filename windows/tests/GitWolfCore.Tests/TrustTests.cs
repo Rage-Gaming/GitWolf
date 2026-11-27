@@ -67,6 +67,38 @@ public sealed class TrustTests : IDisposable
         Assert.Single((await Guarded().SnapshotAsync(10)).Commits);
     }
 
+    [Fact]
+    public async Task HooksNeedTrustAndAChangedHookAsksAgain()
+    {
+        await InitAsync(_work);
+        var repo = Guarded();
+        await repo.SnapshotAsync(10);
+        var hook = Path.Combine(_work, ".git", "hooks", "post-checkout");
+        File.WriteAllText(hook, $"#!/bin/sh\n{Touch("ran")}\n");
+
+        var error = await Assert.ThrowsAsync<UntrustedRepositoryException>(
+            () => repo.AddWorktreeAsync(Path.Combine(_dir, "other"), "side", newBranch: true));
+        Assert.Equal("hooks/post-checkout", Assert.Single(error.Risk.Settings).Key);
+        Assert.False(Ran("ran"));
+
+        var trust = new RepositoryTrust(Path.Combine(_dir, "trusted.json"));
+        trust.Trust(_work, error.Risk.Fingerprint);
+        var trusted = new GitRepository(_work) { Trust = trust };
+        await trusted.SnapshotAsync(10);
+
+        File.WriteAllText(hook, "#!/bin/sh\nexit 0\n# changed\n");
+        await Assert.ThrowsAsync<UntrustedRepositoryException>(() => trusted.SnapshotAsync(10));
+    }
+
+    [Fact]
+    public async Task AHooksFolderSetByTheRepositoryNeedsTrust()
+    {
+        var git = await InitAsync(_work);
+        await git.RunAsync(["config", "core.hooksPath", "scripts"]);
+
+        await Assert.ThrowsAsync<UntrustedRepositoryException>(() => Guarded().SnapshotAsync(10));
+    }
+
     [Theory]
     [InlineData("core.fsmonitor")]
     [InlineData("filter.x.clean")]

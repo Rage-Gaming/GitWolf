@@ -171,6 +171,7 @@ public sealed partial class RemoteTests
     [InlineData("-bad", "https://e.com/a")]
     [InlineData("ok", "https://me:secret@e.com/a")]
     [InlineData("ok", "https://:secret@e.com/a")]
+    [InlineData("ok", "https://ghp_abc123@e.com/a")]
     [InlineData("ok", "--upload-pack=evil")]
     [InlineData("ok", "ext::sh -c id")]
     [InlineData("ok", "   ")]
@@ -187,5 +188,11 @@ public sealed partial class RemoteTests
     [InlineData("https://:token@e.com/a", "https://e.com/a")]
     [InlineData("https://e.com:8443/a", "https://e.com:8443/a")]
     [InlineData("git@e.com:a.git", "git@e.com:a.git")]
+    [InlineData("https://ghp_abc123@e.com/a", "https://e.com/a")]
+    [InlineData("HTTPS://github_pat_abc@e.com/a", "HTTPS://e.com/a")]
+    [InlineData("https://0123456789abcdef0123456789abcdef01234567@e.com/a", "https://e.com/a")]
+    [InlineData("https://glpat-abc:x-oauth-basic@e.com/a", "https://e.com/a")]
+    [InlineData("https://someone@e.com/a", "https://someone@e.com/a")]
+    [InlineData("ssh://git@e.com/a", "ssh://git@e.com/a")]
     public void PasswordsAreHidden(string url, string shown) => Assert.Equal(shown, GitRepository.Redact(url));
 }

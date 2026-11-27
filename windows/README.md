@@ -50,7 +50,7 @@ Provider features: OAuth sign-in (`OAuth.cs`, `OAuthLoopback.cs`), pull requests
 (`Collab.cs`, `CollabActions.cs`), CI checks (`CiStatus.cs`), notifications (`Notifications.cs`),
 fork (`Fork.cs`) and a Markdown subset (`Markdown.cs`).
 
-358 tests pass against real git and stubbed HTTP.
+367 tests pass against real git and stubbed HTTP.
 
 Differences from macOS, all deliberately stricter:
 
@@ -130,16 +130,17 @@ UI (`src/GitWolf.App/`):
 ### Trusting a repository
 
 A folder's `.git/config` (or a submodule's) can make git run programs, for example through
-`core.fsmonitor`, filters, `diff.external`, `gpg.program` or `remote.<name>.uploadpack`. GitWolf
-reads the configuration first, and if it holds such a setting, or an HTTP or proxy option, runs no
-other git command there until you agree to the listed settings. It asks again when they change.
+`core.fsmonitor`, filters, `diff.external`, `gpg.program`, `core.hooksPath` or
+`remote.<name>.uploadpack`, and so can scripts in `.git/hooks`. GitWolf reads these first, and if it
+finds a hook, such a setting, or an HTTP or proxy option, runs no other git command there until you
+agree to what is listed. It asks again when the list or a hook script changes.
 Answers are kept in `%LOCALAPPDATA%\GitWolf\trusted.json`. `git lfs install --local` is one
 ordinary reason to be asked.
 
 Known limits:
 
-- Hooks in a repository still run on commit, checkout, merge, pull and push, and pull and push hooks
-  can read the account token. Only use those on folders you trust.
+- In a trusted repository, pull and push hooks can read the account token.
+- Scripts that `core.hooksPath` points to aren't checked for changes, only the setting itself.
 - A trusted repository's settings run with your rights, including during pull and push.
 
 ## Building
