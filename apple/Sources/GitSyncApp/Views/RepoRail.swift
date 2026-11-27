@@ -7,6 +7,9 @@ import SwiftUI
 /// shown by a solid tile plus an edge marker; nothing scales or moves on hover.
 struct RepoRail: View {
     let workspace: Workspace
+    @State private var pickerFor: PickerTarget?
+
+    private struct PickerTarget: Identifiable { let id: String }
 
     fileprivate static let width: CGFloat = 64
     fileprivate static let tile: CGFloat = 40
@@ -29,10 +32,7 @@ struct RepoRail: View {
                                  close: { workspace.close(store) },
                                  icon: workspace.repoIcons.icon(for: store.id),
                                  setIcon: { workspace.setIcon($0, for: store.id) },
-                                 chooseImage: {
-                                     // Let the popover finish closing before the dialog opens.
-                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { workspace.chooseIconImage(for: store.id) }
-                                 },
+                                 changeIcon: { pickerFor = PickerTarget(id: store.id) },
                                  dropImage: { workspace.setIconImage(from: $0, for: store.id) })
                     }
                 }
@@ -45,6 +45,15 @@ struct RepoRail: View {
         .frame(width: Self.width)
         .background(.black.opacity(0.04))
         .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.07)).frame(width: 1) }
+        // A sheet on the window, not a popover: popovers opened from a rail tile detach from the window.
+        .sheet(item: $pickerFor) { target in
+            RepoIconPicker(current: workspace.repoIcons.icon(for: target.id),
+                           choose: { workspace.setIcon($0, for: target.id) },
+                           chooseImage: {
+                               // The picker sheet has to close before the file dialog can open on the window.
+                               DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { workspace.chooseIconImage(for: target.id) }
+                           })
+        }
     }
 }
 
@@ -92,10 +101,9 @@ private struct RepoTile: View {
     let close: () -> Void
     let icon: RepoIcon?
     let setIcon: (RepoIcon?) -> Void
-    let chooseImage: () -> Void
+    let changeIcon: () -> Void
     let dropImage: (URL) -> Void
     @State private var hovering = false
-    @State private var picking = false
 
     private var initials: String {
         let words = store.name.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
@@ -115,9 +123,6 @@ private struct RepoTile: View {
                 .clipShape(shape)
                 .overlay(alignment: .bottomTrailing) { badge }
         }
-        .popover(isPresented: $picking, arrowEdge: .trailing) {
-            RepoIconPicker(path: store.id, current: icon, choose: setIcon, importImage: chooseImage)
-        }
         .buttonStyle(.plain)
         .frame(width: RepoRail.width, height: RepoRail.tile)
         .overlay(alignment: .leading) { SelectionMarker(selected: selected) }
@@ -132,10 +137,7 @@ private struct RepoTile: View {
             return true
         }
         .contextMenu {
-            Button("Change Icon…") {
-                // A popover opened while the context menu is still closing is dropped by AppKit.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { picking = true }
-            }
+            Button("Change Icon…", action: changeIcon)
             if icon != nil { Button("Remove Icon") { setIcon(nil) } }
             Divider()
             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.repo.root]) }

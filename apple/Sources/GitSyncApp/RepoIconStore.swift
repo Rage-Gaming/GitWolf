@@ -61,33 +61,33 @@ enum RepoIconImages {
     }
 }
 
-/// The popover for choosing a repository's tile icon.
+/// The sheet for choosing a repository's tile icon.
 struct RepoIconPicker: View {
-    let path: String
     let current: RepoIcon?
     let choose: (RepoIcon?) -> Void
-    let importImage: () -> Void
+    let chooseImage: () -> Void
     @Environment(\.dismiss) private var dismiss
 
-    private let columns = Array(repeating: GridItem(.fixed(34), spacing: 6), count: 5)
+    private let columns = Array(repeating: GridItem(.fixed(40), spacing: 8), count: 5)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Repository Icon").font(.headline)
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     ForEach(RepoIcons.symbolChoices, id: \.0) { group, names in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(group.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(0.7)
                                 .foregroundStyle(.secondary)
-                            LazyVGrid(columns: columns, spacing: 6) {
+                            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                                 ForEach(names, id: \.self) { name in
                                     let on = current == .symbol(name)
                                     Button { choose(.symbol(name)); dismiss() } label: {
-                                        Image(systemName: name).font(.system(size: 15))
-                                            .frame(width: 34, height: 34)
+                                        Image(systemName: name).font(.system(size: 17))
+                                            .frame(width: 40, height: 40)
                                             .foregroundStyle(on ? Color.white : Color.primary)
                                             .background(on ? Theme.brand : Color.primary.opacity(0.07),
-                                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                                     }
                                     .buttonStyle(.plain)
                                     .accessibilityLabel(name.replacingOccurrences(of: ".", with: " "))
@@ -96,18 +96,17 @@ struct RepoIconPicker: View {
                         }
                     }
                 }
-                .padding(.trailing, 4)
             }
-            .frame(height: 280)
+            .frame(height: 300)
             Divider()
             HStack {
-                Button("Choose Image…") { dismiss(); importImage() }
-                Spacer()
+                Button("Choose Image…") { dismiss(); chooseImage() }
                 Button("Use Initials") { choose(nil); dismiss() }.disabled(current == nil)
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            .controlSize(.small)
         }
-        .padding(14)
-        .frame(width: 224 + 28 + 14)
+        .padding(18)
+        .frame(width: 5 * 40 + 4 * 8 + 36)
     }
 }
