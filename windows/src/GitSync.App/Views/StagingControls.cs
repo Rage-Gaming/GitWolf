@@ -13,8 +13,10 @@ namespace GitSync.App.Views;
 
 /// <summary>What diff rows need to offer staging. Absent for read-only diffs.</summary>
 /// <param name="Staged">True when showing staged changes, where actions unstage.</param>
+/// <param name="Stash">Stashes a hunk; null when this file's hunks can't be stashed.</param>
 internal sealed record DiffStaging(
-    bool Staged, IReadOnlySet<int> Selection, Action<int, bool> Toggle, Action<int, PatchAction> Hunk);
+    bool Staged, IReadOnlySet<int> Selection, Action<int, bool> Toggle, Action<int, PatchAction> Hunk,
+    Action<int>? Stash = null);
 
 /// <summary>
 /// The clickable gutter of a changed line: click to select it, Shift-click for a range. Created only
@@ -92,6 +94,7 @@ internal sealed partial class HunkActions : StackPanel
 {
     private readonly Button _apply;
     private readonly Button _discard;
+    private readonly Button _stash;
     private DiffStaging? _staging;
     private int _hunk;
 
@@ -110,9 +113,18 @@ internal sealed partial class HunkActions : StackPanel
         AutomationProperties.SetName(_discard, "Discard hunk");
         ToolTipService.SetToolTip(_discard, "Discard hunk");
         _discard.Click += (_, _) => _staging?.Hunk(_hunk, PatchAction.Discard);
+        _stash = new Button { Content = "Stash" };
+        Size(_stash);
+        AutomationProperties.SetName(_stash, "Stash hunk");
+        ToolTipService.SetToolTip(_stash, "Stash only this hunk");
+        _stash.Click += (_, _) => _staging?.Stash?.Invoke(_hunk);
         Children.Add(_apply);
+        Children.Add(_stash);
         Children.Add(_discard);
     }
+
+    /// <summary>The room a header row keeps for these buttons.</summary>
+    internal static double WidthFor(DiffStaging staging) => staging.Stash is null ? 170 : 230;
 
     private static void Size(Button button)
     {
@@ -143,5 +155,6 @@ internal sealed partial class HunkActions : StackPanel
         actions.Visibility = Visibility.Visible;
         actions._apply.Content = staging.Staged ? "Unstage Hunk" : "Stage Hunk";
         actions._discard.Visibility = staging.Staged ? Visibility.Collapsed : Visibility.Visible;
+        actions._stash.Visibility = staging.Stash is null ? Visibility.Collapsed : Visibility.Visible;
     }
 }

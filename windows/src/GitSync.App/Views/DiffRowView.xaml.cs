@@ -10,7 +10,6 @@ public sealed partial class DiffRowView : UserControl
     /// <summary>Longer lines are cut for display so one minified file can't stall layout.</summary>
     internal const int MaxColumns = 2000;
 
-    private const double ActionsWidth = 170;
     private LineSelector? _selector;
     private HunkActions? _actions;
 
@@ -61,11 +60,12 @@ public sealed partial class DiffRowView : UserControl
         if (header && staging is not null && _actions is not null)
         {
             // At the right edge of what is visible, however long the longest line is.
-            var visible = Math.Max(visibleWidth - 8, ActionsWidth * 2);
+            var actionsWidth = HunkActions.WidthFor(staging);
+            var visible = Math.Max(visibleWidth - 8, actionsWidth * 2);
             Grid.SetColumnSpan(_actions, 4);
             _actions.HorizontalAlignment = HorizontalAlignment.Left;
-            _actions.Margin = new Thickness(visible - ActionsWidth, 0, 0, 0);
-            Code.MaxWidth = Math.Max(visible - ActionsWidth - 120, 80);
+            _actions.Margin = new Thickness(visible - actionsWidth, 0, 0, 0);
+            Code.MaxWidth = Math.Max(visible - actionsWidth - 120, 80);
             Code.TextTrimming = TextTrimming.CharacterEllipsis;
         }
         Old.Text = line.OldNumber?.ToString() ?? "";

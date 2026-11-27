@@ -41,6 +41,7 @@ public sealed partial class RepositoryStore
         SetSelectedCommit(null);
         SetDiff(null);
         SetCommitDetails([], "");
+        ClearStash();
     }
 
     /// <summary>
@@ -57,6 +58,11 @@ public sealed partial class RepositoryStore
         }
         // A comparison is between fixed commits, so its selection stays valid.
         if (Mode == StoreMode.Compare) return;
+        if (Mode == StoreMode.Stash)
+        {
+            ReconcileStash();
+            return;
+        }
 
         if (SelectedTarget is not { } target) return;
         (DiffSource Source, IReadOnlyList<FileChange> Files)[] areas =
@@ -214,6 +220,11 @@ public sealed partial class RepositoryStore
         }
         SetLineSelection(selection);
     }
+
+    /// <summary>A hunk can be stashed when the file has unstaged changes only.</summary>
+    public bool CanStashHunk =>
+        CanPatch && SelectedTarget is { } target && target.Source == DiffSource.Unstaged
+        && !Status.Staged.Any(f => f.Path == target.Path);
 
     // MARK: Notifying setters
 

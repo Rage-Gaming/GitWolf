@@ -24,7 +24,7 @@ public sealed partial class GitRepository
 
     private GitRunner Git => new(Root, GitPath);
 
-    private const string EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+    internal const string EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
     public GitRepository(string root, string? gitPath = null, int contextLines = 4)
     {
@@ -224,7 +224,7 @@ public sealed partial class GitRepository
     public async Task<List<GitTag>> TagsAsync()
     {
         var data = await Git.RunAsync(
-            ["for-each-ref", "--format=%(refname:short)%1f%(objectname)", "--sort=-creatordate", "refs/tags"],
+            ["for-each-ref", $"--format={RefParser.TagFormat}", "--sort=-creatordate", "refs/tags"],
             readOnly: true);
         return RefParser.ParseTags(data);
     }
@@ -368,21 +368,13 @@ public sealed partial class GitRepository
 
     // MARK: Tags
 
-    public Task CreateTagAsync(string name, string hash) => Git.RunAsync(["tag", Operand(name), Operand(hash)]);
+    /// <summary>A message makes an annotated tag (with tagger and date); without one it is lightweight.</summary>
+    public Task CreateTagAsync(string name, string hash, string message = "") =>
+        Git.RunAsync(message.Trim() is { Length: > 0 } text
+            ? ["tag", "-a", "-m", text, Operand(name), Operand(hash)]
+            : ["tag", Operand(name), Operand(hash)]);
+
     public Task DeleteTagAsync(string name) => Git.RunAsync(["tag", "-d", Operand(name)]);
-
-    // MARK: Stash
-
-    public async Task StashPushAsync(string message)
-    {
-        var args = new List<string> { "stash", "push", "--include-untracked" };
-        if (message.Length > 0) args.AddRange(["-m", message]);
-        await Git.RunAsync(args);
-    }
-
-    public Task StashApplyAsync(string reference) => Git.RunAsync(["stash", "apply", Operand(reference)]);
-    public Task StashPopAsync(string reference) => Git.RunAsync(["stash", "pop", Operand(reference)]);
-    public Task StashDropAsync(string reference) => Git.RunAsync(["stash", "drop", Operand(reference)]);
 
     // MARK: Remotes
 

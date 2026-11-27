@@ -9,7 +9,7 @@ internal enum SidebarKind { Header, LocalBranch, RemoteBranch, Tag, Stash, Remot
 
 internal sealed record SidebarRow(
     SidebarKind Kind, SidebarKind Section, string Title, string Trailing = "",
-    string? Hash = null, Branch? Branch = null, Stash? Stash = null, bool IsOpen = false);
+    string? Hash = null, Branch? Branch = null, Stash? Stash = null, bool IsOpen = false, string? Tip = null);
 
 /// <summary>
 /// A place in the list. Its row changes without the list being told, so the row stays on screen
@@ -90,7 +90,7 @@ public sealed partial class SidebarRowView : UserControl
         Turn(row.IsOpen, animate);
         Root.Padding = new Thickness(row.Kind == SidebarKind.RemoteBranch ? 20 : 0, 0, 0, 0);
         ToolTipService.SetToolTip(this, row.Branch is { } branch && !current
-            ? $"{branch.Name}\nDouble-click to check out" : header || note ? null : row.Title);
+            ? $"{branch.Name}\nDouble-click to check out" : header || note ? null : row.Tip ?? row.Title);
 
         CurrentMark.Visibility = row.Kind == SidebarKind.LocalBranch && current ? Visibility.Visible : Visibility.Collapsed;
         if (row.Kind is SidebarKind.LocalBranch or SidebarKind.RemoteBranch)

@@ -108,7 +108,9 @@ public sealed record Branch(
     string? Upstream,
     int Ahead,
     int Behind,
-    string Hash)
+    string Hash,
+    // The upstream branch was deleted on the remote.
+    bool UpstreamGone = false)
 {
     public string Id => FullRef;
 
@@ -129,7 +131,8 @@ public sealed record Branch(
     public string ShortName => Remote is { } remote ? Name[(remote.Length + 1)..] : Name;
 }
 
-public sealed record GitTag(string Name, string Hash)
+/// <param name="Message">The first line of an annotated tag's message.</param>
+public sealed record GitTag(string Name, string Hash, bool IsAnnotated = false, string Message = "")
 {
     public string Id => Name;
 }

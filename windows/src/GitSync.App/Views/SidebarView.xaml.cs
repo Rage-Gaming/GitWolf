@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using GitSync.App.Services;
 using GitSync.Core;
 using GitSync.Store;
 using Microsoft.UI.Xaml;
@@ -80,7 +81,9 @@ public sealed partial class SidebarView : UserControl
             }
 
         if (Section(SidebarKind.Tag, "TAGS", store.Tags.Count, "No tags"))
-            rows.AddRange(store.Tags.Select(t => new SidebarRow(SidebarKind.Tag, SidebarKind.Tag, t.Name, "", t.Hash)));
+            rows.AddRange(store.Tags.Select(t => new SidebarRow(SidebarKind.Tag, SidebarKind.Tag, t.Name, "", t.Hash,
+                Tip: $"{t.Name}\n" + (!t.IsAnnotated ? "Lightweight tag"
+                    : t.Message.Length > 0 ? $"Annotated: {t.Message}" : "Annotated tag"))));
 
         if (Section(SidebarKind.Stash, "STASHES", store.Stashes.Count, "No stashes"))
             rows.AddRange(store.Stashes.Select(x =>
@@ -114,6 +117,10 @@ public sealed partial class SidebarView : UserControl
         {
             if (!_openRemotes.Remove(row.Title)) _openRemotes.Add(row.Title);
             ShowToggled();
+        }
+        else if (row.Stash is { } stash)
+        {
+            _ = _store?.SelectStashAsync(stash);
         }
         else if (row.Hash is { } hash)
         {
@@ -157,6 +164,12 @@ public sealed partial class SidebarView : UserControl
                     $"Rebase onto \u201c{branch.Name}\u201d?",
                     "The current branch\u2019s commits are rewritten on top of it. Uncommitted work is kept.",
                     "Rebase", () => store.RebaseOntoAsync(branch.Name)), !branch.IsCurrent && store.Operation is null);
+                Add("New branch from here\u2026",
+                    () => _ = Dialogs.NewBranchAsync(XamlRoot, store, branch.Name));
+                Add("Rename\u2026", () => _ = BranchDialogs.RenameAsync(XamlRoot, store, branch.Name));
+                menu.Items.Add(TrackingMenu(store, branch));
+                Add("Clean up branches\u2026", () => _ = BranchDialogs.CleanupAsync(XamlRoot, store));
+                menu.Items.Add(new MenuFlyoutSeparator());
                 Add("Delete branch…", () => _ = ConfirmAsync(
                     $"Delete branch “{branch.Name}”?", "Git refuses if it has unmerged commits.", "Delete",
                     () => store.DeleteBranchAsync(branch.Name)), !branch.IsCurrent);
@@ -196,6 +209,7 @@ public sealed partial class SidebarView : UserControl
                 // stash@{n} shifts when stashes change, so only act if the ref still means the same stash.
                 Task<bool> IfUnchanged(Func<string, Task<bool>> action) =>
                     store.Stashes.Contains(stash) ? action(stash.Ref) : Task.FromResult(false);
+                Add("Preview changes", () => _ = store.SelectStashAsync(stash));
                 Add("Apply", () => _ = IfUnchanged(store.StashApplyAsync));
                 Add("Pop", () => _ = IfUnchanged(store.StashPopAsync));
                 Add("Drop…", () => _ = ConfirmAsync(
@@ -210,6 +224,26 @@ public sealed partial class SidebarView : UserControl
         var target = (FrameworkElement)e.OriginalSource;
         if (e.TryGetPosition(target, out var point)) menu.ShowAt(target, point);
         else menu.ShowAt(target);
+    }
+
+    private static MenuFlyoutSubItem TrackingMenu(RepositoryStore store, Branch branch)
+    {
+        var menu = new MenuFlyoutSubItem
+        {
+            Text = "Track remote branch", IsEnabled = store.RemoteBranches.Count > 0 || branch.Upstream is not null,
+        };
+        foreach (var remote in store.RemoteBranches)
+        {
+            var item = new ToggleMenuFlyoutItem { Text = remote.Name, IsChecked = remote.Name == branch.Upstream };
+            item.Click += (_, _) => _ = store.SetUpstreamAsync(branch.Name, remote.Name);
+            menu.Items.Add(item);
+        }
+        if (branch.Upstream is null) return menu;
+        var stop = new MenuFlyoutItem { Text = "Stop tracking" };
+        stop.Click += (_, _) => _ = store.SetUpstreamAsync(branch.Name, null);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(stop);
+        return menu;
     }
 
     private async Task ConfirmAsync(string title, string message, string verb, Func<Task<bool>> action)

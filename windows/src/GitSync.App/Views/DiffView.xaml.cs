@@ -85,7 +85,8 @@ public sealed partial class DiffView : UserControl
         var staging = shown is not null && store.CanPatch ? Staging(store) : null;
         // Rows carry buttons and selection marks, so they are redrawn when either changes.
         var redraw = staging is null != _staging is null || staging?.Staged != _staging?.Staged
-            || !ReferenceEquals(staging?.Selection, _staging?.Selection);
+            || !ReferenceEquals(staging?.Selection, _staging?.Selection)
+            || staging?.Stash is null != _staging?.Stash is null;
         _staging = staging;
         ShowSelectionBar();
         if (ReferenceEquals(_diff, shown))

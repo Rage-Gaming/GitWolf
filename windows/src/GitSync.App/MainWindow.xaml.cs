@@ -207,6 +207,8 @@ public sealed partial class MainWindow : Window
         Changes.Visibility = When(store.Mode == StoreMode.Changes);
         Compare.Visibility = When(store.Mode == StoreMode.Compare);
         if (store.Mode == StoreMode.Compare) Compare.Show(store);
+        StashPanel.Visibility = When(store.Mode == StoreMode.Stash);
+        ShowStash();
         TopBar.Show(store);
         History.ShowCommits();
         Changes.ShowFiles();
@@ -221,11 +223,12 @@ public sealed partial class MainWindow : Window
         var history = store.Mode == StoreMode.History;
         var comparing = store.Mode == StoreMode.Compare;
         // Nothing to show on the right until a commit, or a compared file, is picked.
-        var noCommit = (history && store.SelectedCommit is null) || (comparing && store.SelectedTarget is null);
-        NoCommit.Text = comparing ? "Select a file to see its changes" : "Select a commit to see its changes";
+        var previewing = comparing || store.Mode == StoreMode.Stash;
+        var noCommit = (history && store.SelectedCommit is null) || (previewing && store.SelectedTarget is null);
+        NoCommit.Text = previewing ? "Select a file to see its changes" : "Select a commit to see its changes";
         Detail.Visibility = When(history && !noCommit);
         // A conflicted file gets the resolver instead of its diff.
-        var conflict = !history && !comparing && store.SelectedTarget is { } target && target.Source == DiffSource.Conflicted
+        var conflict = store.Mode == StoreMode.Changes && store.SelectedTarget is { } target && target.Source == DiffSource.Conflicted
             && store.Status.Conflicted.Any(f => f.Path == target.Path)
                 ? target.Path : null;
         Diff.Visibility = When(!noCommit && conflict is null);
@@ -234,6 +237,11 @@ public sealed partial class MainWindow : Window
         if (history) Detail.Show(store);
         Conflict.Show(store, conflict);
         if (conflict is null) Diff.Show(store);
+    }
+
+    private void ShowStash()
+    {
+        if (_store is { Mode: StoreMode.Stash } store) StashPanel.Show(store);
     }
 
     private static Visibility When(bool condition) => condition ? Visibility.Visible : Visibility.Collapsed;
@@ -266,6 +274,7 @@ public sealed partial class MainWindow : Window
             case nameof(RepositoryStore.SelectedTarget):
                 History.ShowSelection();
                 Changes.ShowSelection();
+                ShowStash();
                 ShowDetail();
                 break;
             case nameof(RepositoryStore.Diff):
@@ -302,6 +311,7 @@ public sealed partial class MainWindow : Window
             case nameof(RepositoryStore.IsBusy):
             case nameof(RepositoryStore.BusyLabel):
                 ShowBusy();
+                ShowStash();
                 TopBar.Show(store);
                 Changes.ShowCommitState();
                 Banner.Show(store);
@@ -312,6 +322,10 @@ public sealed partial class MainWindow : Window
                 break;
             case nameof(RepositoryStore.Comparison):
                 Compare.Show(store);
+                break;
+            case nameof(RepositoryStore.SelectedStash):
+                ShowStash();
+                ShowDetail();
                 break;
             case nameof(RepositoryStore.SearchResults):
                 History.ShowCommits();
@@ -380,6 +394,8 @@ public sealed partial class MainWindow : Window
             Add(Icons.Push, "Push", "Repository action", () => _ = s.PushAsync());
             Add(Icons.Plus, "New branch…", "Repository action",
                 () => _ = Dialogs.NewBranchAsync(Root.XamlRoot, s, null));
+            Add(Icons.Branch, "Clean up branches\u2026", "Repository action",
+                () => _ = BranchDialogs.CleanupAsync(Root.XamlRoot, s));
             Add(Icons.Branch, "Compare refs\u2026", "Repository action", () => _ = s.OpenCompareAsync());
             Add(Icons.History, "Reflog\u2026", "Repository action",
                 () => _ = HistoryDialogs.ReflogAsync(Root.XamlRoot, s));

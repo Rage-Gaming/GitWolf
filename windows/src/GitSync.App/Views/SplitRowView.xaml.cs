@@ -28,7 +28,7 @@ public sealed partial class SplitRowView : UserControl
             _actions.HorizontalAlignment = HorizontalAlignment.Right;
             _actions.Margin = new Thickness(0, 0, 12, 0);
         }
-        Hunk.Margin = new Thickness(0, 0, header && staging is not null ? 170 : 0, 0);
+        Hunk.Margin = new Thickness(0, 0, header && staging is not null ? HunkActions.WidthFor(staging) : 0, 0);
         // Context lines sit on both sides; only changes can be selected.
         LineSelector.Place(Left, ref _left, staging, header ? null : row.Left, 0, 2);
         LineSelector.Place(Right, ref _right, staging, header ? null : row.Right, 0, 2);

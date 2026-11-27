@@ -2,7 +2,7 @@ using GitSync.Core;
 
 namespace GitSync.Store;
 
-public enum StoreMode { History, Changes, Compare }
+public enum StoreMode { History, Changes, Compare, Stash }
 
 /// <summary>What a hook printed, and the signing choice to repeat if the user commits without hooks.</summary>
 public sealed record HookFailure(string Hook, string Output, bool? Sign);

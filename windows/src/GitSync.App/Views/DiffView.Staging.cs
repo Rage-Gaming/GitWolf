@@ -10,7 +10,8 @@ public sealed partial class DiffView
 {
     private DiffStaging? Staging(RepositoryStore store) =>
         store.SelectedTarget is { } target
-            ? new DiffStaging(target.Source == DiffSource.Staged, store.LineSelection, store.ToggleLine, ApplyHunk)
+            ? new DiffStaging(target.Source == DiffSource.Staged, store.LineSelection, store.ToggleLine, ApplyHunk,
+                store.CanStashHunk ? StashHunk : null)
             : null;
 
     private void ApplyHunk(int index, PatchAction action)
@@ -18,6 +19,12 @@ public sealed partial class DiffView
         if (_store is not { Diff: { } diff } store) return;
         if (action == PatchAction.Discard) _ = DiscardShownAsync(diff.ChangedLineIds(index), "this hunk");
         else _ = store.ApplyHunkAsync(index, action);
+    }
+
+    private void StashHunk(int index)
+    {
+        if (_store is { SelectedTarget: { } target, Diff: { } diff } store)
+            _ = BranchDialogs.StashHunkAsync(XamlRoot, store, target, diff, index);
     }
 
     private void ShowSelectionBar()

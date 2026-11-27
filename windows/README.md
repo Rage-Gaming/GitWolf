@@ -44,7 +44,7 @@ Store layer:
 - [ ] `Accounts.swift` -> Credential Manager, writing the askpass script with LF endings and no BOM
 - [x] `Workspace.swift` (open and recent repositories) -> `src/GitSync.App/Services/Workspace.cs`
 
-184 tests pass against real git and stubbed HTTP.
+193 tests pass against real git and stubbed HTTP.
 
 UI (`src/GitSync.App/`):
 
@@ -70,6 +70,8 @@ UI (`src/GitSync.App/`):
 - [x] History search by message, author, content, file and date; file history and blame
 - [x] Reset, reflog, undo; signature badges
 - [x] Compare refs, interactive rebase and rebase onto a branch
+- [x] Rename branches, upstream tracking, branch cleanup, annotated tags
+- [x] Stash preview and per-hunk stash
 - [ ] Resizable panels
 - [x] Settings (Ctrl+,): theme, accent colour, background fetch, history and diff options, git path
       (`%LOCALAPPDATA%\GitSync\settings.json`)

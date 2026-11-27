@@ -18,10 +18,34 @@ internal static class Dialogs
             await store.CreateBranchAsync(name, from, toggle.IsChecked == true);
     }
 
+    /// <summary>A lightweight tag, or an annotated one when a message is given, optionally pushed.</summary>
     public static async Task NewTagAsync(XamlRoot root, RepositoryStore store, string hash)
     {
-        if (await PromptAsync(root, "New tag", "v1.0.0", "Create") is { } name)
-            await store.CreateTagAsync(name, hash);
+        var message = new TextBox
+        {
+            PlaceholderText = "Message (optional)", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
+            MinHeight = 76, MaxHeight = 140,
+        };
+        var remote = store.Remotes.Contains("origin") ? "origin" : store.Remotes.FirstOrDefault();
+        var push = new CheckBox { Content = $"Push to {remote}" };
+        var extra = new StackPanel
+        {
+            Spacing = 8, MinWidth = 380,
+            Children =
+            {
+                message,
+                new TextBlock
+                {
+                    Text = "With a message the tag is annotated: it records who tagged and when.",
+                    TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.7,
+                },
+            },
+        };
+        if (remote is not null) extra.Children.Add(push);
+        var title = $"New tag at {hash[..Math.Min(7, hash.Length)]}";
+        if (await PromptAsync(root, title, "v1.0.0", "Create", extra) is { } name)
+            await store.CreateTagAsync(name, hash, message.Text.ReplaceLineEndings("\n"),
+                push.IsChecked == true ? remote : null);
     }
 
     public static async Task StashAsync(XamlRoot root, RepositoryStore store)
@@ -138,10 +162,12 @@ internal static class Dialogs
     }
 
     /// <summary>Returns the trimmed text, or null when cancelled.</summary>
-    private static async Task<string?> PromptAsync(
-        XamlRoot root, string title, string placeholder, string confirm, UIElement? extra = null, bool allowEmpty = false)
+    internal static async Task<string?> PromptAsync(
+        XamlRoot root, string title, string placeholder, string confirm, UIElement? extra = null, bool allowEmpty = false,
+        string initial = "")
     {
-        var input = new TextBox { PlaceholderText = placeholder };
+        var input = new TextBox { PlaceholderText = placeholder, Text = initial };
+        input.SelectAll();
         var content = new StackPanel { Spacing = 12, Children = { input } };
         if (extra is not null) content.Children.Add(extra);
         var dialog = new ContentDialog
@@ -149,7 +175,7 @@ internal static class Dialogs
             // Dialogs don't inherit a theme forced on the window content.
             RequestedTheme = (root.Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default,
             XamlRoot = root, Title = title, Content = content, PrimaryButtonText = confirm, CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary, IsPrimaryButtonEnabled = allowEmpty,
+            DefaultButton = ContentDialogButton.Primary, IsPrimaryButtonEnabled = allowEmpty || initial.Length > 0,
         };
         input.TextChanged += (_, _) => dialog.IsPrimaryButtonEnabled = allowEmpty || input.Text.Trim().Length > 0;
         try

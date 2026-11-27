@@ -73,6 +73,21 @@ public sealed partial class RepositoryStore
         }
     }
 
+    /// <summary>Stashes one hunk of the diff the user was looking at when they asked.</summary>
+    public Task<bool> StashHunkAsync(DiffTarget target, FileDiff diff, int hunk, string message)
+    {
+        if (!CanStashHunk || SelectedTarget != target || !Equals(Diff, diff))
+        {
+            ErrorMessage = "The file changed, so nothing was done. Check the new changes and try again.";
+            return Task.FromResult(false);
+        }
+        var ids = diff.ChangedLineIds(hunk);
+        if (PatchBuilder.Make(diff, ids, PatchAction.Stage) is not { } forward
+            || PatchBuilder.Make(diff, ids, PatchAction.Discard) is not { } back)
+            return Task.FromResult(false);
+        return PerformAsync("Stashing hunk…", r => r.StashHunkAsync(forward, back, target.Path, message));
+    }
+
     private Task<bool> ApplyPatchAsync(FileDiff diff, ISet<int> ids, PatchAction action)
     {
         if (PatchBuilder.Make(diff, ids, action) is not { } patch) return Task.FromResult(false);
@@ -193,7 +208,29 @@ public sealed partial class RepositoryStore
     public Task<bool> MergeAsync(string name) => PerformAsync("Merging…", r => r.MergeAsync(name));
     public Task<bool> CherryPickAsync(string hash) => PerformAsync("Cherry-picking…", r => r.CherryPickAsync(hash));
     public Task<bool> RevertAsync(string hash) => PerformAsync("Reverting…", r => r.RevertAsync(hash));
-    public Task<bool> CreateTagAsync(string name, string hash) => PerformAsync("Tagging…", r => r.CreateTagAsync(name, hash));
+
+    public Task<bool> CreateTagAsync(string name, string hash, string message = "", string? pushTo = null) =>
+        PerformAsync("Tagging…", async r =>
+        {
+            await r.CreateTagAsync(name, hash, message);
+            if (pushTo is not null) await r.PushTagAsync(name, pushTo);
+        });
+
+    public Task<bool> RenameBranchAsync(string old, string name) =>
+        PerformAsync("Renaming…", r => r.RenameBranchAsync(old, name));
+
+    public Task<bool> SetUpstreamAsync(string branch, string? upstream) =>
+        PerformAsync("Updating tracking…", r => r.SetUpstreamAsync(branch, upstream));
+
+    /// <summary>Destructive: the UI must confirm first.</summary>
+    public Task<bool> DeleteBranchesAsync(IReadOnlyList<BranchCleanupItem> items) =>
+        PerformAsync("Deleting branches…", async r =>
+        {
+            var failed = await r.DeleteBranchesAsync(items);
+            if (failed.Count > 0)
+                throw new GitException("branch", 1, $"Couldn’t delete: {string.Join(", ", failed)}");
+        });
+
     public Task<bool> DeleteTagAsync(string name) => PerformAsync("Deleting tag…", r => r.DeleteTagAsync(name));
     public Task<bool> StashPushAsync(string message) => PerformAsync("Stashing…", r => r.StashPushAsync(message));
     public Task<bool> StashApplyAsync(string reference) => PerformAsync("Applying stash…", r => r.StashApplyAsync(reference));

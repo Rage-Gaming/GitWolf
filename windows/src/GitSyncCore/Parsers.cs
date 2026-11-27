@@ -192,10 +192,16 @@ public static class RefParser
             }
             result.Add(new Branch(
                 Name: f[1], FullRef: full, IsRemote: isRemote, IsCurrent: f[2] == "*",
-                Upstream: f[3].Length == 0 ? null : f[3], Ahead: ahead, Behind: behind, Hash: f[5]));
+                Upstream: f[3].Length == 0 ? null : f[3], Ahead: ahead, Behind: behind, Hash: f[5],
+                UpstreamGone: f[4] == "gone"));
         }
         return result;
     }
+
+    /// <summary>An annotated tag is a separate object, so its target commit is used as the hash.</summary>
+    public const string TagFormat =
+        "%(refname:short)%1f%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)"
+        + "%1f%(objecttype)%1f%(contents:subject)";
 
     public static List<GitTag> ParseTags(byte[] data)
     {
@@ -204,7 +210,8 @@ public static class RefParser
         {
             var f = ByteSplitting.SplitBytes(line, 0x1f);
             if (f.Count < 2 || f[0].Length == 0) continue;
-            result.Add(new GitTag(f[0], f[1]));
+            var annotated = f.Count >= 3 && f[2] == "tag";
+            result.Add(new GitTag(f[0], f[1], annotated, annotated && f.Count >= 4 ? f[3] : ""));
         }
         return result;
     }
