@@ -49,3 +49,7 @@ All notable changes are documented here. Format based on
 - Initial macOS app (SwiftUI): history with branch graph, working-copy staging and commit,
   branches / remotes / tags / stashes sidebar, fetch / pull / push, live repository watching.
 - `GitSyncCore` engine with parsers, graph layout and tests.
+
+### Fixed
+
+- Many Git calls running at once could deadlock and freeze the app or hang the tests.
