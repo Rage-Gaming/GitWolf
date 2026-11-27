@@ -7,6 +7,7 @@ import SwiftUI
 struct ChecksSection: View {
     let store: RepositoryStore
     let sha: String
+    var committed: Date?
     private var status: CIStatus? { store.checksBySHA[sha] }
     @State private var expanded = false
 
@@ -47,7 +48,7 @@ struct ChecksSection: View {
         .task(id: sha) {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
-                if store.shouldPollChecks(sha: sha) { store.loadChecks(sha: sha, force: true) }
+                if store.shouldPollChecks(sha: sha, committed: committed) { store.loadChecks(sha: sha, force: true) }
             }
         }
     }

@@ -193,8 +193,10 @@ final class RepositoryStore: Identifiable {
     }
 
     /// Whether the checks of this commit should be polled: a run is going, or it was just pushed.
-    func shouldPollChecks(sha: String) -> Bool {
+    func shouldPollChecks(sha: String, committed: Date? = nil) -> Bool {
         if checksBySHA[sha]?.overall == .pending { return true }
+        // A recent commit may have been pushed from a terminal; look for its run until it has one.
+        if checksBySHA[sha] == nil, let committed, Date().timeIntervalSince(committed) < 30 * 60 { return true }
         return (checksWatchedUntil[sha] ?? .distantPast) > Date()
     }
 
@@ -341,6 +343,8 @@ final class RepositoryStore: Identifiable {
 
     private func apply(_ s: RepositorySnapshot) {
         // Only assign what changed so SwiftUI doesn't re-render (and flicker) needlessly.
+        // The branch just got fully pushed (from here or from a terminal): its CI run is about to appear.
+        if status.ahead > 0, s.status.ahead == 0, s.status.branch == status.branch { watchChecks(sha: s.status.headOID) }
         if status != s.status { status = s.status }
         if commits != s.commits { commits = s.commits; graph = s.graph }
         if localBranches != s.localBranches { localBranches = s.localBranches }
