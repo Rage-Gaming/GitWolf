@@ -50,6 +50,7 @@ final class Workspace {
     var sheet: WorkspaceSheet?
     private(set) var recents: [URL] = RecentRepositories.load()
     private(set) var home = HomeLayoutStore.load()
+    private(set) var repoIcons = RepoIconStore.load()
 
     /// The window's workspace, for AppKit hooks (Dock menu) that live outside SwiftUI.
     static weak var current: Workspace?
@@ -94,6 +95,26 @@ final class Workspace {
         RecentRepositories.remove(path)
         recents = RecentRepositories.load()
         editHome { $0.remove(path) }
+        setIcon(nil, for: path)
+    }
+
+    func setIcon(_ icon: RepoIcon?, for path: String) {
+        if let unused = repoIcons.set(icon, for: path) { RepoIconStore.deleteImage(unused) }
+        RepoIconStore.save(repoIcons)
+    }
+
+    /// Asks for a picture and uses it as the repository's tile icon.
+    func chooseIconImage(for path: String) {
+        let panel = NSOpenPanel()
+        panel.title = "Choose an Icon Image"
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let name = RepoIconStore.importImage(from: url) else {
+            errorMessage = "That file couldn’t be read as an image."
+            return
+        }
+        setIcon(.image(name), for: path)
     }
 
     func clearRecents() {

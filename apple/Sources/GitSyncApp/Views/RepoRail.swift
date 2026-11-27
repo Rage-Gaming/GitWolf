@@ -26,7 +26,10 @@ struct RepoRail: View {
                     ForEach(workspace.repos) { store in
                         RepoTile(store: store, selected: store.id == workspace.selectedID,
                                  select: { workspace.select(store.id) },
-                                 close: { workspace.close(store) })
+                                 close: { workspace.close(store) },
+                                 icon: workspace.repoIcons.icon(for: store.id),
+                                 setIcon: { workspace.setIcon($0, for: store.id) },
+                                 chooseImage: { workspace.chooseIconImage(for: store.id) })
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -83,7 +86,11 @@ private struct RepoTile: View {
     let selected: Bool
     let select: () -> Void
     let close: () -> Void
+    let icon: RepoIcon?
+    let setIcon: (RepoIcon?) -> Void
+    let chooseImage: () -> Void
     @State private var hovering = false
+    @State private var picking = false
 
     private var initials: String {
         let words = store.name.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
@@ -97,12 +104,14 @@ private struct RepoTile: View {
         let color = avatarColor(for: store.name)
         let shape = RoundedRectangle(cornerRadius: RepoRail.radius, style: .continuous)
         Button(action: select) {
-            Text(initials)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(selected ? Color.white : color)
+            tileContent(color: color)
                 .frame(width: RepoRail.tile, height: RepoRail.tile)
-                .background(selected ? color : color.opacity(hovering ? 0.26 : 0.17), in: shape)
+                .background(tileFill(color), in: shape)
+                .clipShape(shape)
                 .overlay(alignment: .bottomTrailing) { badge }
+        }
+        .popover(isPresented: $picking, arrowEdge: .trailing) {
+            RepoIconPicker(path: store.id, current: icon, choose: setIcon, importImage: chooseImage)
         }
         .buttonStyle(.plain)
         .frame(width: RepoRail.width, height: RepoRail.tile)
@@ -113,6 +122,9 @@ private struct RepoTile: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
         .contextMenu {
+            Button("Change Icon…") { picking = true }
+            if icon != nil { Button("Remove Icon") { setIcon(nil) } }
+            Divider()
             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.repo.root]) }
             Button("Copy Path") {
                 NSPasteboard.general.clearContents()
@@ -121,6 +133,34 @@ private struct RepoTile: View {
             Divider()
             Button("Close Repository", role: .destructive, action: close)
         }
+    }
+
+    private func tileFill(_ color: Color) -> Color {
+        if case .image = icon { return Color.primary.opacity(0.08) }
+        return selected ? color : color.opacity(hovering ? 0.26 : 0.17)
+    }
+
+    @ViewBuilder private func tileContent(color: Color) -> some View {
+        switch icon {
+        case .symbol(let name):
+            Image(systemName: name).font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(selected ? Color.white : color)
+        case .image(let file):
+            if let image = RepoIconImages.image(file) {
+                Image(nsImage: image).resizable().scaledToFill()
+                    .opacity(selected || hovering ? 1 : 0.88)
+            } else {
+                initialsText(color: color)
+            }
+        case nil:
+            initialsText(color: color)
+        }
+    }
+
+    private func initialsText(color: Color) -> some View {
+        Text(initials)
+            .font(.system(size: 14, weight: .bold, design: .rounded))
+            .foregroundStyle(selected ? Color.white : color)
     }
 
     /// Uncommitted-change count, tucked into the tile's bottom-right corner.

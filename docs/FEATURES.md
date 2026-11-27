@@ -13,6 +13,10 @@ and should follow each platform's native idioms.
 - **Multiple repositories open at once** [ui + core]. A vertical *repo rail* lists them with a live
   badge of uncommitted changes. Every open repo keeps its own watcher and sync loop alive in the
   background, not only the visible one.
+- **Repository icons** [ui + core `RepoIcons`]. A repo's rail tile can show a symbol from a curated set or an
+  imported picture instead of its initials (context menu: Change Icon…, Remove Icon). Images are cropped to a
+  centred square, saved as a 128 px PNG in the app's data folder and referenced by file name; icons are keyed by
+  repository path and forgotten with the repository.
 - **Dock / taskbar integration** [ui; core `BadgeLabel`]. The app icon badge shows the total files with
   uncommitted changes across open repositories (`BadgeLabel.text`: none for 0, `99+` above 99). The
   Dock (taskbar jump list on Windows/Linux) menu lists up to 8 recent repositories, and File > Open

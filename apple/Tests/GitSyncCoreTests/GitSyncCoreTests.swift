@@ -2493,3 +2493,41 @@ private func makeTempDir() throws -> URL {
         await #expect(throws: URLError.self) { try await checker(status: 500, body: "").newerRelease(than: current) }
     }
 }
+
+@Suite struct RepoIconTests {
+    @Test func setReplaceAndClear() {
+        var icons = RepoIcons()
+        #expect(icons.set(.symbol("star"), for: "/a") == nil)
+        #expect(icons.icon(for: "/a") == .symbol("star"))
+        #expect(icons.set(.image("one.png"), for: "/a") == nil)
+        // Replacing an image reports the file that is now unused.
+        #expect(icons.set(.symbol("flame"), for: "/a") == "one.png")
+        #expect(icons.set(.image("two.png"), for: "/b") == nil)
+        #expect(icons.set(nil, for: "/b") == "two.png")
+        #expect(icons.icon(for: "/b") == nil)
+    }
+
+    @Test func settingTheSameImageKeepsItsFile() {
+        var icons = RepoIcons()
+        icons.set(.image("x.png"), for: "/a")
+        #expect(icons.set(.image("x.png"), for: "/a") == nil)
+    }
+
+    @Test func prunesMissingRepositories() {
+        var icons = RepoIcons()
+        icons.set(.image("gone.png"), for: "/gone")
+        icons.set(.symbol("star"), for: "/kept")
+        let unused = icons.pruned { $0 == "/kept" }
+        #expect(unused == ["gone.png"])
+        #expect(icons.icon(for: "/gone") == nil)
+        #expect(icons.icon(for: "/kept") == .symbol("star"))
+    }
+
+    @Test func roundTripsThroughJSON() throws {
+        var icons = RepoIcons()
+        icons.set(.symbol("bolt"), for: "/a")
+        icons.set(.image("p.png"), for: "/b")
+        let back = try JSONDecoder().decode(RepoIcons.self, from: JSONEncoder().encode(icons))
+        #expect(back == icons)
+    }
+}
