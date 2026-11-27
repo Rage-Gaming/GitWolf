@@ -1,4 +1,4 @@
-# GitSync
+# GitWolf
 
 A fast, clean, native Git client. Think Sourcetree, without the rough edges.
 
@@ -42,8 +42,8 @@ Requirements: macOS 15+, Xcode 16+ (the SwiftUI macros ship with Xcode), Git.
 cd apple
 swift build          # debug build
 swift test           # run the test suite
-swift run GitSync    # launch (add --open=/path/to/repo to open a repo directly)
-./Scripts/bundle.sh  # produce build/GitSync.app
+swift run GitWolf    # launch (add --open=/path/to/repo to open a repo directly)
+./Scripts/bundle.sh  # produce build/GitWolf.app
 ```
 
 If `swift build` reports a missing `SwiftUIMacros` plugin, point the toolchain at full Xcode:

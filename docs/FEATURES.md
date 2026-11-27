@@ -1,8 +1,8 @@
 # Feature specification
 
-This is the behavioural spec for GitSync. The macOS app (`apple/`) is the reference implementation;
+This is the behavioural spec for GitWolf. The macOS app (`apple/`) is the reference implementation;
 every other platform should match what is described here. Where the spec says "see source", the
-Swift file is the ground truth (it is tested; the tests in `apple/Tests/GitSyncCoreTests` are a
+Swift file is the ground truth (it is tested; the tests in `apple/Tests/GitWolfCoreTests` are a
 ready-made conformance suite to port).
 
 Legend: **[core]** lives in the UI-free engine and must be ported as logic; **[ui]** is presentation
@@ -27,7 +27,7 @@ and should follow each platform's native idioms.
   (pinned paths, groups of paths) persisted as JSON; missing folders are pruned on load.
 - **Menu bar / tray icon** [ui]. Status item (a native status item built when the menu opens; a declarative, observing tray scene caused a redraw loop on macOS) with the branch symbol and the total changed-file count
   (`BadgeLabel`); menu: open repositories (name, branch, changes; selecting one focuses it), Open Recent,
-  Open Repository…, Show GitSync, Quit. Setting `showMenuBarExtra` (default on). Windows/Linux: the
+  Open Repository…, Show GitWolf, Quit. Setting `showMenuBarExtra` (default on). Windows/Linux: the
   notification-area / tray icon with the same menu.
 - Menu bar hygiene: only menus that apply are shown (no New Window, toolbar/sidebar toggles or Format).
 - Open set and selection are persisted and restored on launch.
@@ -99,7 +99,7 @@ and should follow each platform's native idioms.
 - Implementation [core `RebasePlan`]: writes the todo file and runs `git rebase -i --autostash
   <parent>` (or `--root`) with `GIT_SEQUENCE_EDITOR="cp <todo>"`, so no editor opens. A reword is
   `pick` plus `exec git commit --amend -F <file>` after any squash/fixup folded into it; messages
-  live in `<gitdir>/gitsync-rebase/`, removed when the rebase ends, and are never put on a command line.
+  live in `<gitdir>/gitwolf-rebase/`, removed when the rebase ends, and are never put on a command line.
 - **Rebase Current Branch onto This** (branch context menu): `git rebase --autostash <branch>`.
 - **Pull strategy** setting: Merge (default) or Rebase (`git pull --rebase --autostash`).
 - A conflict is not an error: the rebase stays in progress and the operation banner takes over.
@@ -317,7 +317,7 @@ Tags [`FileIcons.tagIcon(named:isAnnotated:)`], first match wins: `nightly`/`dai
   Code). macOS uses `open -a <app> <path>` with the path as an argument. Shortcuts ⌥⌘T / ⌥⌘E / ⇧⌥⌘R.
 - **Custom actions** [core `CustomAction`, `CustomActionRunner`]. Named shell commands stored in
   settings. Run through the system shell (`/bin/sh -c`; `cmd`/`sh` on other platforms) with the repo
-  root as working directory and `GITSYNC_REPO` / `GITSYNC_BRANCH` in the environment. Values are never
+  root as working directory and `GITWOLF_REPO` / `GITWOLF_BRANCH` in the environment. Values are never
   interpolated into the command text. Non-zero exit shows the code and the last 600 characters of
   output. Listed in the toolbar menu, Repository menu and ⌘K palette.
 
@@ -374,9 +374,23 @@ Repository menu and palette: **Fork Repository…** (needs a connected account o
 
 Bell button in the repository toolbar (only when a GitHub, GitLab or Gitea account exists), Repository menu and palette. Loads from every connected account at start and every 5 minutes; the badge counts unread items. The sheet lists title, `owner/repo`, age and a reason chip (Review requested, Mentioned, Assigned, Activity). Clicking a row opens it on the web and marks it read; **Mark All as Read** clears everything. A GitHub token without the `notifications` scope shows a warning instead of an empty list. Bitbucket and Azure DevOps have no notifications API. Endpoints in [PROVIDERS.md](PROVIDERS.md#notifications).
 
+### Tile colours and branch drag
+
+The icon picker has a colour row (red, orange, yellow, green, teal, blue, purple, pink, gray, or Automatic, which derives a colour from the repository name). Colours are saved with the icons (`RepoIcons.tints`); settings saved earlier still load. In the sidebar, dragging a local branch onto the **current** branch asks whether to merge it into the current branch or rebase the current branch onto it; other drop targets are ignored. ⌘1 to ⌘9 already switch between open repositories.
+
+### Open a pull request after pushing
+
+After a successful push of a branch other than `main`, `master`, `develop` or `trunk` on a provider that can create pull requests, a banner at the bottom offers **Open Pull Request** (Merge Request on GitLab), which opens the new pull request form. Offered on the first push of a branch, or on a later push when the loaded list shows no open pull request for it. Dismissed by the × button, after 30 s, or when the branch changes.
+
 ### CI checks
 
 Selecting a pushed commit (History) or a pull request shows a pill with the overall result (worst state wins: failure, then pending, then success) that expands to each check with a **Details** link. Looked up by commit SHA (a pull request uses its head commit), cached for 60 s, hidden when the server has no checks or doesn't know the commit. Works without an account on public repositories. Endpoints in [PROVIDERS.md](PROVIDERS.md#ci-checks).
+
+Live: a commit with a running check is looked up again every 15 s; a commit just pushed (from the app or a terminal, detected when the branch's ahead count drops to 0) or made in the last 30 minutes is looked up until its run appears. A running check shows an indeterminate ring spinner.
+
+Actions: in the expanded list, a finished check has **Re-run** and a running one has **Cancel** (GitHub Actions: re-run a job, cancel a workflow run; GitLab: retry or cancel a job; other providers show no buttons). The check turns to running at once and the commit is watched for 5 minutes.
+
+Rail: each repository's tile shows the result of its checked-out commit in the top-right corner: a ring spinner while running, a green tick or a red cross when done (nothing when there are no checks or no account). Updated every 20 s while running.
 
 ### Actions (need a connected account)
 

@@ -1,14 +1,14 @@
-# GitSync for Windows
+# GitWolf for Windows
 
 C# / WinUI 3 (Windows App SDK) port, following [docs/PORTING.md](../docs/PORTING.md). The macOS
 app under `apple/` is the executable spec — port its logic and tests, don't invent new semantics.
 
 ## Layout
 
-- `src/GitSyncCore/` — the engine (no UI), ported from `apple/Sources/GitSyncCore/`.
-- `src/GitSync.Store/` — per-repository state: refresh, selection, operations.
-- `src/GitSync.App/` — the WinUI 3 app shell.
-- `tests/GitSyncCore.Tests/` — engine tests, ported from `apple/Tests/GitSyncCoreTests/`, run
+- `src/GitWolfCore/` — the engine (no UI), ported from `apple/Sources/GitWolfCore/`.
+- `src/GitWolf.Store/` — per-repository state: refresh, selection, operations.
+- `src/GitWolf.App/` — the WinUI 3 app shell.
+- `tests/GitWolfCore.Tests/` — engine tests, ported from `apple/Tests/GitWolfCoreTests/`, run
   against real git in throwaway temp repos (no mocking of git).
 
 ## Status
@@ -34,21 +34,21 @@ Engine ported so far (see the file map in PORTING.md for the full list and order
       `System.Text.Json` in place of `JSONSerialization`)
 
 The full engine file map from PORTING.md is now ported, with the tests from
-`GitSyncCoreTests.swift`.
+`GitWolfCoreTests.swift`.
 
 Store layer:
 
-- [x] `RepositoryStore.swift` -> `src/GitSync.Store/` (UI-framework independent). Use it from the
+- [x] `RepositoryStore.swift` -> `src/GitWolf.Store/` (UI-framework independent). Use it from the
       UI thread only, and call `RequestRefresh()` when a window is activated.
-- [x] `AppSettings.swift` -> `src/GitSync.App/Services/AppSettings.cs`
+- [x] `AppSettings.swift` -> `src/GitWolf.App/Services/AppSettings.cs`
 - [ ] `Accounts.swift` -> Credential Manager, writing the askpass script with LF endings and no BOM
-- [x] `Workspace.swift` (open and recent repositories) -> `src/GitSync.App/Services/Workspace.cs`
+- [x] `Workspace.swift` (open and recent repositories) -> `src/GitWolf.App/Services/Workspace.cs`
 
 201 tests pass against real git and stubbed HTTP.
 
-UI (`src/GitSync.App/`):
+UI (`src/GitWolf.App/`):
 
-- [x] Open a repository (picker, or `GitSync.App.exe <folder>`)
+- [x] Open a repository (picker, or `GitWolf.App.exe <folder>`)
 - [x] History with graph, commit files and unified diff
 - [x] Changes: stage and unstage files, commit, amend
 - [x] Fetch, pull, push using git's own sign-in
@@ -58,7 +58,7 @@ UI (`src/GitSync.App/`):
       right-click for checkout, merge, delete, apply/pop/drop)
 - [x] Commit search and context menu; new branch, tag and stash
 - [x] Multiple repositories, restored between launches
-      (`%LOCALAPPDATA%\GitSync\workspace.json`, paths and view preferences only)
+      (`%LOCALAPPDATA%\GitWolf\workspace.json`, paths and view preferences only)
 - [x] Jump palette (Ctrl+K), Ctrl+O, Ctrl+Shift+F/L/P (all shortcuts are in `MainWindow.xaml.cs` and
       `MainWindow.Tools.cs`)
 - [x] File type, folder and branch icons
@@ -78,7 +78,7 @@ UI (`src/GitSync.App/`):
 - [x] Resizable panels (drag the gap, double-click to reset), keyboard shortcuts, commit message
       spell check, light-theme file icons
 - [x] Settings (Ctrl+,): theme, accent colour, background fetch, history and diff options, git path
-      (`%LOCALAPPDATA%\GitSync\settings.json`)
+      (`%LOCALAPPDATA%\GitWolf\settings.json`)
 - [ ] Provider accounts
 
 Opening a repository runs git inside it, so its `.git/config` can execute commands (for example
@@ -87,15 +87,15 @@ closed from the rail.
 
 ## Building
 
-Requires the .NET 10 SDK and, for `GitSync.App`, Visual Studio 2022 with the **Windows App SDK**
+Requires the .NET 10 SDK and, for `GitWolf.App`, Visual Studio 2022 with the **Windows App SDK**
 workload installed (the WinUI 3 packaging build tasks are not available through the .NET SDK /
 `dotnet workload` alone).
 
 ```powershell
-dotnet build src\GitSyncCore\GitSyncCore.csproj   # engine only, builds anywhere
-dotnet test tests\GitSyncCore.Tests\GitSyncCore.Tests.csproj
+dotnet build src\GitWolfCore\GitWolfCore.csproj   # engine only, builds anywhere
+dotnet test tests\GitWolfCore.Tests\GitWolfCore.Tests.csproj
 # The app needs Visual Studio's MSBuild (`dotnet build` lacks the WinUI packaging tasks):
-& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" src\GitSync.App\GitSync.App.csproj -restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64
+& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" src\GitWolf.App\GitWolf.App.csproj -restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64
 ```
 
 ## Notes

@@ -15,7 +15,7 @@ Enter this code on \(url.host ?? cleanHost)
 Everything done by this \(operation.kind == .merge ? 
 Fetch from \(remote.name)
 Fork on \(provider)
-GitSync \(Bundle.main.object(forInfoDictionaryKey: 
+GitWolf \(Bundle.main.object(forInfoDictionaryKey: 
 Local branches already merged into \(base), or whose branch on the remote was deleted. The current branch and main, master, develop are never listed.
 New \(word)
 Not an executable file. Falling back to \(AppSettings.defaultGitPath).
