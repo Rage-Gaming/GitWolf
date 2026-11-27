@@ -4,7 +4,7 @@ using System.Text;
 namespace GitWolf.Core;
 
 /// <summary>A failed git invocation.</summary>
-public sealed class GitException(string command, int exitCode, string stderr) : Exception(BuildMessage(command, exitCode, stderr))
+public class GitException(string command, int exitCode, string stderr) : Exception(BuildMessage(command, exitCode, stderr))
 {
     public string Command { get; } = command;
     public int ExitCode { get; } = exitCode;
@@ -28,6 +28,9 @@ public sealed class GitRunner(string workingDirectory, string? gitPath = null, I
 
     /// <summary>Extra environment for every process (e.g. credentials for network commands).</summary>
     public IReadOnlyDictionary<string, string> ExtraEnvironment { get; } = extraEnvironment ?? new Dictionary<string, string>();
+
+    /// <summary>Awaited before every command; throws to refuse it.</summary>
+    internal Func<CancellationToken, Task>? Preflight { get; init; }
 
     /// <summary>
     /// Resolves `git.exe` from PATH, falling back to the Git for Windows default install
@@ -73,6 +76,7 @@ public sealed class GitRunner(string workingDirectory, string? gitPath = null, I
         CancellationToken cancellationToken = default)
     {
         var allowed = allowedExitCodes ?? new HashSet<int> { 0 };
+        if (Preflight is not null) await Preflight(cancellationToken);
 
         using var process = new Process();
         process.StartInfo.FileName = GitPath;

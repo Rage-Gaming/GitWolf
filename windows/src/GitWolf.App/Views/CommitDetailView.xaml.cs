@@ -56,6 +56,8 @@ public sealed partial class CommitDetailView : UserControl
             _ = ShowSignatureAsync(store, commit.Hash);
         }
 
+        Checks.Show(store.Checks(commit.Hash));
+
         var source = DiffSource.ForCommit(commit.Hash);
         _syncing = true;
         ListSync.Apply(_files, store.CommitFiles.Select(f => new FileRow(f, source)).ToList(), r => r.File!.Path);
@@ -101,13 +103,27 @@ public sealed partial class CommitDetailView : UserControl
         }
     }
 
+    private (string Hash, Task<CommitSignature?> Check)? _signature;
+
+    /// <summary>Starts checking the signature of a commit that is about to be shown.</summary>
+    internal Task PrepareAsync(RepositoryStore store)
+    {
+        if (store.SelectedCommit is not { } commit || commit.Hash == _shownHash) return Task.CompletedTask;
+        var repo = store.Repo;
+        var check = Task.Run(() => repo.SignatureAsync(commit.Hash));
+        _signature = (commit.Hash, check);
+        return check;
+    }
+
     private async Task ShowSignatureAsync(RepositoryStore store, string hash)
     {
         Signature.Visibility = Visibility.Collapsed;
         try
         {
             var repo = store.Repo;
-            var signature = await Task.Run(() => repo.SignatureAsync(hash));
+            // Already finished when prepared in time, so the badge appears with the rest.
+            var signature = await (_signature is { } ready && ready.Hash == hash
+                ? ready.Check : Task.Run(() => repo.SignatureAsync(hash)));
             if (signature is null || _shownHash != hash || !ReferenceEquals(store, _store)) return;
             // The end of a long key is the part people compare.
             var key = signature.Key.Length > 16 ? signature.Key[^16..] : signature.Key;

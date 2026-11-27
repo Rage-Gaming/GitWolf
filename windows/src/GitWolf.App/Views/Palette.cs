@@ -23,6 +23,8 @@ internal static class Palette
 
     public static readonly SolidColorBrush AddedLine = Brush(0x2EA043, 0x2E);
     public static readonly SolidColorBrush RemovedLine = Brush(0xE5534B, 0x2E);
+    public static readonly SolidColorBrush AddedWord = Brush(0x2EA043, 0x6B);
+    public static readonly SolidColorBrush RemovedWord = Brush(0xE5534B, 0x6B);
     public static readonly SolidColorBrush HunkLine = Brush(0x1F80FF, 0x24);
 
     private static readonly SolidColorBrush[] Lanes =

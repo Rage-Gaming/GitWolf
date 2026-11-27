@@ -17,6 +17,7 @@ public sealed partial class RepositoryStore
     {
         Mode = StoreMode.Stash;
         if (stash == SelectedStash) return PendingLoad;
+        SetPending(true, false);
         SelectTarget(null);
         var token = ++_stashToken;
         SetStash(stash, null, null);
@@ -34,17 +35,21 @@ public sealed partial class RepositoryStore
         catch (Exception e) when (e is GitException or IOException or UnauthorizedAccessException)
         {
             Trace.TraceWarning($"Reading a stash failed: {e.GetType().Name}");
-            if (token == _stashToken) SetStash(stash, null, e.Message);
+            if (token != _stashToken) return;
+            SetStash(stash, null, e.Message);
+            SetPending(false, _diffPending);
             return;
         }
         if (token != _stashToken) return;
         SetStash(stash, contents, null);
+        var loading = true;
         if (contents.Files.Count > 0) SelectChange(contents.Files[0], contents.Source);
         else if (contents.UntrackedSource is DiffSource untracked && contents.UntrackedFiles.Count > 0)
             SelectChange(contents.UntrackedFiles[0], untracked);
-        else return;
+        else loading = false;
+        SetPending(false, _diffPending);
         // SelectChange started the diff load, which replaced PendingLoad.
-        await PendingLoad;
+        if (loading) await PendingLoad;
     }
 
     /// <summary>Stash numbers shift as entries come and go, so the selection follows the entry itself.</summary>
@@ -59,6 +64,7 @@ public sealed partial class RepositoryStore
         }
         SelectTarget(null);
         ClearStash();
+        SetPending(false, _diffPending);
     }
 
     private void ClearStash()

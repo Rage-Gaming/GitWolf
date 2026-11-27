@@ -38,14 +38,25 @@ internal static class Avatars
     /// <summary>Saves what has not been written yet, before the app closes.</summary>
     public static void Save() => Cache.Flush();
 
+    /// <summary>Repositories may be looked up again, for example after signing in.</summary>
+    public static void Forget() => Cache.Forget();
+
     /// <summary>Looks up a repository's authors when the cache says it is worth asking.</summary>
-    public static async Task LoadAsync(RemoteLocation? location, IReadOnlyList<Commit> commits)
+    public static async Task LoadAsync(
+        RemoteLocation? location, IReadOnlyList<Commit> commits, AccountStore accounts)
     {
         if (!Enabled || location is null || commits.Count == 0) return;
         try
         {
-            var learnt = await Task.Run(async () => Cache.CanAsk(location)
-                && await Cache.LookUpAsync(location, commits.Select(c => c.AuthorEmail).Distinct()));
+            var learnt = await Task.Run(async () =>
+            {
+                if (!Cache.CanAsk(location)) return false;
+                // Only github.com's own token, which the lookup sends to api.github.com alone.
+                var token = location.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+                    && accounts.ForHost("github.com") is { Kind: ProviderKind.GitHub } account
+                        ? await accounts.SecretAsync(account) : null;
+                return await Cache.LookUpAsync(location, commits.Select(c => c.AuthorEmail).Distinct(), token);
+            });
             if (learnt) Changed?.Invoke();
         }
         catch (Exception e)

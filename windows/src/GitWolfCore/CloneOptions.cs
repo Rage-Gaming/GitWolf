@@ -57,7 +57,10 @@ public sealed partial class GitRepository
     /// <summary>Downloads the rest of a shallow clone's history.</summary>
     public async Task UnshallowAsync()
     {
-        var net = await NetworkGitAsync(disableHooks: true);
-        await net.RunAsync(["fetch", "--unshallow", "--prune"]);
+        var remote = await BranchRemoteAsync(await CurrentBranchAsync(), push: false);
+        var net = await RemoteGitAsync(remote, disableHooks: true);
+        // A submodule's own configuration must not run with the token.
+        await net.RunAsync(["fetch", "--unshallow", "--prune", "--no-recurse-submodules",
+            .. remote is null ? Array.Empty<string>() : [Operand(remote)]]);
     }
 }

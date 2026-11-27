@@ -18,6 +18,7 @@ internal sealed record SettingsState(
     int DiffContext = 4,
     bool SyntaxHighlighting = true,
     string GitPath = "", bool PullRebase = false, bool ProfilePictures = true,
+    bool IgnoreWhitespace = false, bool FullFileDiffs = false,
     bool SpellCheck = true, double SidebarWidth = 248, double ListShare = 0.45,
     double MessageHeight = 90, double FilesHeight = 0);
 
@@ -31,7 +32,16 @@ internal sealed class AppSettings : IStoreSettings
     private static readonly string StatePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GitWolf", "settings.json");
 
-    public AppSettings() => State = Load();
+    internal static readonly string Folder = Path.GetDirectoryName(StatePath)!;
+
+    public AppSettings()
+    {
+        State = Load();
+        Accounts = new AccountStore(Path.Combine(Folder, "accounts.json"), new WindowsCredentialStore());
+    }
+
+    /// <summary>Saved provider accounts; their secrets are in Windows Credential Manager.</summary>
+    public AccountStore Accounts { get; }
 
     public SettingsState State { get; private set; }
 
@@ -47,11 +57,22 @@ internal sealed class AppSettings : IStoreSettings
 
     public GitRepository Configure(GitRepository repo) => new(repo.Root, CustomGitPath, State.DiffContext)
     {
-        Credentials = repo.Credentials,
-        AskpassPath = repo.AskpassPath,
+        // git gets the account matching a remote's server; others use the user's own sign-in.
+        Credentials = Accounts.CredentialForRemoteAsync,
+        IgnoreWhitespace = State.IgnoreWhitespace,
+        FullFileDiffs = State.FullFileDiffs,
+        Trust = Trust,
+        AskpassPath = AccountStore.WriteAskpass(Folder),
     };
 
-    public ProviderKind? AccountKindForHost(string host) => null;
+    /// <summary>Repositories allowed to run what their own configuration asks for.</summary>
+    private RepositoryTrust Trust { get; } = new(Path.Combine(Folder, "trusted.json"));
+
+    public void TrustRepository(string root, string fingerprint) => Trust.Trust(root, fingerprint);
+
+    public ProviderAccount? AccountForHost(string host) => Accounts.ForHost(host);
+
+    public Task<string?> SecretAsync(ProviderAccount account) => Accounts.SecretAsync(account);
 
     /// <summary>
     /// A full path to a local .exe. Relative and network paths are refused: the app runs this file.

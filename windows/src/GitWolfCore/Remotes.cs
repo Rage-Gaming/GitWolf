@@ -7,8 +7,8 @@ public sealed partial class GitRepository
 
     public async Task PushAllTagsAsync(string remote)
     {
-        var net = await NetworkGitAsync();
-        await net.RunAsync(["push", Operand(remote), "--tags"]);
+        var net = await RemoteGitAsync(remote, push: true);
+        await net.RunAsync("push", Operand(remote), "--tags");
     }
 
     /// <summary>Removes the tag from the remote. The local tag is kept.</summary>
@@ -21,7 +21,7 @@ public sealed partial class GitRepository
     /// <summary>Full ref names, so a branch and a tag with the same name can't be confused.</summary>
     private async Task PushRefAsync(string remote, string reference, params string[] options)
     {
-        var net = await NetworkGitAsync();
+        var net = await RemoteGitAsync(remote, push: true);
         await net.RunAsync(["push", .. options, Operand(remote), reference]);
     }
 

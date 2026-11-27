@@ -53,7 +53,7 @@ public sealed partial class GitRepository
             await Git.RunAsync(["diff", "--name-status", "-z", "-M", @base, toHash, "--"], readOnly: true));
         var commits = LogParser.Parse(
             await Git.RunAsync(
-                ["log", "--topo-order", "-z", "-n", "500", $"--format={LogParser.Format}", $"{fromHash}..{toHash}", "--"],
+                ["log", "--no-show-signature", "--topo-order", "-z", "-n", "500", $"--format={LogParser.Format}", $"{fromHash}..{toHash}", "--"],
                 readOnly: true), remotes);
         return new RefComparison(@base, toHash, files, commits,
             await CountCommitsAsync($"{fromHash}..{toHash}"), await CountCommitsAsync($"{toHash}..{fromHash}"));

@@ -12,6 +12,7 @@ public sealed partial class DiffRowView : UserControl
 
     private LineSelector? _selector;
     private HunkActions? _actions;
+    private Button? _fold;
 
     public DiffRowView() => InitializeComponent();
 
@@ -41,13 +42,15 @@ public sealed partial class DiffRowView : UserControl
         DiffLineKind.Addition => Palette.AddedLine,
         DiffLineKind.Deletion => Palette.RemovedLine,
         DiffLineKind.HunkHeader => Palette.HunkLine,
+        DiffLineKind.Note when line.IsFold => Palette.HunkLine,
         _ => Palette.Clear,
     };
 
     /// <param name="staging">Null when the diff is read-only.</param>
     /// <param name="visibleWidth">Width of the list, which hunk buttons are lined up with.</param>
     internal void Show(
-        DiffLine line, IReadOnlyList<SyntaxToken>? tokens, double width, DiffStaging? staging, double visibleWidth)
+        DiffLine line, IReadOnlyList<SyntaxToken>? tokens, double width, DiffStaging? staging, double visibleWidth,
+        IReadOnlyList<TextSpan>? changes, Action<DiffLine> unfold)
     {
         Width = width;
         var header = line.Kind == DiffLineKind.HunkHeader;
@@ -69,13 +72,18 @@ public sealed partial class DiffRowView : UserControl
             Code.TextTrimming = TextTrimming.CharacterEllipsis;
         }
         Old.Text = line.OldNumber?.ToString() ?? "";
-        New.Text = line.NewNumber?.ToString() ?? "";
+        // A fold's number is how many lines it hides, not a line number.
+        New.Text = line.IsFold ? "" : line.NewNumber?.ToString() ?? "";
         Root.Background = LineFill(line);
-        Fill(Code, line, tokens, ActualTheme != ElementTheme.Light, Sign(line));
+        Fill(Code, line, tokens, ActualTheme != ElementTheme.Light, Sign(line), changes);
+        FoldButton.Place(Root, ref _fold, line.IsFold ? line : null, 4, unfold);
+        Code.Opacity = line.IsFold ? 0 : 1;
     }
 
     /// <summary>Writes a line into <paramref name="target"/> with syntax colours.</summary>
-    internal static void Fill(TextBlock target, DiffLine line, IReadOnlyList<SyntaxToken>? tokens, bool dark, string prefix)
+    internal static void Fill(
+        TextBlock target, DiffLine line, IReadOnlyList<SyntaxToken>? tokens, bool dark, string prefix,
+        IReadOnlyList<TextSpan>? changes = null)
     {
         var text = Source(line);
         var cut = text.Length > MaxColumns;
@@ -102,5 +110,37 @@ public sealed partial class DiffRowView : UserControl
             position = end;
         }
         Add(Expand(text[position..]) + (cut ? " \u2026" : ""));
+        Highlight(target, line, text, prefix.Length, changes);
+    }
+
+    /// <summary>Marks the words that differ from the paired line.</summary>
+    private static void Highlight(
+        TextBlock target, DiffLine line, string text, int prefix, IReadOnlyList<TextSpan>? changes)
+    {
+        // Rows are reused, so the last line's marks are removed first.
+        target.TextHighlighters.Clear();
+        if (changes is null) return;
+        var marks = new TextHighlighter
+        {
+            Background = line.Kind == DiffLineKind.Addition ? Palette.AddedWord : Palette.RemovedWord,
+        };
+        // Offsets move by the sign in front and by each tab drawn as four spaces.
+        var (counted, tabs) = (0, 0);
+        int Shown(int offset)
+        {
+            for (; counted < offset; counted++)
+                if (text[counted] == '\t') tabs++;
+            return prefix + offset + tabs * 3;
+        }
+        foreach (var span in changes)
+        {
+            if (span.Start >= text.Length) break;
+            var start = Shown(span.Start);
+            var end = Shown(Math.Min(span.End, text.Length));
+            marks.Ranges.Add(new TextRange { StartIndex = start, Length = end - start });
+        }
+        if (marks.Ranges.Count == 0) return;
+        if (target.Foreground is { } foreground) marks.Foreground = foreground;
+        target.TextHighlighters.Add(marks);
     }
 }

@@ -22,6 +22,15 @@
                 <Run x:Name="Folder" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Run x:Name="FileName" FontWeight="Bold" />
             </TextBlock>
             <StackPanel x:Name="Tools" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <ToggleButton x:Name="WhitespaceButton" Width="30" Height="26" Padding="0" Click="OnOption"
+                              AutomationProperties.Name="Ignore whitespace"
+                              ToolTipService.ToolTip="Ignore whitespace (line staging is off while on)">
+                    <FontIcon Glyph="&#xE8E4;" FontSize="13" />
+                </ToggleButton>
+                <ToggleButton x:Name="WholeFileButton" Width="30" Height="26" Padding="0" Click="OnOption"
+                              AutomationProperties.Name="Show whole file" ToolTipService.ToolTip="Show whole file">
+                    <FontIcon Glyph="&#xE8A5;" FontSize="13" />
+                </ToggleButton>
                 <Border CornerRadius="7" Padding="2" Background="{ThemeResource PillFillBrush}">
                     <StackPanel Orientation="Horizontal" Spacing="2">
                         <Button x:Name="UnifiedButton" Style="{StaticResource PlainButtonStyle}" Width="28" Height="22" CornerRadius="5"
@@ -50,6 +59,9 @@
         </Grid>
         <ListView x:Name="Lines" Grid.Row="1" SelectionMode="None" ContainerContentChanging="OnRow"
                   ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                <ListView.ItemContainerTransitions>
+                    <TransitionCollection />
+                </ListView.ItemContainerTransitions>
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="MinHeight" Value="20" />
@@ -64,6 +76,9 @@
             </ListView.ItemTemplate>
         </ListView>
         <ListView x:Name="Split" Grid.Row="1" SelectionMode="None" ContainerContentChanging="OnSplitRow">
+                <ListView.ItemContainerTransitions>
+                    <TransitionCollection />
+                </ListView.ItemContainerTransitions>
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="MinHeight" Value="20" />
@@ -79,6 +94,7 @@
         </ListView>
         <TextBlock x:Name="Empty" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <views:ImageDiffView x:Name="Images" Grid.Row="1" Visibility="Collapsed" />
         <Border x:Name="SelectionBar" Grid.Row="1" Visibility="Collapsed" HorizontalAlignment="Center"
                 VerticalAlignment="Bottom" Margin="0,0,0,16" Padding="16,8,10,8" CornerRadius="22"
                 Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"

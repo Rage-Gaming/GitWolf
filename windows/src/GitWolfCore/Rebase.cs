@@ -99,7 +99,7 @@ public sealed partial class GitRepository
         var @base = parents.Length > 1 ? parents[1] : null;
         var range = @base is null ? head : $"{@base}..{head}";
         var output = await Git.RunStringAsync(
-            ["log", "--reverse", "--topo-order", "-z", "--format=%H%x1f%s%x1f%B", range, "--"], readOnly: true);
+            ["log", "--no-show-signature", "--reverse", "--topo-order", "-z", "--format=%H%x1f%s%x1f%B", range, "--"], readOnly: true);
         var items = output.Split('\0', StringSplitOptions.RemoveEmptyEntries)
             .Select(record => record.Split('\u001f', 3))
             .Where(f => f.Length == 3)
@@ -133,7 +133,7 @@ public sealed partial class GitRepository
         var todo = Path.Combine(support, "todo");
         await File.WriteAllTextAsync(todo, plan.Todo(MessageFile, RebasePlan.Quote(Git.GitPath)));
 
-        var runner = new GitRunner(Root, Git.GitPath, new Dictionary<string, string>(Git.ExtraEnvironment)
+        var runner = Runner(new Dictionary<string, string>
         {
             ["GIT_SEQUENCE_EDITOR"] = $"cp {RebasePlan.Quote(todo)}",
         });

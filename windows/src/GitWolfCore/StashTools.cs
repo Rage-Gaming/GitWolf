@@ -121,8 +121,7 @@ public sealed partial class GitRepository
         try
         {
             // A scratch index holding HEAD plus this hunk only; the real index is left alone.
-            var temporary = new GitRunner(Root, GitPath,
-                new Dictionary<string, string> { ["GIT_INDEX_FILE"] = scratch });
+            var temporary = Runner(new Dictionary<string, string> { ["GIT_INDEX_FILE"] = scratch });
             await temporary.RunAsync(["read-tree", head]);
             await temporary.RunAsync(["apply", "--cached", "--recount", "--whitespace=nowarn", "-"],
                 input: Encoding.UTF8.GetBytes(forwardPatch));

@@ -10,8 +10,9 @@ public sealed record AuthorPage(
     DateTimeOffset? RetryAt = null);
 
 /// <summary>
-/// Finds profile pictures for commit authors on github.com, without an account. Only addresses on
-/// GitHub's picture host are ever returned, and no email address is sent anywhere.
+/// Finds profile pictures for commit authors on github.com. An account's token, when given, is sent to
+/// api.github.com only, so private repositories work too. Only addresses on GitHub's picture host are
+/// ever returned, and no email address is sent anywhere.
 /// </summary>
 public static partial class AuthorAvatars
 {
@@ -40,11 +41,12 @@ public static partial class AuthorAvatars
         && !location.Path.EndsWith("/..", StringComparison.Ordinal) && !location.Path.EndsWith("/.", StringComparison.Ordinal);
 
     /// <summary>
-    /// One page of a public repository's latest commits, as pictures by author email. Empty and marked
-    /// failed when the repository is private, the request limit is reached or there is no connection.
+    /// One page of a repository's latest commits, as pictures by author email. Empty and marked failed
+    /// when the repository can't be read (private, without a token), the request limit is reached or
+    /// there is no connection.
     /// </summary>
     public static async Task<AuthorPage> FetchPageAsync(
-        RemoteLocation location, int page = 1, AvatarTransport? transport = null)
+        RemoteLocation location, int page = 1, AvatarTransport? transport = null, string? token = null)
     {
         var found = new Dictionary<string, Uri>(StringComparer.OrdinalIgnoreCase);
         if (!CanLookUp(location)) return new(found, Failed: true);
@@ -52,6 +54,7 @@ public static partial class AuthorAvatars
             $"https://api.github.com/repos/{location.Path}/commits?per_page={PageSize}&page={page}");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         request.Headers.UserAgent.Add(new ProductInfoHeaderValue("GitWolf", "1.0"));
+        if (!string.IsNullOrEmpty(token)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         try
         {
             var reply = await (transport ?? AvatarHttp.Transport)(request).ConfigureAwait(false);

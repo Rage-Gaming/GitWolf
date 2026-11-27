@@ -80,7 +80,8 @@ public sealed partial class AvatarCache
     /// Looks up a repository's authors if any of these is unknown or was learnt long ago, at most daily.
     /// True when a picture address was learnt or changed.
     /// </summary>
-    public async Task<bool> LookUpAsync(RemoteLocation location, IEnumerable<string> emails)
+    public async Task<bool> LookUpAsync(
+        RemoteLocation location, IEnumerable<string> emails, string? token = null)
     {
         if (!CanAsk(location)) return false;
         var key = Hash(location.Path.ToLowerInvariant());
@@ -99,7 +100,8 @@ public sealed partial class AvatarCache
         {
             for (var page = 1; page <= MaxPages; page++)
             {
-                var reply = await AuthorAvatars.FetchPageAsync(location, page, _transport).ConfigureAwait(false);
+                var reply = await AuthorAvatars.FetchPageAsync(location, page, _transport, token)
+                    .ConfigureAwait(false);
                 lock (_gate)
                 {
                     if (generation != _generation) return false;
@@ -125,6 +127,20 @@ public sealed partial class AvatarCache
             lock (_gate) _lookingUp.Remove(key);
         }
         return changed;
+    }
+
+    /// <summary>
+    /// Allows every repository to be looked up again, for example after signing in, which brings its own
+    /// request limit. What was learnt is kept.
+    /// </summary>
+    public void Forget()
+    {
+        lock (_gate)
+        {
+            Index.Repositories.Clear();
+            Index.LookupsBlockedUntil = default;
+            SaveSoon();
+        }
     }
 
     /// <summary>Whether a picture is missing or old enough to be checked.</summary>

@@ -127,38 +127,6 @@ public sealed partial class RepositoryStore
 
     public Task<bool> FetchAsync() => AnnounceAsync(PerformAsync("Fetching…", r => r.FetchAsync()), "Fetched");
 
-    /// <summary>A pull that local work is in the way of sets <see cref="PullBlock"/> rather than an error.</summary>
-    public Task<bool> PullAsync()
-    {
-        var rebase = _settings.PullRebase;
-        return AnnounceAsync(PerformAsync(rebase ? "Pulling (rebase)…" : "Pulling…", r => r.PullAsync(rebase), e =>
-        {
-            if (e is not GitException git || Core.PullBlock.Parse(git.Stderr) is not { } block) return false;
-            PullBlock = block;
-            return true;
-        }), "Pulled");
-    }
-
-    public async Task<bool> StashAndPullAsync()
-    {
-        var (restored, rebase) = (false, _settings.PullRebase);
-        if (!await PerformAsync("Stashing and pulling…", async r => restored = await r.PullWithStashAsync(rebase)))
-            return false;
-        if (!restored)
-            ErrorMessage = "The pull finished, but your changes conflict with the new commits. "
-                + "Resolve any conflicted files. Your changes are also still saved in the stash list.";
-        else
-            Succeeded?.Invoke("Pulled");
-        return restored;
-    }
-
-
-    public Task<bool> PushAsync()
-    {
-        var (status, remotes) = (Status, Remotes);
-        return AnnounceAsync(PerformAsync("Pushing…", r => r.PushAsync(status, remotes)), "Pushed");
-    }
-
     public Task<bool> PushTagAsync(string name, string remote) =>
         AnnounceAsync(PerformAsync("Pushing tag…", r => r.PushTagAsync(name, remote)), "Tag pushed");
 

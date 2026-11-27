@@ -90,6 +90,10 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
     /// <summary>Set when a pull was refused to protect local work; the UI asks what to do, then clears it.</summary>
     public PullBlock? PullBlock { get => _pullBlock; set => Set(ref _pullBlock, value); }
 
+    private PushOptions? _rejectedPush;
+    /// <summary>The push the remote just refused; the UI offers a way forward, then clears it.</summary>
+    public PushOptions? RejectedPush { get => _rejectedPush; set => Set(ref _rejectedPush, value); }
+
     private HookFailure? _hookFailure;
     /// <summary>Set when a hook refused a commit, until the UI has shown it.</summary>
     public HookFailure? HookFailure { get => _hookFailure; set => Set(ref _hookFailure, value); }
@@ -109,6 +113,20 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
             Set(ref _amend, value);
             if (value && DraftMessage.Length == 0) _ = LoadHeadMessageAsync();
         }
+    }
+
+    private RepositoryRisk? _untrusted;
+    /// <summary>Set while git is refused because of what the repository's configuration runs.</summary>
+    public RepositoryRisk? Untrusted { get => _untrusted; private set => Set(ref _untrusted, value); }
+
+    /// <summary>Allows exactly the settings the user was shown, then reads the repository.</summary>
+    public Task TrustAsync(RepositoryRisk risk)
+    {
+        _settings.TrustRepository(_baseRepo.Root, risk.Fingerprint);
+        Untrusted = null;
+        ErrorMessage = null;
+        _ = RefreshRemoteLocationAsync();
+        return RequestRefresh();
     }
 
     // MARK: Lifecycle
@@ -187,13 +205,9 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
         var location = await Task.Run(repo.RemoteLocationAsync);
         if (location == RemoteLocation) return;
         RemoteLocation = location;
-        Notify(nameof(RemoteLocation));
-        Notify(nameof(WebLinks));
-        Notify(nameof(ProviderTitle));
+        // Another repository on the server: what was loaded no longer applies.
+        AccountsChanged();
     }
-
-    private ProviderKind? ProviderKindOfRemote =>
-        RemoteLocation?.Host is { } host ? _settings.AccountKindForHost(host) ?? ProviderKindExtensions.Guess(host) : null;
 
     public WebLinks? WebLinks => RemoteLocation is { } location ? new WebLinks(ProviderKindOfRemote, location) : null;
 
@@ -252,8 +266,14 @@ public sealed partial class RepositoryStore : INotifyPropertyChanged, IDisposabl
             });
             if (_lifetime.IsCancellationRequested) return;
             // Before the snapshot, so rows drawn for it already know which files use LFS.
+            Untrusted = null;
             ApplyExtras(extras.Bisect, extras.Lfs, extras.Shallow);
             Apply(snapshot);
+        }
+        catch (UntrustedRepositoryException e)
+        {
+            // Compared by fingerprint, so one question per set of settings, not one per refresh.
+            if (Untrusted?.Fingerprint != e.Risk.Fingerprint) Untrusted = e.Risk;
         }
         catch (Exception e)
         {

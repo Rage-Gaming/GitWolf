@@ -14,15 +14,38 @@ public sealed partial class GitRepository
     public string? GitPath { get; }
     /// <summary>Unchanged lines shown around each diff hunk.</summary>
     public int ContextLines { get; }
+    /// <summary>Leave whitespace changes out of diffs (`git diff -w`).</summary>
+    public bool IgnoreWhitespace { get; init; }
+    /// <summary>Show whole files in diffs instead of a few lines around each change.</summary>
+    public bool FullFileDiffs { get; init; }
+
+    private string ContextArgument => $"-U{(FullFileDiffs ? 1_000_000 : ContextLines)}";
+    private string[] WhitespaceArguments => IgnoreWhitespace ? ["-w"] : [];
 
     /// <summary>
     /// Resolves a saved credential for a remote host, plus where the `GIT_ASKPASS` helper lives.
     /// Only consulted for network commands (fetch, pull, push, clone).
     /// </summary>
-    public Func<string, GitCredential?>? Credentials { get; init; }
+    public Func<string, Task<GitCredential?>>? Credentials { get; init; }
     public string? AskpassPath { get; init; }
 
-    private GitRunner Git => new(Root, GitPath);
+    /// <summary>
+    /// When set, git commands are refused while the repository's own configuration runs programs the
+    /// user hasn't agreed to. See <see cref="RepositoryTrust"/>.
+    /// </summary>
+    public RepositoryTrust? Trust { get; init; }
+
+    private GitRunner Git => Runner();
+
+    private GitRunner Runner(IReadOnlyDictionary<string, string>? environment = null) =>
+        new(Root, GitPath, environment) { Preflight = Trust is null ? null : EnsureTrustedAsync };
+
+    private async Task EnsureTrustedAsync(CancellationToken token)
+    {
+        var risk = await RepositoryInspector.InspectAsync(Root, GitPath, token).ConfigureAwait(false);
+        if (risk.Settings.Count > 0 && !Trust!.IsTrusted(Root, risk.Fingerprint))
+            throw new UntrustedRepositoryException(risk);
+    }
 
     internal const string EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -43,36 +66,6 @@ public sealed partial class GitRepository
         value.StartsWith('-')
             ? throw new GitException("argument", 129, $"“{value}” can’t be used: names starting with “-” are not allowed.")
             : value;
-
-    /// <summary>A runner for network operations, carrying the account credential for this repo's remote.</summary>
-    /// <param name="disableHooks">When a credential is used, stops repository hooks from inheriting it.</param>
-    private async Task<GitRunner> NetworkGitAsync(bool disableHooks = false)
-    {
-        if (Credentials is null || AskpassPath is null) return Git;
-        try
-        {
-            var names = await RemotesAsync();
-            var name = names.Contains("origin") ? "origin" : names.FirstOrDefault();
-            if (name is null) return Git;
-            var url = await Git.RunStringAsync(["remote", "get-url", name], readOnly: true);
-            var location = RemoteLocation.Parse(url);
-            if (location is null) return Git;
-            var credential = Credentials(location.Host);
-            if (credential is null) return Git;
-            var env = credential.Environment(AskpassPath, url);
-            if (disableHooks)
-            {
-                env["GIT_CONFIG_COUNT"] = "2";
-                env["GIT_CONFIG_KEY_1"] = "core.hooksPath";
-                env["GIT_CONFIG_VALUE_1"] = "/dev/null";
-            }
-            return new GitRunner(Root, GitPath, env);
-        }
-        catch
-        {
-            return Git;
-        }
-    }
 
     /// <summary>Location of the `origin` (or first) remote, if it is a recognisable URL.</summary>
     public async Task<RemoteLocation?> RemoteLocationAsync()
@@ -137,9 +130,11 @@ public sealed partial class GitRepository
         // "ext::" and similar URLs name a command to run.
         if (url.Contains("::", StringComparison.Ordinal) && !url.Contains("://", StringComparison.Ordinal))
             throw new GitException("clone", 128, "That kind of URL isn’t supported because it can run commands.");
-        var env = credential is not null && askpassPath is not null
+        var env = credential is not null && askpassPath is not null && credential.Allows(url)
             ? credential.Environment(askpassPath, url)
             : new Dictionary<string, string>();
+        // A cloned repository's submodule addresses are untrusted, whatever the user's settings allow.
+        GitCredential.AddConfig(env, "protocol.ext.allow", "never");
         var runner = new GitRunner(parent, gitPath, env);
         await runner.RunAsync(["clone", "--progress", .. (options ?? new CloneOptions()).Arguments, "--", url, name],
             onProgress: onProgress, cancellationToken: cancellationToken);
@@ -233,14 +228,14 @@ public sealed partial class GitRepository
 
     public async Task<List<Stash>> StashesAsync()
     {
-        var data = await Git.RunAsync(["stash", "list", "--format=%gd%x1f%gs%x1f%at"], readOnly: true);
+        var data = await Git.RunAsync(["stash", "list", "--no-show-signature", "--format=%gd%x1f%gs%x1f%at"], readOnly: true);
         return RefParser.ParseStashes(data);
     }
 
     public async Task<List<Commit>> LogAsync(int limit, ISet<string> remotes)
     {
         var data = await Git.RunAsync(
-            ["log", "--all", "--topo-order", "-z", "-n", limit.ToString(), $"--format={LogParser.Format}"],
+            ["log", "--no-show-signature", "--all", "--topo-order", "-z", "-n", limit.ToString(), $"--format={LogParser.Format}"],
             readOnly: true);
         return LogParser.Parse(data, remotes);
     }
@@ -248,7 +243,7 @@ public sealed partial class GitRepository
     /// <summary>Full commit message (subject + body).</summary>
     public async Task<string> MessageAsync(string hash)
     {
-        var @out = await Git.RunStringAsync(["show", "-s", "--format=%B", hash], readOnly: true);
+        var @out = await Git.RunStringAsync(["show", "--no-show-signature", "-s", "--format=%B", hash], readOnly: true);
         return @out.Trim();
     }
 
@@ -272,8 +267,9 @@ public sealed partial class GitRepository
         var common = new List<string>
         {
             "--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--no-textconv",
-            "--src-prefix=a/", "--dst-prefix=b/", $"-U{ContextLines}", "-M",
+            "--src-prefix=a/", "--dst-prefix=b/", ContextArgument, "-M",
         };
+        common.AddRange(WhitespaceArguments);
 
         byte[] data;
         switch (target.Source.Kind)
@@ -287,7 +283,8 @@ public sealed partial class GitRepository
                 break;
             case DiffSourceKind.Untracked:
                 data = await Git.RunAsync(
-                    ["diff", "--no-color", "--no-index", $"-U{ContextLines}", "--", "/dev/null", target.Path],
+                    ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-index", ContextArgument,
+                        .. WhitespaceArguments, "--", "/dev/null", target.Path],
                     readOnly: true, allowedExitCodes: new HashSet<int> { 0, 1 });
                 break;
             case DiffSourceKind.Commit:
@@ -302,7 +299,7 @@ public sealed partial class GitRepository
             default:
                 throw new ArgumentOutOfRangeException(nameof(target));
         }
-        return DiffParser.Parse(data, maxLines);
+        return DiffParser.Parse(data, maxLines) with { IgnoresWhitespace = IgnoreWhitespace };
     }
 
     private async Task<string> ParentOrEmptyTreeAsync(string hash)
@@ -380,25 +377,4 @@ public sealed partial class GitRepository
 
     // MARK: Remotes
 
-    public async Task FetchAsync()
-    {
-        // Fetch also runs unattended in the background, so no hook may see the credential. Pull
-        // and push keep hooks: Git LFS and users' own checks depend on them.
-        var net = await NetworkGitAsync(disableHooks: true);
-        await net.RunAsync(["fetch", "--all", "--prune"]);
-    }
-
-    public async Task PushAsync(WorkingStatus status, IReadOnlyList<string> remotes)
-    {
-        var net = await NetworkGitAsync();
-        if (status.Upstream is null && status.Branch is { } branch)
-        {
-            var remote = remotes.Contains("origin") ? "origin" : remotes.FirstOrDefault() ?? "origin";
-            await net.RunAsync(["push", "--set-upstream", Operand(remote), $"refs/heads/{branch}"]);
-        }
-        else
-        {
-            await net.RunAsync(["push"]);
-        }
-    }
 }

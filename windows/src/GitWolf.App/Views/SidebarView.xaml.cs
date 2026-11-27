@@ -83,7 +83,8 @@ public sealed partial class SidebarView : UserControl
         if (Section(SidebarKind.Tag, "TAGS", store.Tags.Count, "No tags"))
             rows.AddRange(store.Tags.Select(t => new SidebarRow(SidebarKind.Tag, SidebarKind.Tag, t.Name, "", t.Hash,
                 Tip: $"{t.Name}\n" + (!t.IsAnnotated ? "Lightweight tag"
-                    : t.Message.Length > 0 ? $"Annotated: {t.Message}" : "Annotated tag"))));
+                    : t.Message.Length > 0 ? $"Annotated: {t.Message}" : "Annotated tag"),
+                Annotated: t.IsAnnotated)));
 
         if (Section(SidebarKind.Stash, "STASHES", store.Stashes.Count, "No stashes"))
             rows.AddRange(store.Stashes.Select(x =>
@@ -188,6 +189,13 @@ public sealed partial class SidebarView : UserControl
                         $"Delete branch “{name}” on {host}?",
                         "The branch is removed from the remote for everyone. Local branches are kept.",
                         "Delete on remote", () => store.DeleteRemoteBranchAsync(host, name)));
+                break;
+            case { Kind: SidebarKind.RemoteGroup }:
+                Add($"Fetch {row.Title}", () => _ = store.FetchRemoteAsync(row.Title), !store.IsBusy);
+                Add("Manage remotes\u2026", () => _ = RemoteDialogs.ManageAsync(XamlRoot, store));
+                break;
+            case { Kind: SidebarKind.Header, Section: SidebarKind.RemoteBranch }:
+                Add("Manage remotes\u2026", () => _ = RemoteDialogs.ManageAsync(XamlRoot, store));
                 break;
             case { Kind: SidebarKind.Tag }:
                 foreach (var server in store.Remotes)

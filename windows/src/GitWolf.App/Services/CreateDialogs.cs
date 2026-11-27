@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using GitWolf.App.Views;
 using GitWolf.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -10,7 +11,7 @@ namespace GitWolf.App.Services;
 internal static class CreateDialogs
 {
     /// <returns>The cloned folder, or null when cancelled.</returns>
-    public static Task<string?> CloneAsync(XamlRoot root, IntPtr window, string? gitPath)
+    public static Task<string?> CloneAsync(XamlRoot root, IntPtr window, string? gitPath, AccountStore accounts)
     {
         var url = new TextBox { Header = "Repository URL", PlaceholderText = "https://host/owner/repo.git" };
         var name = new TextBox { Header = "Folder name" };
@@ -25,9 +26,74 @@ internal static class CreateDialogs
         return ShowAsync(root, window, "Clone repository", "Clone", [url], name, () =>
         {
             var (from, folder, chosen) = (url.Text.Trim(), name.Text.Trim(), options.Read());
-            return (parent, progress, token) => GitRepository.CloneAsync(
-                from, parent, folder, gitPath, onProgress: progress, cancellationToken: token, options: chosen);
-        }, options.View);
+            return async (parent, progress, token) =>
+            {
+                // Only an account saved for the URL's own server; SSH remotes use the user's keys.
+                var credential = GitCredential.HttpAuthority(from) is { } authority
+                    ? await accounts.CredentialForRemoteAsync(authority) : null;
+                var askpass = credential is null ? null : AccountStore.WriteAskpass(AppSettings.Folder);
+                return await GitRepository.CloneAsync(
+                    from, parent, folder, gitPath, credential, askpass, progress, token, chosen);
+            };
+        }, options.View,
+            extra: accounts.Accounts.Any(a => a.Kind.SupportsRepositoryListing()) ? RepositoryPicker(accounts, url) : null);
+    }
+
+    /// <summary>The repositories of a saved account; picking one fills in its URL.</summary>
+    private static StackPanel RepositoryPicker(AccountStore accounts, TextBox url)
+    {
+        var listed = accounts.Accounts.Where(a => a.Kind.SupportsRepositoryListing()).ToList();
+        var account = new ComboBox { Header = "Or choose from an account", HorizontalAlignment = HorizontalAlignment.Stretch };
+        foreach (var a in listed) account.Items.Add($"{a.Title} · {a.Username}");
+        var search = new TextBox { PlaceholderText = "Search repositories", Visibility = Visibility.Collapsed };
+        var list = new ListView { Height = 150, Visibility = Visibility.Collapsed, SelectionMode = ListViewSelectionMode.Single };
+        var note = Ui.Text("", 12, secondary: true);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(list, "Repositories");
+        List<RemoteRepository> found = [];
+
+        void Filter()
+        {
+            list.Items.Clear();
+            foreach (var repo in found.Where(r => r.FullName.Contains(search.Text.Trim(), StringComparison.OrdinalIgnoreCase))
+                         .Take(100))
+                list.Items.Add(new TextBlock
+                {
+                    Text = repo.IsPrivate ? $"{repo.FullName} (private)" : repo.FullName, Tag = repo, FontSize = 12.5,
+                });
+        }
+        search.TextChanged += (_, _) => Filter();
+        list.SelectionChanged += (_, _) =>
+        {
+            if (list.SelectedItem is TextBlock { Tag: RemoteRepository repo }) url.Text = repo.HttpsUrl;
+        };
+        account.SelectionChanged += async (_, _) =>
+        {
+            var index = account.SelectedIndex;
+            if (index < 0) return;
+            found = [];
+            Filter();
+            search.Visibility = list.Visibility = Visibility.Visible;
+            note.Text = "Loading repositories…";
+            try
+            {
+                var chosen = listed[index];
+                var secret = await accounts.SecretAsync(chosen)
+                    ?? throw new ProviderException("Sign in to this account again in Settings → Accounts.");
+                var repositories = await Task.Run(() => new ProviderClient(chosen, secret).RepositoriesAsync());
+                if (account.SelectedIndex != index) return;
+                found = repositories;
+                note.Text = found.Count == 0 ? "No repositories found." : "";
+                Filter();
+            }
+            catch (Exception e)
+            {
+                // An event handler can't pass the failure on.
+                Trace.TraceWarning($"Listing repositories failed: {e.GetType().Name}");
+                if (account.SelectedIndex == index)
+                    note.Text = e is ProviderException ? e.Message : "The repositories couldn’t be listed.";
+            }
+        };
+        return new StackPanel { Spacing = 8, Children = { account, search, list, note } };
     }
 
     /// <returns>The new repository's folder, or null when cancelled.</returns>
@@ -47,7 +113,8 @@ internal static class CreateDialogs
     /// </param>
     private static async Task<string?> ShowAsync(
         XamlRoot root, IntPtr window, string title, string verb, IReadOnlyList<Control> before, TextBox name,
-        Func<Func<string, Action<string>, CancellationToken, Task<string>>> prepare, Control? after = null)
+        Func<Func<string, Action<string>, CancellationToken, Task<string>>> prepare, Control? after = null,
+        UIElement? extra = null)
     {
         var location = new TextBox
         {
@@ -65,6 +132,7 @@ internal static class CreateDialogs
         Grid.SetColumn(choose, 1);
         var content = new StackPanel { Spacing = 12, Width = 420 };
         foreach (var control in before) content.Children.Add(control);
+        if (extra is not null) content.Children.Add(extra);
         content.Children.Add(name);
         content.Children.Add(row);
         if (after is not null) content.Children.Add(after);
@@ -74,7 +142,8 @@ internal static class CreateDialogs
         var dialog = new ContentDialog
         {
             RequestedTheme = (root.Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default,
-            XamlRoot = root, Title = title, Content = new ScrollViewer { Content = content }, PrimaryButtonText = verb,
+            XamlRoot = root, Title = title, PrimaryButtonText = verb,
+            Content = new ScrollViewer { Content = content, MaxHeight = 540 },
             CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary,
         };
         choose.Click += async (_, _) =>

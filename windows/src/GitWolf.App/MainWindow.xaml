@@ -35,10 +35,11 @@
                         <views:ChangesView x:Name="Changes" />
                         <views:CompareView x:Name="Compare" />
                         <views:StashView x:Name="StashPanel" />
+                        <views:CollabListView x:Name="CollabList" Visibility="Collapsed" />
                     </Grid>
                 </Border>
                 <Border Grid.Column="2" Style="{StaticResource PanelStyle}">
-                    <Grid>
+                    <Grid x:Name="RightPanel">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
@@ -46,9 +47,12 @@
                         <views:CommitDetailView x:Name="Detail" />
                         <views:DiffView x:Name="Diff" Grid.Row="1" />
                         <views:ConflictView x:Name="Conflict" Grid.RowSpan="2" Visibility="Collapsed" />
+                        <views:CollabDetailView x:Name="CollabDetail" Grid.RowSpan="2" Visibility="Collapsed" />
                         <TextBlock x:Name="NoCommit" Grid.RowSpan="2" Text="Select a commit to see its changes"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ProgressRing x:Name="DetailLoading" Grid.RowSpan="2" Width="24" Height="24" IsActive="False"
+                                      Visibility="Collapsed" />
                     </Grid>
                 </Border>
                 <views:PanelSplitter x:Name="SidebarSplitter" HorizontalAlignment="Right" Margin="0,0,-11,0" />

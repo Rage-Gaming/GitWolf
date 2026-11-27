@@ -14,14 +14,19 @@ public sealed record RemoteRepository(
     public string Name => FullName.Split('/').LastOrDefault() ?? FullName;
 }
 
-public sealed class ProviderException(string message) : Exception(message)
+public sealed class ProviderException(string message, int? status = null) : Exception(message)
 {
-    public static ProviderException Unauthorized { get; } =
-        new("The server rejected this token. Check that it is valid and has repository access.");
+    /// <summary>The HTTP status behind the error, when there was one.</summary>
+    public int? Status { get; } = status;
 
-    public static ProviderException Http(int code) => new($"The server returned an error (HTTP {code}).");
+    public bool IsUnauthorized => Status is 401 or 403;
 
-    public static ProviderException InvalidResponse { get; } =
+    public static ProviderException Unauthorized =>
+        new("The server rejected this token. Check that it is valid and has repository access.", 401);
+
+    public static ProviderException Http(int code) => new($"The server returned an error (HTTP {code}).", code);
+
+    public static ProviderException InvalidResponse =>
         new("The server sent a response GitWolf couldn’t understand.");
 
     public static ProviderException Unsupported(string what) => new(what);
@@ -31,7 +36,7 @@ public sealed class ProviderException(string message) : Exception(message)
 public delegate Task<(byte[] Body, HttpStatusCode Status)> HttpTransport(HttpRequestMessage request);
 
 /// <summary>Talks to a hosting provider's REST API to verify a token and list the repositories it can see.</summary>
-public sealed class ProviderClient
+public sealed partial class ProviderClient
 {
     public ProviderAccount Account { get; }
     private readonly string _secret;
@@ -39,7 +44,12 @@ public sealed class ProviderClient
 
     // No redirects: custom auth headers (PRIVATE-TOKEN) would be forwarded to the redirect target.
     private static readonly HttpClient SharedHttpClient =
-        new(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(30) };
+        new(new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false })
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+            // A server can't make the app buffer without limit.
+            MaxResponseContentBufferSize = 20 * 1024 * 1024,
+        };
 
     public static readonly HttpTransport HttpClientTransport = async request =>
     {
@@ -84,6 +94,14 @@ public sealed class ProviderClient
         var r = new HttpRequestMessage(HttpMethod.Get, uri);
         r.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         r.Headers.UserAgent.Add(new ProductInfoHeaderValue("GitWolf", "1.0"));
+        if (_secret.Length == 0) return r; // Public data without an account.
+
+        if (Account.UsesOAuth)
+        {
+            r.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _secret);
+            if (Account.Kind == ProviderKind.GitHub) r.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
+            return r;
+        }
 
         if (Account.UsesPassword == true)
         {
@@ -118,13 +136,62 @@ public sealed class ProviderClient
     private static AuthenticationHeaderValue BasicAuth(string username, string secret) =>
         new("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{secret}")));
 
-    private async Task<byte[]> FetchAsync(string url)
+    private Task<byte[]> FetchAsync(string url) => SendAsync(Request(url));
+
+    /// <summary>Sends a request that changes something (POST, PUT, PATCH), with an optional JSON body.</summary>
+    private Task<byte[]> SendAsync(HttpMethod method, string url, object? json = null)
     {
-        var (body, status) = await _transport(Request(url));
+        var request = Request(url);
+        request.Method = method;
+        if (json is not null)
+            request.Content = new StringContent(JsonSerializer.Serialize(json), Encoding.UTF8, "application/json");
+        return SendAsync(request);
+    }
+
+    private async Task<byte[]> SendAsync(HttpRequestMessage request)
+    {
+        var isRead = request.Method == HttpMethod.Get;
+        byte[] body;
+        HttpStatusCode status;
+        try
+        {
+            using (request) (body, status) = await _transport(request);
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+        {
+            System.Diagnostics.Trace.TraceWarning($"A provider request failed: {e.GetType().Name}");
+            throw new ProviderException($"GitWolf couldn’t reach {Account.HostName}. Check your connection and try again.");
+        }
         var code = (int)status;
         if (code is >= 200 and < 300) return body;
-        if (code is 401 or 403) throw ProviderException.Unauthorized;
+        if (code == 401) throw ProviderException.Unauthorized;
+        // Writes report the server's own reason; reads keep plain codes so callers can react to 404.
+        if (!isRead && ErrorMessage(body) is { } message) throw new ProviderException(message, code);
+        if (code == 403) throw ProviderException.Unauthorized;
         throw ProviderException.Http(code);
+    }
+
+    /// <summary>The human-readable reason in a provider's JSON error body.</summary>
+    internal static string? ErrorMessage(byte[] body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            var parts = new List<string>();
+            if (GetString(root, "message") is { } m) parts.Add(m);
+            else if (GetString(root, "error") is { } e) parts.Add(e);
+            else if (Property(root, "error") is { } nested && GetString(nested, "message") is { } n) parts.Add(n);
+            // GitHub adds details such as "A pull request already exists for owner:branch".
+            if (Property(root, "errors") is { ValueKind: JsonValueKind.Array } errors)
+                parts.AddRange(errors.EnumerateArray().Select(x => GetString(x, "message")).OfType<string>());
+            var text = string.Join(": ", parts);
+            return text.Length == 0 ? null : text.Length > 600 ? text[..600] + "…" : text;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     // MARK: Verify
@@ -132,6 +199,14 @@ public sealed class ProviderClient
     /// <summary>Returns the username the token belongs to; throws Unauthorized for a bad token.</summary>
     public async Task<string> CurrentUserAsync()
     {
+        if (Account.Kind == ProviderKind.Azure && Account.UsesOAuth)
+        {
+            // The Visual Studio profile service identifies the signed-in Entra user.
+            using var profile = ParseJson(await FetchAsync(
+                "https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1"));
+            var who = GetString(profile.RootElement, "emailAddress") ?? GetString(profile.RootElement, "displayName");
+            return string.IsNullOrEmpty(who) ? throw ProviderException.InvalidResponse : who;
+        }
         if (!Account.Kind.SupportsRepositoryListing())
             throw ProviderException.Unsupported("Azure DevOps tokens can’t be verified here; they are used when you clone, fetch and push.");
 
@@ -244,11 +319,13 @@ public sealed class ProviderClient
     }
 
     private static string? GetString(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        Property(element, property) is { ValueKind: JsonValueKind.String } v ? v.GetString() : null;
+
+    private static JsonElement? Property(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) ? v : null;
 
     private static bool GetBool(JsonElement element, string property, bool fallback) =>
-        element.TryGetProperty(property, out var v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False)
-            ? v.GetBoolean() : fallback;
+        Property(element, property) is { ValueKind: JsonValueKind.True or JsonValueKind.False } v ? v.GetBoolean() : fallback;
 
     private static DateTimeOffset? Iso(string? s) =>
         s is not null && DateTimeOffset.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,

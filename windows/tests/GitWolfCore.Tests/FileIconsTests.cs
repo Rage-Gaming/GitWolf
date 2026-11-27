@@ -45,6 +45,31 @@ public sealed class FileIconsTests
         Assert.Equal(name, FileIcons.BranchNamed(branch).Name);
 
     [Theory]
+    [InlineData("v2.0.0", "Major release")]
+    [InlineData("1.0", "Major release")]
+    [InlineData("v1.4.2", "Release")]
+    [InlineData("v0.3.0", "Release")]
+    [InlineData("v1.5.0-rc.1", "Release candidate")]
+    [InlineData("v1.5.0-beta.2", "Pre-release")]
+    [InlineData("v3.0.0-alpha", "Pre-release")]
+    [InlineData("nightly-2026-11-27", "Nightly")]
+    [InlineData("latest", "Latest")]
+    [InlineData("release-lts", "Long-term support")]
+    [InlineData("deploy-prod-42", "Deploy")]
+    [InlineData("old-backup", "Archive")]
+    [InlineData("milestone", "Tag")]
+    [InlineData("", "Tag")]
+    public void ChoosesTheTagIcon(string tag, string name) =>
+        Assert.Equal(name, FileIcons.TagNamed(tag).Name);
+
+    [Fact]
+    public void ALightweightTagIsOutlined()
+    {
+        Assert.Equal("tag.fill", FileIcons.TagNamed("milestone").Value);
+        Assert.Equal("tag", FileIcons.TagNamed("milestone", annotated: false).Value);
+    }
+
+    [Theory]
     [InlineData("src/components/Button.tsx", "Components")]
     [InlineData("node_modules/react/lib/x.js", "Library")]
     [InlineData("node_modules/react/x.js", "Dependencies")]

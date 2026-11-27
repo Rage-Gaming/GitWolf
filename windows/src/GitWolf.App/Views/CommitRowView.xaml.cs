@@ -56,6 +56,7 @@ public sealed partial class CommitRowView : UserControl
         {
             RefKind.Local => FileIcons.BranchNamed(label.Name),
             RefKind.Remote => FileIcons.BranchNamed(label.Name[(label.Name.IndexOf('/') + 1)..]),
+            RefKind.Tag => FileIcons.TagNamed(label.Name),
             _ => null,
         };
         var brush = look is null ? Palette.Ref(label.Kind) : FileIconView.Brush(look.Color);
@@ -66,7 +67,7 @@ public sealed partial class CommitRowView : UserControl
             : new Viewbox
             {
                 Width = 11, Height = 11, VerticalAlignment = VerticalAlignment.Center,
-                Child = Icons.Create(label.Kind == RefKind.Tag ? Icons.Tag : Icons.Branch, brush),
+                Child = Icons.Create(Icons.Branch, brush),
             });
         content.Children.Add(new TextBlock
         {

@@ -72,11 +72,15 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
+            <views:ChecksView x:Name="Checks" />
             <StackPanel x:Name="Parents" Orientation="Horizontal" Spacing="8" />
         </StackPanel>
         <Border BorderThickness="0,0,0,1" BorderBrush="{ThemeResource PanelBorderBrush}">
             <ListView x:Name="Files" Padding="6" MaxHeight="190" MinHeight="52" SelectionChanged="OnFileSelected"
                       ContainerContentChanging="OnFileRow" ContextRequested="OnContext">
+                <ListView.ItemContainerTransitions>
+                    <TransitionCollection />
+                </ListView.ItemContainerTransitions>
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="MinHeight" Value="32" />

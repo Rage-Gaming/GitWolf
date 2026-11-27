@@ -10,7 +10,7 @@ using Windows.System;
 
 namespace GitWolf.App.Views;
 
-/// <summary>Preferences, shown over the window. Ported from SettingsView.swift (accounts not yet).</summary>
+/// <summary>Preferences, shown over the window. Ported from SettingsView.swift.</summary>
 public sealed partial class SettingsView : UserControl
 {
     private Window? _window;
@@ -69,7 +69,59 @@ public sealed partial class SettingsView : UserControl
         Body.Children.Add(new TextBlock { Text = pane, FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.Bold });
         if (pane == "General") General(_settings);
         else if (pane == "Git") Git(_settings);
+        else if (pane == "Accounts") Accounts(_settings.Accounts);
         else Shortcuts();
+    }
+
+    private void Accounts(AccountStore accounts)
+    {
+        var rows = new List<UIElement>();
+        foreach (var account in accounts.Accounts)
+        {
+            var remove = new Button { Content = "Remove" };
+            remove.Click += async (_, _) => await RemoveAsync(accounts, account);
+            rows.Add(Row(account.Title,
+                account.Username.Length == 0 ? account.Host : $"@{account.Username} · {account.Host}", remove));
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(remove, $"Remove {account.Title}");
+        }
+        if (rows.Count == 0)
+            rows.Add(new TextBlock
+            {
+                Text = "No accounts yet. Add one to clone private repositories and sync with your host.",
+                FontSize = 12.5, Opacity = 0.65, TextWrapping = TextWrapping.Wrap, Padding = new Thickness(12),
+            });
+        Group("Connected accounts", rows.ToArray());
+
+        var add = new Button { Content = "Add account…" };
+        add.Click += async (_, _) =>
+        {
+            await AccountDialogs.AddAsync(XamlRoot, accounts);
+            Build();
+        };
+        Body.Children.Add(add);
+        Body.Children.Add(new TextBlock
+        {
+            Text = "Tokens are stored in Windows Credential Manager and handed to Git only for matching hosts. "
+                + "They are never written into URLs or config files.",
+            FontSize = 12, Opacity = 0.65, TextWrapping = TextWrapping.Wrap,
+        });
+    }
+
+    private async Task RemoveAsync(AccountStore accounts, ProviderAccount account)
+    {
+        if (!await Dialogs.ConfirmAsync(XamlRoot, "Remove this account?",
+                $"The saved sign-in for {account.Host} will be deleted from Windows Credential Manager.", "Remove"))
+            return;
+        try
+        {
+            accounts.Remove(account);
+        }
+        catch (SecretStoreException e)
+        {
+            Trace.TraceWarning($"Removing an account failed: {e.GetType().Name}");
+            await Dialogs.ConfirmAsync(XamlRoot, "The account couldn’t be removed", e.Message, "OK");
+        }
+        Build();
     }
 
     private void General(AppSettings settings)

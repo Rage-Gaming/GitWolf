@@ -2,7 +2,7 @@ using GitWolf.Core;
 
 namespace GitWolf.Store;
 
-public enum StoreMode { History, Changes, Compare, Stash }
+public enum StoreMode { History, Changes, Compare, Stash, PullRequests, Issues }
 
 /// <summary>What a hook printed, and the signing choice to repeat if the user commits without hooks.</summary>
 public sealed record HookFailure(string Hook, string Output, bool? Sign);
@@ -32,5 +32,13 @@ public interface IStoreSettings
     bool PullRebase => false;
     /// <summary>Applies git path, diff context and credentials to a repository.</summary>
     GitRepository Configure(GitRepository repo);
-    ProviderKind? AccountKindForHost(string host);
+    /// <summary>The saved account for a host, if the user added one.</summary>
+    ProviderAccount? AccountForHost(string host) => null;
+
+    /// <summary>The user agreed to what this repository's configuration runs.</summary>
+    void TrustRepository(string root, string fingerprint) { }
+    /// <summary>The account's token or password, refreshed first when it is an expiring sign-in.</summary>
+    Task<string?> SecretAsync(ProviderAccount account) => Task.FromResult<string?>(null);
+    /// <summary>Replaced by tests; null uses the real network.</summary>
+    HttpTransport? Transport => null;
 }
