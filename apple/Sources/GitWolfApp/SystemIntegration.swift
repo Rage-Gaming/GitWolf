@@ -21,28 +21,39 @@ final class CheckNotifier: NSObject, UNUserNotificationCenterDelegate {
     /// A commit's checks went from running to finished while GitWolf is in the background.
     func finished(repo: String, repoID: String, branch: String?, state: CheckState) {
         guard available, enabled, !NSApp.isActive, state == .success || state == .failure else { return }
-        let center = UNUserNotificationCenter.current()
-        Task {
-            guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
-            let content = UNMutableNotificationContent()
-            content.title = state == .success ? "Checks passed" : "Checks failed"
-            content.body = repo + (branch.map { " · \($0)" } ?? "")
-            content.userInfo = ["repo": repoID]
-            if state == .failure { content.sound = .default }
-            try? await center.add(UNNotificationRequest(identifier: "checks-\(repoID)", content: content, trigger: nil))
-        }
+        let title = state == .success ? "Checks passed" : "Checks failed"
+        let body = repo + (branch.map { " · \($0)" } ?? "")
+        let loud = state == .failure
+        // Only plain strings cross into the task; the notification centre is used there and nowhere else.
+        Task { await Self.post(title: title, body: body, repoID: repoID, loud: loud) }
     }
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    private nonisolated static func post(title: String, body: String, repoID: String, loud: Bool) async {
+        let center = UNUserNotificationCenter.current()
+        guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.userInfo = ["repo": repoID]
+        if loud { content.sound = .default }
+        try? await center.add(UNNotificationRequest(identifier: "checks-\(repoID)", content: content, trigger: nil))
+    }
+
+    // The completion-handler forms of the delegate methods: they take no non-Sendable value across an await,
+    // which older Swift toolchains reject for the async forms.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
         let id = response.notification.request.content.userInfo["repo"] as? String
-        await MainActor.run {
+        completionHandler()
+        Task { @MainActor in
             NSApp.activate(ignoringOtherApps: true)
             if let id { Workspace.current?.select(id) }
         }
     }
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        []
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([])
     }
 }
 

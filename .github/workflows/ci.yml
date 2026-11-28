@@ -11,7 +11,12 @@ permissions:
 
 jobs:
   macos:
-    runs-on: macos-latest
+    # macos-15 is what releases are built on (an older Swift than latest), so both must pass.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-latest]
+    runs-on: ${{ matrix.os }}
     # A hung test fails here in minutes instead of at GitHub's 6 hour limit.
     timeout-minutes: 15
     defaults:
