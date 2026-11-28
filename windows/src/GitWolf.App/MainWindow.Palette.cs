@@ -65,6 +65,9 @@ public sealed partial class MainWindow
                 Add(Icons.Branch, branch.Name, "Check out branch", () => _ = s.CheckoutAsync(branch));
         }
         AddOpenInItems(items);
+        if (_workspace.Repos.Count > 0)
+            items.Add(new PaletteItem(Icons.Pull, "Pull requests across repositories…", "Hosting",
+                () => _ = PullRequestOverviewDialog.ShowAsync(Root.XamlRoot, _workspace)));
         items.Add(new PaletteItem(Icons.Plus, "Open repository…", "Workspace", () => _ = PickAsync()));
         items.Add(new PaletteItem(Icons.Plus, "Clone repository\u2026", "Workspace", () => _ = CreateAsync(clone: true)));
         items.Add(new PaletteItem(Icons.Plus, "New repository\u2026", "Workspace", () => _ = CreateAsync(clone: false)));
