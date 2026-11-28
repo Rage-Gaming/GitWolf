@@ -46,6 +46,8 @@ public sealed partial class MainWindow
             Add(Icons.Branch, "Compare refs\u2026", "Repository action", () => _ = s.OpenCompareAsync());
             Add(Icons.History, "Reflog\u2026", "Repository action",
                 () => _ = HistoryDialogs.ReflogAsync(Root.XamlRoot, s));
+            Add(Icons.History, "Repository statistics…", "Repository action",
+                () => _ = InsightsDialog.ShowAsync(Root.XamlRoot, s));
             Add(Icons.History, "Undo last change\u2026", "Repository action",
                 () => _ = HistoryDialogs.UndoAsync(Root.XamlRoot, s));
             Add(Icons.History, "Show history", "View", () => s.Mode = StoreMode.History);
