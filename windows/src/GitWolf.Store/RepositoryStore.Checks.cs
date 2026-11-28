@@ -30,6 +30,9 @@ public sealed partial class RepositoryStore
     public CheckState? HeadChecks =>
         HasProviderAccount && Status.HeadOid is { } head ? Checks(head)?.Overall : null;
 
+    /// <summary>The checked-out commit's run went from running to passed or failed.</summary>
+    public event Action<CheckState>? HeadChecksFinished;
+
     public bool CanPerformCi(CiAction action, CiCheck check) => Account?.Kind.CanPerform(action, check) == true;
 
     public bool IsCiBusy(string sha, CiCheck check) => _ciBusy.Contains((sha, check.Name));
@@ -72,8 +75,12 @@ public sealed partial class RepositoryStore
             var status = await Task.Run(() => client.CiStatusAsync(path, sha));
             if (_lifetime.IsCancellationRequested || generation != _checksGeneration || status.IsEmpty
                 || status.Equals(Checks(sha))) return;
+            var before = Checks(sha)?.Overall;
             _checks[sha] = status;
             Notify(nameof(Checks));
+            if (sha == Status.HeadOid && before == CheckState.Pending
+                && status.Overall is { } after && after is CheckState.Success or CheckState.Failure)
+                HeadChecksFinished?.Invoke(after);
         }
         catch (ProviderException e)
         {

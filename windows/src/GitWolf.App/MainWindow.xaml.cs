@@ -61,6 +61,7 @@ public sealed partial class MainWindow : Window
         AttachProvider();
         SetUpUpdates();
         SetUpOpenIn();
+        SetUpShell();
 
         Activated += (_, e) =>
         {

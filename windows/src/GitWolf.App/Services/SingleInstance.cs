@@ -47,7 +47,8 @@ internal sealed class SingleInstance : IDisposable
         try
         {
             using var pipe = new NamedPipeClientStream(".", name, PipeDirection.Out, PipeOptions.CurrentUserOnly);
-            pipe.Connect(Patience);
+            // The running copy may itself be starting.
+            pipe.Connect(Patience * 3);
             // Lets the running copy come to the front.
             AllowSetForegroundWindow(AnyProcess);
             var message = JsonSerializer.SerializeToUtf8Bytes(arguments);

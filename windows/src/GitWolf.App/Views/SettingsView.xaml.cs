@@ -166,6 +166,17 @@ public sealed partial class SettingsView : UserControl
         var spelling = new ToggleSwitch { IsOn = s.SpellCheck, MinWidth = 0, OnContent = null, OffContent = null };
         spelling.Toggled += (_, _) => Set(x => x with { SpellCheck = spelling.IsOn });
 
+        var tray = new ToggleSwitch { IsOn = s.ShowTrayIcon, MinWidth = 0, OnContent = null, OffContent = null };
+        tray.Toggled += (_, _) => Set(x => x with { ShowTrayIcon = tray.IsOn });
+
+        var results = new ToggleSwitch { IsOn = s.NotifyChecks, MinWidth = 0, OnContent = null, OffContent = null };
+        results.Toggled += (_, _) => Set(x => x with { NotifyChecks = results.IsOn });
+
+        Group("Windows",
+            Row("Icon near the clock", "Open repositories and their changes, from the notification area", tray),
+            Row("CI notifications", "When the checked-out commit’s checks finish while GitWolf is in the background",
+                results));
+
         Group("Commit message",
             Row("Check spelling", "Underline misspelled words while typing", spelling));
 

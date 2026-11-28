@@ -24,11 +24,15 @@ public partial class App : Application
         var arguments = Environment.GetCommandLineArgs().Skip(1).ToArray();
         _instance = Services.SingleInstance.Claim(arguments);
         if (_instance is null) Environment.Exit(0);
+        // Listening starts before the window is built, which can take a while: later requests wait for it.
+        var ready = new TaskCompletionSource<MainWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = _instance.ListenAsync(request => _ = ready.Task.ContinueWith(
+            shown => shown.Result.Receive(request), TaskScheduler.Default));
         var window = _window = new MainWindow();
         window.ReleaseInstance = _instance.Dispose;
         window.Closed += (_, _) => _instance.Dispose();
         window.Activate();
         _ = window.StartAsync(arguments);
-        _ = _instance.ListenAsync(window.Receive);
+        ready.SetResult(window);
     }
 }
