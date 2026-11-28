@@ -39,6 +39,7 @@ struct CommandPalette: View {
                 Item(id: "changes", title: "Show Changes", subtitle: "View", icon: "square.and.pencil") { s.mode = .changes },
             ]
             all.append(Item(id: "undo", title: "Undo Last Change…", subtitle: "Repository action", icon: "arrow.uturn.backward") { s.undoLastChange() })
+            all.append(Item(id: "insights", title: "Repository Statistics…", subtitle: "Insight", icon: "chart.bar.xaxis") { s.sheet = .insights })
             all.append(Item(id: "compare", title: "Compare Refs…", subtitle: "Repository action", icon: "arrow.left.arrow.right") { s.openCompare() })
             if s.providerTitle != nil {
                 all.append(Item(id: "new-pr", title: "New \(s.webLinks?.pullRequestsWord ?? "Pull Request")…", subtitle: "Hosting", icon: "arrow.triangle.pull") { s.sheet = .newCollab(.pullRequest) })

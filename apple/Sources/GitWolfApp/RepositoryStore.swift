@@ -8,6 +8,7 @@ enum StoreSheet: Identifiable {
     case newTag(hash: String)
     case stash
     case reflog
+    case insights
     case rebase(RebasePlan)
     case stashHunk(Int)
     case fileHistory(String)
@@ -25,6 +26,7 @@ enum StoreSheet: Identifiable {
         case .newTag: "tag"
         case .stash: "stash"
         case .reflog: "reflog"
+        case .insights: "insights"
         case .rebase: "rebase"
         case .stashHunk: "stashHunk"
         case .fileHistory: "fileHistory"

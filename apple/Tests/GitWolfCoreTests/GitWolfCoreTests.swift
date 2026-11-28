@@ -2773,3 +2773,49 @@ private func makeTempDir() throws -> URL {
         #expect(LaunchRequest.folder(from: URL(string: "gitwolf://delete?path=/tmp")!) == nil)
     }
 }
+
+@Suite struct InsightsTests {
+    private func record(_ name: String, _ email: String, _ time: Int, _ stats: [String]) -> String {
+        "\u{1e}\(name)\u{1f}\(email)\u{1f}\(time)\n\n" + stats.joined(separator: "\n") + "\n"
+    }
+
+    @Test func parsesContributorsFilesWeeksAndOwnership() {
+        let day = 86_400
+        // 2024-01-01 is a Monday (UTC).
+        let monday = 1_704_067_200
+        let log = record("Ann", "ann@x.io", monday, ["10\t2\tsrc/a.swift", "5\t0\tREADME.md"])
+            + record("Bob", "BOB@x.io", monday + 2 * day, ["3\t1\tsrc/a.swift", "-\t-\tlogo.png"])
+            + record("Ann", "ann@x.io", monday + 8 * day, ["1\t1\tsrc/b.swift"])
+        let r = RepositoryInsights.parse(log)
+        #expect(r.commits == 3 && r.added == 19 && r.deleted == 4)
+        #expect(r.contributors.map(\.name) == ["Ann", "Bob"])
+        #expect(r.contributors[0] == .init(name: "Ann", email: "ann@x.io", commits: 2, added: 16, deleted: 3))
+        #expect(r.contributors[1].email == "bob@x.io")
+        #expect(r.hotFiles.first?.path == "src/a.swift" && r.hotFiles.first?.commits == 2)
+        #expect(r.churnFiles.first?.path == "src/a.swift" && r.churnFiles.first?.churn == 16)
+        #expect(r.weeks.map(\.commits) == [2, 1])
+        let src = r.ownership.first { $0.folder == "src" }
+        #expect(src?.owner == "Ann" && src?.lines == 18)
+        #expect(r.ownership.contains { $0.folder == "(root)" })
+    }
+
+    @Test func renamesUseTheNewPath() {
+        #expect(RepositoryInsights.resolveRename("old.txt => new.txt") == "new.txt")
+        #expect(RepositoryInsights.resolveRename("src/{old => new}/f.swift") == "src/new/f.swift")
+        #expect(RepositoryInsights.resolveRename("src/{ => sub}/f.swift") == "src/sub/f.swift")
+    }
+
+    @Test func realRepositoryInsights() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try await t.commit("one", file: "a.txt", text: "1\n2\n")
+        try await t.commit("two", file: "b.txt", text: "x\n")
+        try await t.commit("three", file: "a.txt", text: "1\n2\n3\n")
+        let r = try await t.repo.insights()
+        #expect(r.commits == 3 && r.added == 4 && r.truncated == false)
+        #expect(r.contributors.count == 1 && r.contributors[0].commits == 3)
+        #expect(r.hotFiles.first?.path == "a.txt")
+        let limited = try await t.repo.insights(limit: 2)
+        #expect(limited.truncated)
+    }
+}

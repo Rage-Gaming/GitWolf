@@ -103,6 +103,8 @@ struct RepositoryView: View {
                 BranchCleanupSheet(store: store)
             case .reflog:
                 ReflogSheet(store: store)
+            case .insights:
+                InsightsSheet(store: store)
             case .stash:
                 PromptSheet(title: "Stash Changes", placeholder: "Message (optional)", confirm: "Stash", allowEmpty: true) { msg, _ in
                     store.stashPush(msg)

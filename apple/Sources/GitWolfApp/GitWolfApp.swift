@@ -380,6 +380,7 @@ struct AppCommands: Commands {
             Divider()
             Button("Clean Up Branches…") { workspace?.selected?.sheet = .cleanup }.disabled(workspace?.selected == nil)
             Button("Reflog…") { workspace?.selected?.sheet = .reflog }.disabled(workspace?.selected == nil)
+            Button("Statistics…") { workspace?.selected?.sheet = .insights }.disabled(workspace?.selected == nil)
             Divider()
             Button("Show History") { workspace?.selected?.mode = .history }
                 .keyboardShortcut("1", modifiers: [.command, .option]).disabled(workspace?.selected == nil)
