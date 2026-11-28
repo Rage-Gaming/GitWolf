@@ -114,6 +114,8 @@ jobs:
           else
             git switch --orphan gh-pages
           fi
+          # Drop build output left in the checkout so `git add -A` can't publish it.
+          git clean -fdxq
           # The Windows job keeps its own feed on this branch.
           git rm -rfq --ignore-unmatch -- . ':(exclude)appcast-windows.xml' || true
           cp "$RUNNER_TEMP/appcast.xml" appcast.xml
