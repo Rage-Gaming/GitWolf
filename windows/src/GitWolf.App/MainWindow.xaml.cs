@@ -82,24 +82,6 @@ public sealed partial class MainWindow : Window
         Bind();
     }
 
-    /// <summary>Restores the last session, then opens and selects the folder given on the command line.</summary>
-    internal async Task StartAsync(string? path)
-    {
-        try
-        {
-            // Restore first: opening saves the list, which would otherwise replace the saved one.
-            await _workspace.RestoreAsync();
-            Diff.IsSplit = _workspace.SplitDiff;
-            if (path is not null) await OpenAsync(path);
-        }
-        catch (Exception e)
-        {
-            // Fire-and-forget from launch: report rather than lose the failure.
-            Trace.TraceError($"Startup failed: {e.GetType().Name}");
-            ShowError("The last session couldn’t be restored.");
-        }
-    }
-
     private async Task OpenAsync(string path)
     {
         try

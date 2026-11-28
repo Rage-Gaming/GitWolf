@@ -145,6 +145,8 @@ public sealed partial class MainWindow
     {
         try
         {
+            // Otherwise the new copy would hand over to this one and exit.
+            ReleaseInstance?.Invoke();
             using var next = Process.Start(new ProcessStartInfo(
                 Path.Combine(AppContext.BaseDirectory, UpdateInstaller.Executable))
             {

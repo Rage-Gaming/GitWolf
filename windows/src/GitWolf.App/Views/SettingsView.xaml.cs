@@ -188,6 +188,8 @@ public sealed partial class SettingsView : UserControl
             version,
             Row("About GitWolf", "Version, links and contributors", about));
 
+        OpenFromOutside();
+
         Group("History & diffs",
             Row("Profile pictures", "From GitHub, for github.com repositories. Turning this off deletes saved pictures", pictures),
             Row("Commits per page", "How many commits to load at a time", Picker(s.CommitPageSize,
