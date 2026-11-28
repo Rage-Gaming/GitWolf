@@ -50,7 +50,7 @@ Provider features: OAuth sign-in (`OAuth.cs`, `OAuthLoopback.cs`), pull requests
 (`Collab.cs`, `CollabActions.cs`), CI checks (`CiStatus.cs`), notifications (`Notifications.cs`),
 fork (`Fork.cs`) and a Markdown subset (`Markdown.cs`).
 
-414 tests pass against real git and stubbed HTTP.
+443 tests pass against real git and stubbed HTTP.
 
 Differences from macOS, all deliberately stricter:
 
@@ -132,6 +132,18 @@ UI (`src/GitWolf.App/`):
       release notes, then install and relaunch, skip the version or be reminded later. The feed and releases are
       verified with the project's Ed25519 key (see [docs/RELEASING.md](../docs/RELEASING.md)). Development builds never
       contact the update server
+- [x] Home dashboard pins and groups; drag one branch onto another to merge or rebase
+- [x] Repository statistics, About with contributors, and pull requests across repositories (jump palette)
+- [x] First-run welcome
+- [x] `gitwolf` command and `gitwolf://open?path=` links, both off until turned on in Settings, with one running
+      copy. A link opens only a folder on a local drive, after a confirmation
+- [x] Tray icon, taskbar badge, jump list and a notification when the checked-out commit's CI finishes
+- [x] Brand logos for file types
+- [x] Spoken names for screen readers on rows, lists and icon buttons
+
+Not yet tried by hand: statistics, About, the command and link registration, the tray icon, taskbar badge,
+jump list, CI notifications, the later welcome steps, the pull request list, the link confirmation, pins and
+groups, branch dragging, and use with a screen reader (some names were read through UI Automation only).
 
 ### Trusting a repository
 
