@@ -1,3 +1,4 @@
+import AppKit
 import GitWolfCore
 import SwiftUI
 
@@ -8,7 +9,7 @@ extension Color {
     }
 }
 
-/// A flat, colourful icon for a file type (React atom for .tsx/.jsx, brand tiles for languages).
+/// A flat, colourful icon for a file type (React atom for .tsx/.jsx, brand logos for languages, tiles for the rest).
 struct FileIconView: View {
     let icon: FileIcon
     var size: CGFloat = 17
@@ -34,6 +35,12 @@ struct FileIconView: View {
                                 .foregroundStyle(.white.opacity(0.95)).offset(y: size * 0.07)
                         }
                     }
+            case .logo(let slug):
+                if let image = LanguageLogoImage.image(slug, hex: icon.color) {
+                    Image(nsImage: image).resizable().interpolation(.high).scaledToFit().frame(width: size * 0.92, height: size * 0.92)
+                } else {
+                    Image(systemName: "doc").font(.system(size: size * 0.82, weight: .semibold)).foregroundStyle(color)
+                }
             case .letters(let text):
                 RoundedRectangle(cornerRadius: size * 0.24, style: .continuous).fill(color)
                     .overlay(
@@ -61,5 +68,26 @@ private struct ReactAtom: Shape {
             path.addPath(Path(ellipseIn: ellipse).applying(t))
         }
         return path
+    }
+}
+
+/// A language logo as a flat one-colour image in the brand colour (very dark brands are lightened so they show on a dark window).
+@MainActor enum LanguageLogoImage {
+    private static var cache: [String: NSImage] = [:]
+    static func image(_ slug: String, hex: UInt32) -> NSImage? {
+        let key = "\(slug)\(hex)"
+        if let hit = cache[key] { return hit }
+        guard let path = LanguageLogos.paths[slug] else { return nil }
+        var r = Double((hex >> 16) & 0xFF), g = Double((hex >> 8) & 0xFF), b = Double(hex & 0xFF)
+        let luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+        if luma < 0.28 { let t = 0.55; r += (255 - r) * t; g += (255 - g) * t; b += (255 - b) * t }
+        let fill = String(format: "#%02X%02X%02X", Int(r), Int(g), Int(b))
+        let svg = """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="96" height="96">\
+            <path fill="\(fill)" d="\(path)"/></svg>
+            """
+        guard let image = NSImage(data: Data(svg.utf8)) else { return nil }
+        cache[key] = image
+        return image
     }
 }
