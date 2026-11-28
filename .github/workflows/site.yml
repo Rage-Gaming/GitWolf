@@ -1,0 +1,42 @@
+# Publishes the website (site/) to GitHub Pages without making a release. A release does the same as one of
+# its steps. The branch also holds the update feeds (appcast.xml, appcast-windows.xml), which are kept.
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/site.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Publish site/ to gh-pages
+        run: |
+          cp -R site "$RUNNER_TEMP/site"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages
+            git switch -C gh-pages origin/gh-pages
+          else
+            git switch --orphan gh-pages
+          fi
+          # Replace the site, keep the feeds.
+          git rm -rfq --ignore-unmatch -- . ':(exclude)appcast.xml' ':(exclude)appcast-windows.xml' || true
+          cp -R "$RUNNER_TEMP/site/." .
+          touch .nojekyll
+          git add -A
+          if git diff --cached --quiet; then echo "The site is already up to date."; exit 0; fi
+          git commit -m "Update the website"
+          # A release may push at the same moment: retry once on top of it.
+          git push origin gh-pages || { git pull --rebase origin gh-pages && git push origin gh-pages; }
