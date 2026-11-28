@@ -50,7 +50,7 @@ Provider features: OAuth sign-in (`OAuth.cs`, `OAuthLoopback.cs`), pull requests
 (`Collab.cs`, `CollabActions.cs`), CI checks (`CiStatus.cs`), notifications (`Notifications.cs`),
 fork (`Fork.cs`) and a Markdown subset (`Markdown.cs`).
 
-443 tests pass against real git and stubbed HTTP.
+446 tests pass against real git and stubbed HTTP.
 
 Differences from macOS, all deliberately stricter:
 

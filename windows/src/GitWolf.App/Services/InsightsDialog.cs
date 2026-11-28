@@ -21,7 +21,7 @@ internal static class InsightsDialog
         if (await store.ReadAsync(r => r.InsightsAsync()) is not { } data) return;
         var content = new StackPanel { Spacing = 8, Width = 460, Padding = new Thickness(0, 0, 14, 0) };
         content.Children.Add(Ui.Text(
-            $"{data.Commits:N0} commits · {data.Contributors.Count:N0} contributors · "
+            $"{CountLabel.Text(data.Commits, "commit")} · {CountLabel.Text(data.Contributors.Count, "contributor")} · "
                 + $"+{data.Added:N0} −{data.Deleted:N0} lines", 13, wrap: true));
         if (data.Truncated)
             content.Children.Add(Ui.Text("Only the newest commits are counted; older history is left out.", 12,
@@ -32,9 +32,9 @@ internal static class InsightsDialog
             content.Children.Add(Chart(data.Weeks));
         }
         Table(content, "CONTRIBUTORS", data.Contributors.Select(c =>
-            (c.Name, $"{c.Commits:N0} commits · +{c.Added:N0} −{c.Deleted:N0}")));
-        Table(content, "MOST CHANGED FILES", data.HotFiles.Select(f => (f.Path, $"{f.Commits:N0} commits")));
-        Table(content, "MOST LINES CHANGED", data.ChurnFiles.Select(f => (f.Path, $"{f.Churn:N0} lines")));
+            (c.Name, $"{CountLabel.Text(c.Commits, "commit")} · +{c.Added:N0} −{c.Deleted:N0}")));
+        Table(content, "MOST CHANGED FILES", data.HotFiles.Select(f => (f.Path, CountLabel.Text(f.Commits, "commit"))));
+        Table(content, "MOST LINES CHANGED", data.ChurnFiles.Select(f => (f.Path, CountLabel.Text(f.Churn, "line"))));
         Table(content, "OWNERSHIP BY FOLDER", data.Ownership.Select(o => (o.Folder,
             $"{o.Owner} · {o.Share.ToString("P0", CultureInfo.CurrentCulture)}")));
 
@@ -98,7 +98,7 @@ internal static class InsightsDialog
             ToolTipService.SetToolTip(bar, $"Week of {start.ToString("d", CultureInfo.CurrentCulture)}: {count:N0}");
             bars.Children.Add(bar);
         }
-        AutomationProperties.SetName(bars, $"Commits per week over {shown} weeks, at most {peak} in one week");
+        AutomationProperties.SetName(bars, $"Commits per week over {CountLabel.Text(shown, "week")}, at most {peak} in one week");
         return bars;
     }
 }
