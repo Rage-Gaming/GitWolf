@@ -5,6 +5,18 @@ struct ChangesView: View {
     @Bindable var store: RepositoryStore
     @FocusState private var composerFocused: Bool
     @AppStorage("composerHeight") private var composerHeight = 96.0
+    @State private var query = ""
+
+    /// A search box shows once there are more files than this, so a long list can be narrowed down.
+    static let searchThreshold = 20
+    private var changeCount: Int {
+        store.status.conflicted.count + store.status.staged.count + store.status.unstaged.count + store.status.untracked.count
+    }
+    private var showsSearch: Bool { changeCount > Self.searchThreshold || !query.isEmpty }
+    private var needle: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
+    private func matching(_ files: [FileChange]) -> [FileChange] {
+        needle.isEmpty ? files : files.filter { $0.path.lowercased().contains(needle) }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -12,18 +24,32 @@ struct ChangesView: View {
                 ContentUnavailableView("Working Tree Clean", systemImage: "checkmark.seal",
                                        description: Text("Nothing to commit. You’re all caught up."))
             } else {
+                if showsSearch {
+                    SearchField(text: $query, prompt: "Filter \(changeCount) files")
+                        .padding(.horizontal, 10).padding(.top, 10)
+                }
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
-                        if !store.status.conflicted.isEmpty {
-                            group("Conflicts", store.status.conflicted.map { ($0, .conflicted) }, action: nil)
+                        let conflicted = matching(store.status.conflicted), staged = matching(store.status.staged)
+                        if !conflicted.isEmpty {
+                            group("Conflicts", conflicted.map { ($0, .conflicted) }, action: nil)
                         }
-                        if !store.status.staged.isEmpty {
-                            group("Staged", store.status.staged.map { ($0, .staged) }, action: ("Unstage All", store.unstageAll))
+                        if !staged.isEmpty {
+                            group("Staged", staged.map { ($0, .staged) },
+                                  action: (needle.isEmpty ? "Unstage All" : "Unstage Shown",
+                                           { needle.isEmpty ? store.unstageAll() : store.unstage(staged.map(\.path)) }))
                         }
-                        let rest = store.status.unstaged.map { ($0, DiffTarget.Source.unstaged) }
-                            + store.status.untracked.map { ($0, DiffTarget.Source.untracked) }
+                        let restFiles = matching(store.status.unstaged) + matching(store.status.untracked)
+                        let rest = matching(store.status.unstaged).map { ($0, DiffTarget.Source.unstaged) }
+                            + matching(store.status.untracked).map { ($0, DiffTarget.Source.untracked) }
                         if !rest.isEmpty {
-                            group("Changes", rest, action: ("Stage All", store.stageAll))
+                            group("Changes", rest,
+                                  action: (needle.isEmpty ? "Stage All" : "Stage Shown",
+                                           { needle.isEmpty ? store.stageAll() : store.stage(restFiles.map(\.path)) }))
+                        }
+                        if !needle.isEmpty, conflicted.isEmpty, staged.isEmpty, rest.isEmpty {
+                            Text("No files match “\(query)”").font(.callout).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity).padding(.top, 24)
                         }
                     }
                     .padding(10)
@@ -40,9 +66,9 @@ struct ChangesView: View {
 
     /// Up/Down arrows walk through every listed file, across the Conflicts, Staged and Changes groups.
     private func moveSelection(_ delta: Int) {
-        let all: [(FileChange, DiffTarget.Source)] = store.status.conflicted.map { ($0, .conflicted) }
-            + store.status.staged.map { ($0, .staged) }
-            + store.status.unstaged.map { ($0, .unstaged) } + store.status.untracked.map { ($0, .untracked) }
+        let all: [(FileChange, DiffTarget.Source)] = matching(store.status.conflicted).map { ($0, .conflicted) }
+            + matching(store.status.staged).map { ($0, .staged) }
+            + matching(store.status.unstaged).map { ($0, .unstaged) } + matching(store.status.untracked).map { ($0, .untracked) }
         guard !all.isEmpty else { return }
         let current = all.firstIndex { $0.0.path == store.selectedTarget?.path && $0.1 == store.selectedTarget?.source }
             ?? (delta > 0 ? -1 : all.count)
