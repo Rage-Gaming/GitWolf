@@ -266,6 +266,18 @@ struct RootView: View {
     }
 }
 
+/// Menus that don't apply to GitWolf: extra windows, toolbar and sidebar toggles and font formatting.
+/// A separate group because a `Commands` body takes at most ten entries on the toolchains CI uses.
+struct UnusedSystemMenus: Commands {
+    var body: some Commands {
+        CommandGroup(replacing: .systemServices) {}
+        CommandGroup(replacing: .appVisibility) {}
+        CommandGroup(replacing: .toolbar) {}
+        CommandGroup(replacing: .sidebar) {}
+        CommandGroup(replacing: .textFormatting) {}
+    }
+}
+
 struct AppCommands: Commands {
     @FocusedValue(\.workspace) private var workspace
     @Environment(\.openWindow) private var openWindow
@@ -279,13 +291,7 @@ struct AppCommands: Commands {
             Button("Settings…") { openWindow(id: "settings") }
                 .keyboardShortcut(",")
         }
-        // Menus that don't apply to GitWolf: extra windows, toolbar and sidebar toggles, font
-        // formatting and the empty Help book.
-        CommandGroup(replacing: .systemServices) {}
-        CommandGroup(replacing: .appVisibility) {}
-        CommandGroup(replacing: .toolbar) {}
-        CommandGroup(replacing: .sidebar) {}
-        CommandGroup(replacing: .textFormatting) {}
+        UnusedSystemMenus()
         CommandGroup(replacing: .help) {
             Button("Contributors") { openWindow(id: "contributors") }
             Link("GitWolf Documentation", destination: URL(string: "https://github.com/ipuppyyt/GitWolf/tree/main/docs")!)
