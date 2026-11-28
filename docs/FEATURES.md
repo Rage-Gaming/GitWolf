@@ -466,3 +466,9 @@ See [ROADMAP.md](ROADMAP.md): LFS actions, notarised releases.
   the saved repositories are restored. A user notification (opt-out in Settings) fires when the checked-out commit's CI goes
   from running to passed/failed while the app is in the background; clicking it selects the repository. Notifications and the
   command need the packaged `.app`.
+
+- **Repository statistics** [core `RepositoryInsights`; ui `InsightsSheet`]. One `git log --no-merges --numstat` pass (at most
+  20,000 commits; the sheet says when older history is not counted) gives commits per ISO week (UTC, Monday start), contributors
+  by email with lines added/removed, hot files (commit count), churn (lines changed) and ownership (the author with the largest
+  share of changed lines per top-level folder). Ownership is from change history, not blame. Binary files count as a change
+  with no lines. Renames are not followed (`--no-renames`), so a moved file counts as a delete plus an add.

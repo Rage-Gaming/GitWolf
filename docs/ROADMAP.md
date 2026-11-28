@@ -1,9 +1,9 @@
 # Roadmap
 
 ## Next
-- First notarised release: needs an Apple Developer ID; tooling and CI workflow exist but have not been run (see [RELEASING.md](RELEASING.md))
 - Translations: strings are extracted (`apple/Scripts/extract-strings.py`), no language is shipped yet; interpolated strings need hand-made keys
-- In-place auto-update (Sparkle-style); today the app only announces new releases
+- Notarised releases (optional): needs a paid Apple Developer ID. The free path (self-signed certificate, Sparkle updates, Homebrew cask) is live; see [RELEASING.md](RELEASING.md)
+- Finder status badges and desktop widgets (need app extensions, so an Xcode project), Spotlight and Shortcuts actions
 
 ## Later
 - Git LFS download/lock actions (needs git-lfs), a bisect run script

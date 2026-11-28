@@ -59,6 +59,19 @@ Locally: `cd apple && Scripts/release.sh 1.2.3` writes everything to `apple/buil
 command lines: the update key is read from the Keychain or from `GITWOLF_UPDATE_KEY`, and CI imports the
 certificate with `security -i` reading from stdin.
 
+## Homebrew and the website
+
+`Scripts/make-cask.sh <version>` writes the Homebrew cask for a release (it clears the quarantine flag, so Homebrew users skip the
+*Open Anyway* step) and CI attaches it to the release as `gitwolf.rb`. To let people run `brew install --cask ipuppyyt/gitwolf/gitwolf`:
+
+1. Create a public repository named `homebrew-gitwolf` under the same owner.
+2. Either copy `gitwolf.rb` from each release into its `Casks/` folder, or let CI do it: create a fine-grained token with
+   *Contents: read and write* on that repository only and save it as the secret `HOMEBREW_TAP_TOKEN`. Without the secret the step is skipped.
+
+The website in `site/` is copied to the `gh-pages` branch by the same job, next to the feed, and is served at
+`https://ipuppyyt.github.io/GitWolf/`. `assets/social-preview.svg` is the repository's social image; GitHub only accepts PNG or JPEG, so render
+it once (1280 x 640) and upload it under Settings > General > Social preview.
+
 ## First install for users (once)
 
 The disk image contains a *Read Me First* note with this. macOS will say it cannot verify GitWolf, because

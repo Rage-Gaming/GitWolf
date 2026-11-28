@@ -36,6 +36,17 @@ Linux clients).
 See [docs/ROADMAP.md](docs/ROADMAP.md) for what is next (syntax highlighting,
 clone, rebase, and more).
 
+## Install (macOS)
+
+```bash
+brew install --cask ipuppyyt/gitwolf/gitwolf
+```
+
+Or download the disk image from the [latest release](https://github.com/ipuppyyt/GitWolf/releases/latest) and drag GitWolf to
+Applications. GitWolf is not notarised (that needs a paid Apple account), so macOS asks once: open *System Settings >
+Privacy & Security* and choose *Open Anyway*, or run `xattr -dr com.apple.quarantine /Applications/GitWolf.app`. Updates then
+install from inside the app, signed with a key only the maintainers hold. Checksums are published with each release.
+
 ## Building (macOS)
 
 Requirements: macOS 15+, Xcode 16+ (the SwiftUI macros ship with Xcode), Git.

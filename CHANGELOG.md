@@ -7,6 +7,8 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Distribution:** a Homebrew cask (`brew install --cask ipuppyyt/gitwolf/gitwolf`, generated per release and attached to it), a project website published on GitHub Pages, a social preview image, and install instructions in the README.
+- **Repository statistics** (Repository > Statistics…, or ⌘K): commits per week, contributors with lines added and removed, the most-changed and highest-churn files, and who works in each top-level folder, from one pass over the history (up to 20,000 commits).
 - **macOS integration:** `gitwolf [folder]` command (Settings > Command line tool installs it into `~/.local/bin`), `gitwolf://open?path=` links, and folders dropped on the Dock icon or opened with Open With now open as repositories; a notification when CI for the checked-out commit finishes while GitWolf is in the background (Settings > Notify when checks finish).
 - **Pull Requests Across Repositories:** one sheet (Home button, Help menu, command palette) listing open pull requests from every open repository, split into Mine, Others and CI failing.
 - **Undo now handles checkouts and whole rebases.** *Undo Last Change* switches back after a checkout and rewinds a complete rebase in one step, instead of moving the branch by one reflog entry.
