@@ -243,7 +243,7 @@ public sealed partial class MainWindow : Window
         var store = _store;
         var loaded = store?.IsLoaded == true;
         Home.Visibility = When(store is null);
-        if (store is null) Dashboard.Show(_workspace.Recents);
+        if (store is null) Dashboard.Show(_workspace);
         Repository.Visibility = When(loaded);
         Loading.IsActive = store is { Untrusted: null } && !loaded;
         SetTitleBar(loaded ? (UIElement)TopBar.DragRegion : HomeDragArea);
