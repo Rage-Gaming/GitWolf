@@ -50,7 +50,7 @@ Provider features: OAuth sign-in (`OAuth.cs`, `OAuthLoopback.cs`), pull requests
 (`Collab.cs`, `CollabActions.cs`), CI checks (`CiStatus.cs`), notifications (`Notifications.cs`),
 fork (`Fork.cs`) and a Markdown subset (`Markdown.cs`).
 
-390 tests pass against real git and stubbed HTTP.
+414 tests pass against real git and stubbed HTTP.
 
 Differences from macOS, all deliberately stricter:
 
@@ -93,6 +93,8 @@ UI (`src/GitWolf.App/`):
 - [x] Home dashboard: open, jump, recent repositories, drop a folder to open
 - [x] Merge, rebase, cherry-pick and revert banner; conflict resolver
 - [x] Clone and new repository
+- [x] Changes filter, breaking change toggle, release notes since a tag, undo of a checkout or whole
+      rebase, GitWolf accent, Sign In Again, copied clone address and commit-graph for large repositories
 - [x] Pull strategy (merge or rebase), push and delete tags and branches on a remote
 - [x] Commit signing, message helpers, long-subject warning, Ctrl+Enter, hook output, ignore rules
 - [x] History search by message, author, content, file and date; file history and blame

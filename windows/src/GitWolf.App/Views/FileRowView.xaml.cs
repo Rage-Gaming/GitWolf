@@ -5,7 +5,8 @@ using Microsoft.UI.Xaml.Controls;
 namespace GitWolf.App.Views;
 
 /// <summary>A file, or (when <see cref="File"/> is null) a section header.</summary>
-internal sealed record FileRow(FileChange? File, DiffSource Source, string? Header = null, bool IsLfs = false);
+internal sealed record FileRow(FileChange? File, DiffSource Source, string? Header = null, bool IsLfs = false,
+    bool Filtered = false);
 
 public sealed partial class FileRowView : UserControl
 {

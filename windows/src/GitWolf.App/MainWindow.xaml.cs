@@ -55,7 +55,7 @@ public sealed partial class MainWindow : Window
         Diff.ShowOptions(_settings.State.IgnoreWhitespace, _settings.State.FullFileDiffs);
         Diff.OptionsChanged += (ignore, whole) =>
             _settings.Update(_settings.State with { IgnoreWhitespace = ignore, FullFileDiffs = whole });
-        Root.ActualThemeChanged += (_, _) => Theming.UpdateCaptionButtons(this, Root.ActualTheme);
+        Root.ActualThemeChanged += (_, _) => Theming.ThemeChanged(this, _settings.State);
         Root.Loaded += (_, _) => Theming.Apply(this, _settings.State);
         AddShortcuts();
         AttachProvider();
@@ -150,8 +150,11 @@ public sealed partial class MainWindow : Window
         var window = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var git = _settings.CustomGitPath;
         var folder = clone
-            ? await CreateDialogs.CloneAsync(Root.XamlRoot, window, git, _settings.Accounts)
+            ? await CreateDialogs.CloneAsync(
+                Root.XamlRoot, window, git, _settings.Accounts, _settings.State.CloneFolder)
             : await CreateDialogs.NewAsync(Root.XamlRoot, window, git);
+        if (clone && folder is not null && Path.GetDirectoryName(folder) is { } parent)
+            _settings.Update(_settings.State with { CloneFolder = parent });
         if (folder is not null) await OpenAllAsync([folder]);
     }
 
@@ -394,6 +397,9 @@ public sealed partial class MainWindow : Window
             case nameof(RepositoryStore.ErrorMessage):
                 ShowError(store.ErrorMessage);
                 break;
+            case nameof(RepositoryStore.ReauthAccount):
+                ShowReauth();
+                break;
             case nameof(RepositoryStore.Comparison):
                 Compare.Show(store);
                 break;
@@ -543,6 +549,7 @@ public sealed partial class MainWindow : Window
         ErrorText.Text = message ?? "";
         // A new message starts from its first line.
         ErrorScroller.ChangeView(null, 0, null, true);
+        ShowReauth();
         Error.IsOpen = message is not null;
     }
 

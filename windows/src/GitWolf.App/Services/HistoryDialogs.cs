@@ -38,15 +38,23 @@ internal static class HistoryDialogs
 
     public static async Task UndoAsync(XamlRoot root, RepositoryStore store)
     {
-        if (await store.ReadAsync(r => r.ReflogAsync(2)) is not { } log) return;
-        if (log.Count < 2)
+        // Enough entries to find where a long rebase started.
+        if (await store.ReadAsync(r => r.ReflogAsync()) is not { } log) return;
+        var plan = UndoPlan.For(log);
+        var confirmed = plan switch
         {
-            store.ErrorMessage = "There is nothing to undo.";
-            return;
-        }
-        if (await Dialogs.ConfirmAsync(root, "Undo last change?",
-                $"“{log[0].Message}”\n\nThe branch goes back to {log[1].ShortHash}. Uncommitted work is kept.", "Undo"))
-            await store.UndoAsync(log[0].Hash, log[1].Hash);
+            UndoPlan.Reset reset => await Dialogs.ConfirmAsync(root, $"Undo “{reset.Label}”?",
+                $"HEAD moves back to {Short(reset.Target)}. Uncommitted changes are kept; if they would be "
+                    + "overwritten, nothing happens.", "Undo"),
+            UndoPlan.SwitchBack back => await Dialogs.ConfirmAsync(root, $"Undo switching to “{back.From}”?",
+                $"Go back to {(back.Detached ? Short(back.To) : $"“{back.To}”")}. Uncommitted changes come along "
+                    + "if Git allows it.", "Switch back"),
+            _ => false,
+        };
+        if (plan is null) store.ErrorMessage = "There is nothing to undo.";
+        else if (confirmed) await store.UndoAsync(plan);
+
+        static string Short(string hash) => hash.Length > 7 ? hash[..7] : hash;
     }
 
     public static async Task ReflogAsync(XamlRoot root, RepositoryStore store)

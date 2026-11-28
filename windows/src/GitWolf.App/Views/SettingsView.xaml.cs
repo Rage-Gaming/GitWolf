@@ -138,7 +138,10 @@ public sealed partial class SettingsView : UserControl
         void Set(Func<SettingsState, SettingsState> change) => settings.Update(change(settings.State));
 
         var swatches = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        foreach (var choice in Enum.GetValues<AccentChoice>()) swatches.Children.Add(Swatch(settings, choice, swatches));
+        var dark = ActualTheme == ElementTheme.Dark;
+        // GitWolf's own colour comes first.
+        foreach (var choice in Enum.GetValues<AccentChoice>().OrderBy(c => c != AccentChoice.Wolf))
+            swatches.Children.Add(Swatch(settings, choice, dark, swatches));
 
         Group("Appearance",
             Row("Theme", "Follow Windows, or always light or dark", Picker(s.Appearance,
@@ -193,14 +196,15 @@ public sealed partial class SettingsView : UserControl
                 v => Set(x => x with { DiffContext = v }))));
     }
 
-    private static Button Swatch(AppSettings settings, AccentChoice choice, Panel all)
+    private static Button Swatch(AppSettings settings, AccentChoice choice, bool dark, Panel all)
     {
-        var fill = new SolidColorBrush(Theming.Accent(choice));
+        var fill = new SolidColorBrush(Theming.Accent(choice, dark));
         var tick = new FontIcon
         {
             Glyph = "", FontSize = 10, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
             Opacity = settings.State.Accent == choice ? 1 : 0,
         };
+        var title = choice == AccentChoice.Wolf ? "GitWolf" : choice.ToString();
         var button = new Button
         {
             Width = 22, Height = 22, MinWidth = 0, Padding = new Thickness(0), CornerRadius = new CornerRadius(11),
@@ -209,8 +213,8 @@ public sealed partial class SettingsView : UserControl
         // Keep the swatch colour while hovered and pressed.
         button.Resources["ButtonBackgroundPointerOver"] = fill;
         button.Resources["ButtonBackgroundPressed"] = fill;
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, choice.ToString());
-        ToolTipService.SetToolTip(button, choice.ToString());
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, title);
+        ToolTipService.SetToolTip(button, title);
         button.Click += (_, _) =>
         {
             foreach (var other in all.Children.OfType<Button>())

@@ -209,6 +209,7 @@ public sealed partial class SidebarView : UserControl
                 if (store.Tags.Count > 1)
                     foreach (var server in store.Remotes)
                         Add($"Push all tags to {server}", () => _ = store.PushAllTagsAsync(server));
+                Add("Copy release notes since this tag", () => _ = CopyReleaseNotesAsync(store, row.Title));
                 Add("Delete local tag…", () => _ = ConfirmAsync(
                     $"Delete tag “{row.Title}”?", "The local tag is removed.", "Delete",
                     () => store.DeleteTagAsync(row.Title)));
@@ -252,6 +253,13 @@ public sealed partial class SidebarView : UserControl
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(stop);
         return menu;
+    }
+
+    private static async Task CopyReleaseNotesAsync(RepositoryStore store, string tag)
+    {
+        if (await store.ReadAsync(r => r.CommitSubjectsAsync(tag)) is not { } subjects) return;
+        if (subjects.Count == 0) store.ErrorMessage = $"There are no commits since {tag}.";
+        else Dialogs.Copy(CommitMessage.Changelog(subjects));
     }
 
     private async Task ConfirmAsync(string title, string message, string verb, Func<Task<bool>> action)

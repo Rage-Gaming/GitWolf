@@ -102,11 +102,13 @@ public sealed partial class RepositoryStore
         var key = (sha, check.Name);
         if (!_ciBusy.Add(key)) return;
         Notify(nameof(Checks));
+        ProviderAccount? account = null;
         try
         {
             if (await ConnectAsync() is not { SignedIn: true } connection)
                 throw ProviderException.Unsupported("Add an account for this repository’s host in Settings → Accounts.");
             var (client, path) = (connection.Client, connection.Path);
+            account = client.Account;
             await Task.Run(() => client.PerformAsync(action, check, path));
             if (_lifetime.IsCancellationRequested) return;
             // Shown as running right away; the lookup a moment later confirms it.
@@ -121,6 +123,7 @@ public sealed partial class RepositoryStore
         catch (ProviderException e)
         {
             ErrorMessage = e.Message;
+            if (e.IsForbidden && account is { UsesOAuth: true }) ReauthAccount = account;
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
