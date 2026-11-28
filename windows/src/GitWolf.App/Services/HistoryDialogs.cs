@@ -64,7 +64,7 @@ internal static class HistoryDialogs
         foreach (var entry in log)
         {
             var date = entry.Date.LocalDateTime;
-            list.Items.Add(new StackPanel
+            var item = new StackPanel
             {
                 Padding = new Thickness(0, 4, 0, 4),
                 Children =
@@ -77,8 +77,12 @@ internal static class HistoryDialogs
                         FontSize = 11.5, Opacity = 0.65,
                     },
                 },
-            });
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item,
+                string.Create(CultureInfo.CurrentCulture, $"{entry.Message}, {date:d} {date:t}"));
+            list.Items.Add(item);
         }
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(list, "Reflog entries");
         var hint = new TextBlock { Text = "Select an entry.", FontSize = 12, Opacity = 0.75 };
         // One dialog can't open another, so the choice is made after this one closes.
         Func<Task>? next = null;

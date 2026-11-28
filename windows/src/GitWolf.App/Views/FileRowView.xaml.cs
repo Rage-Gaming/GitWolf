@@ -14,9 +14,10 @@ public sealed partial class FileRowView : UserControl
 
     public FileRowView() => InitializeComponent();
 
-    internal void Show(FileRow row, string? actionLabel, Action? action)
+    internal void Show(FileRow row, string? actionLabel, Action? action, string? spokenAction = null)
     {
         _action = action;
+        Spoken.Name(Action, spokenAction ?? actionLabel ?? "");
         Action.Content = actionLabel;
         Action.Visibility = actionLabel is null ? Visibility.Collapsed : Visibility.Visible;
         Header.Text = row.Header ?? "";

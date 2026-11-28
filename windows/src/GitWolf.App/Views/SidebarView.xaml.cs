@@ -100,8 +100,11 @@ public sealed partial class SidebarView : UserControl
     {
         if (item.Row == next.Row) return;
         item.Row = next.Row;
-        if (Rows.ContainerFromItem(item) is ListViewItem { ContentTemplateRoot: SidebarRowView view })
+        if (Rows.ContainerFromItem(item) is ListViewItem { ContentTemplateRoot: SidebarRowView view } container)
+        {
             view.Show(item.Row, animate: true);
+            Spoken.Name(container, Spoken.Sidebar(item.Row));
+        }
     }
 
     private void OnWeb(object sender, RoutedEventArgs e) => _store?.OpenOnWeb(new WebTarget.Repository());
@@ -295,6 +298,7 @@ public sealed partial class SidebarView : UserControl
         if (!args.InRecycleQueue && args.ItemContainer.ContentTemplateRoot is SidebarRowView view && args.Item is SidebarItem item)
         {
             view.Show(item.Row);
+            Spoken.Name(args.ItemContainer, Spoken.Sidebar(item.Row));
             if (_entering.Remove(item)) view.Enter();
         }
     }

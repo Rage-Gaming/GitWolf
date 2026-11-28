@@ -12,7 +12,7 @@
             </Grid.RowDefinitions>
             <AutoSuggestBox x:Name="Filter" Margin="12,8,12,4" QueryIcon="Find" Visibility="Collapsed"
                             AutomationProperties.Name="Filter files" TextChanged="OnFilter" />
-            <ListView x:Name="Files" Grid.Row="1" Padding="4" SelectionChanged="OnSelected" ContainerContentChanging="OnRow"
+            <ListView x:Name="Files" AutomationProperties.Name="Changed files" Grid.Row="1" Padding="4" SelectionChanged="OnSelected" ContainerContentChanging="OnRow"
                       ContextRequested="OnContext">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">

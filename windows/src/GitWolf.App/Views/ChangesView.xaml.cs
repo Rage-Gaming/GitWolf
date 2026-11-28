@@ -116,6 +116,8 @@ public sealed partial class ChangesView : UserControl
     {
         if (args.InRecycleQueue || args.ItemContainer.ContentTemplateRoot is not FileRowView view
             || args.Item is not FileRow row || _store is not { } store) return;
+        Spoken.Name(args.ItemContainer, row.File is null ? Spoken.File(row)
+            : $"{Spoken.File(row)}, {(row.Source == DiffSource.Staged ? "staged" : "not staged")}");
 
         var staged = row.Source == DiffSource.Staged;
         if (row.File is { } file)
@@ -123,7 +125,8 @@ public sealed partial class ChangesView : UserControl
             // A staged rename must unstage both of its paths.
             string[] paths = file.OriginalPath is { } from && staged ? [from, file.Path] : [file.Path];
             view.Show(row, staged ? "Unstage" : "Stage",
-                () => _ = staged ? store.UnstageAsync(paths) : store.StageAsync(paths));
+                () => _ = staged ? store.UnstageAsync(paths) : store.StageAsync(paths),
+                $"{(staged ? "Unstage" : "Stage")} {file.Path}");
         }
         else if (row.Source == DiffSource.Conflicted)
         {
