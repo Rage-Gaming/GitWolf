@@ -71,6 +71,8 @@ public sealed partial class MainWindow
         items.Add(new PaletteItem(Icons.Plus, "Settings\u2026", "App", Settings.Open));
         items.Add(new PaletteItem(Icons.Fetch, "Check for Updates\u2026", "App",
             () => _ = CheckForUpdatesAsync(manual: true)));
+        items.Add(new PaletteItem(Icons.File, "About GitWolf…", "App",
+            () => _ = AboutDialog.ShowAsync(Root.XamlRoot)));
         CommandPalette.Open(items);
     }
 }

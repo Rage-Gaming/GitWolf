@@ -18,6 +18,7 @@ public sealed partial class MainWindow
     private void SetUpUpdates()
     {
         Settings.UpdateRequested += () => _ = CheckForUpdatesAsync(manual: true);
+        Settings.AboutRequested += () => _ = AboutDialog.ShowAsync(Root.XamlRoot);
         if (!AppBuild.UpdatesEnabled) return;
         _updater = new Updater(Updater.CreateClient(), AppBuild.Version!);
         // The version that was replaced can only be removed once it has exited.

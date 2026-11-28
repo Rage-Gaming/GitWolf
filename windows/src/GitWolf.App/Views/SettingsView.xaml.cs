@@ -28,6 +28,7 @@ public sealed partial class SettingsView : UserControl
     internal event Action<bool>? SplitChanged;
 
     internal event Action? UpdateRequested;
+    internal event Action? AboutRequested;
 
     internal void Attach(Window window, AppSettings settings, Workspace workspace)
     {
@@ -179,9 +180,13 @@ public sealed partial class SettingsView : UserControl
         // A row names its control after its title, which doesn't say what this button does.
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(check, "Check Now");
 
+        var about = new Button { Content = "About…" };
+        about.Click += (_, _) => AboutRequested?.Invoke();
+
         Group("Updates",
             Row("Check for updates", "Once a day. Nothing is installed without asking", updates),
-            version);
+            version,
+            Row("About GitWolf", "Version, links and contributors", about));
 
         Group("History & diffs",
             Row("Profile pictures", "From GitHub, for github.com repositories. Turning this off deletes saved pictures", pictures),
