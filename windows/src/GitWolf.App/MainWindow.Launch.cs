@@ -18,6 +18,10 @@ public sealed partial class MainWindow
     /// <summary>Restores the last session, then opens what the command line asked for.</summary>
     internal async Task StartAsync(string[] arguments)
     {
+        // Dialogs need the window's content to be on screen; subscribed before anything is awaited.
+        var loaded = new TaskCompletionSource();
+        if (Root.IsLoaded) loaded.SetResult();
+        else Root.Loaded += (_, _) => loaded.TrySetResult();
         try
         {
             // Restore first: opening saves the list, which would otherwise replace the saved one.
@@ -32,9 +36,35 @@ public sealed partial class MainWindow
         }
         finally
         {
+            await loaded.Task;
             _started.TrySetResult();
         }
-        await LaunchAsync(arguments);
+        if (arguments.Length > 0) await LaunchAsync(arguments);
+        else await WelcomeAsync();
+    }
+
+    /// <summary>Shown once, to someone with nothing set up yet.</summary>
+    private async Task WelcomeAsync()
+    {
+        if (_settings.State.WelcomeSeen) return;
+        if (_workspace.Repos.Count > 0 || _settings.Accounts.Accounts.Count > 0)
+        {
+            _settings.Update(_settings.State with { WelcomeSeen = true });
+            return;
+        }
+        try
+        {
+            if (Root.XamlRoot is null) return;
+            var exit = await new WelcomeDialog(Root.XamlRoot, _settings, WindowHandle, OpenAllAsync).ShowAsync();
+            _settings.Update(_settings.State with { WelcomeSeen = true });
+            if (exit == WelcomeExit.Open) await PickAsync();
+            else if (exit == WelcomeExit.Clone) await CreateAsync(clone: true);
+        }
+        catch (Exception e)
+        {
+            // The app works without it; it is offered again next time.
+            Trace.TraceWarning($"The welcome couldn't be shown: {e.GetType().Name}");
+        }
     }
 
     /// <summary>Called on any thread with a later copy's command line.</summary>

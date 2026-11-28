@@ -24,7 +24,8 @@ internal sealed record SettingsState(
     double MessageHeight = 90, double FilesHeight = 0,
     bool CheckForUpdates = true, long LastUpdateCheck = 0, string SkippedUpdate = "",
     string EditorPath = "", IReadOnlyList<CustomAction>? CustomActions = null,
-    string CloneFolder = "", bool ShowTrayIcon = true, bool NotifyChecks = true);
+    string CloneFolder = "", bool ShowTrayIcon = true, bool NotifyChecks = true,
+    bool WelcomeSeen = false);
 
 /// <summary>
 /// User settings, kept in %LOCALAPPDATA%\GitWolf\settings.json and read on every use so changes
