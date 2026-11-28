@@ -22,14 +22,14 @@ cask "gitwolf" do
   end
 
   auto_updates true
-  depends_on macos: ">= :sequoia"
+  depends_on macos: :sequoia
 
   app "GitWolf.app"
 
   # GitWolf is signed with its own certificate and not notarised, so macOS would ask once on first launch.
   # Installing through Homebrew is the user's choice to trust it: clear the quarantine flag.
-  postflight do
-    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{appdir}/GitWolf.app"]
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/GitWolf.app"]
   end
 
   zap trash: [
