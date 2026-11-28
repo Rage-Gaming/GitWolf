@@ -25,6 +25,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "GitWolf";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico"));
         ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
 
@@ -46,6 +47,7 @@ public sealed partial class MainWindow : Window
         Dashboard.PathsRequested += paths => _ = OpenAllAsync(paths);
         Diff.LayoutChanged += split => _workspace.SplitDiff = split;
         Rail.SettingsRequested += Settings.Open;
+        AttachRepoIcons();
         Settings.Attach(this, _settings, _workspace);
         Settings.SplitChanged += split => _workspace.SplitDiff = Diff.IsSplit = split;
         _settings.Changed += OnSettingsChanged;
