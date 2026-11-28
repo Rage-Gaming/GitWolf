@@ -25,9 +25,20 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Build
-        run: swift build
+        run: |
+          set -o pipefail
+          # Compiler errors are repeated as annotations, so they show on the run summary without opening the log.
+          swift build 2>&1 | tee "$RUNNER_TEMP/build.log" || {
+            grep -E "error:" "$RUNNER_TEMP/build.log" | sort -u | head -20 | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+            exit 1
+          }
       - name: Test
-        run: swift test
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee "$RUNNER_TEMP/test.log" || {
+            grep -E "error:|✘" "$RUNNER_TEMP/test.log" | sort -u | head -20 | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+            exit 1
+          }
 
   windows:
     runs-on: windows-latest
