@@ -459,3 +459,10 @@ Rail: each repository's tile shows the result of its checked-out commit in the t
 ## 10. Not built yet
 
 See [ROADMAP.md](ROADMAP.md): LFS actions, notarised releases.
+
+- **macOS integration** [core `LaunchRequest`; ui `SystemIntegration`, `AppDelegate.application(_:open:)`]. Folders opened from
+  Finder or the Dock, `gitwolf://open?path=/abs/folder` links and the `gitwolf [folder]` command (`apple/Scripts/gitwolf`,
+  bundled, installed by Settings into `~/.local/bin`) open as repositories; requests that arrive during launch are queued until
+  the saved repositories are restored. A user notification (opt-out in Settings) fires when the checked-out commit's CI goes
+  from running to passed/failed while the app is in the background; clicking it selects the repository. Notifications and the
+  command need the packaged `.app`.

@@ -15,6 +15,18 @@
     <key>NSHumanReadableCopyright</key><string>© 2026 GitWolf contributors. MIT licence.</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>CFBundleURLTypes</key>
+    <array><dict>
+        <key>CFBundleURLName</key><string>GitWolf link</string>
+        <key>CFBundleURLSchemes</key><array><string>gitwolf</string></array>
+    </dict></array>
+    <key>CFBundleDocumentTypes</key>
+    <array><dict>
+        <key>CFBundleTypeName</key><string>Folder</string>
+        <key>CFBundleTypeRole</key><string>Viewer</string>
+        <key>LSItemContentTypes</key><array><string>public.folder</string></array>
+        <key>LSHandlerRank</key><string>Alternate</string>
+    </dict></array>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <!-- In-app updates (Sparkle). The feed is published on GitHub Pages by the release workflow; updates are
          accepted only when signed with the private half of this public key (see docs/RELEASING.md). -->

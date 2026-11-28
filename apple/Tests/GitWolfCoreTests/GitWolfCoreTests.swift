@@ -2753,3 +2753,23 @@ private func makeTempDir() throws -> URL {
         """)
     }
 }
+
+@Suite struct LaunchRequestTests {
+    @Test func foldersFilesAndLinksResolveToAFolder() async throws {
+        let t = try await TestRepo.make()
+        defer { t.cleanup() }
+        try t.write("x", "a.txt")
+        #expect(LaunchRequest.folder(from: t.dir)?.path == t.dir.path)
+        #expect(LaunchRequest.folder(from: t.dir.appendingPathComponent("a.txt"))?.path == t.dir.path)
+        let link = try #require(LaunchRequest.link(for: t.dir))
+        #expect(link.scheme == "gitwolf")
+        #expect(LaunchRequest.folder(from: link)?.path == t.dir.path)
+    }
+
+    @Test func badRequestsAreIgnored() {
+        #expect(LaunchRequest.folder(from: URL(string: "https://example.com/open?path=/tmp")!) == nil)
+        #expect(LaunchRequest.folder(from: URL(string: "gitwolf://open?path=relative")!) == nil)
+        #expect(LaunchRequest.folder(from: URL(string: "gitwolf://open?path=/definitely/not/here")!) == nil)
+        #expect(LaunchRequest.folder(from: URL(string: "gitwolf://delete?path=/tmp")!) == nil)
+    }
+}

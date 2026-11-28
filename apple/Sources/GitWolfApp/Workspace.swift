@@ -67,6 +67,16 @@ final class Workspace {
     /// Registers this workspace with the Dock badge and menu bar icon. Called once from the window's
     /// `.task`, not from `init`: SwiftUI re-runs `Workspace()` whenever the owning view is re-created,
     /// and publishing observed state from there loops forever.
+    /// Folders asked for from outside (Finder, the `gitwolf` command, a link) before the window existed.
+    static var pendingOpens: [URL] = []
+    private static var ready = false
+
+    /// Opens a folder from outside the app now, or as soon as the window is up.
+    static func openExternally(_ folders: [URL]) {
+        guard let workspace = current, ready else { pendingOpens += folders; return }
+        folders.forEach { workspace.open($0) }
+    }
+
     func activate() {
         guard Self.current !== self else { return }
         Self.current = self
@@ -199,6 +209,7 @@ final class Workspace {
         let args = CommandLine.arguments.dropFirst().filter { $0.hasPrefix("--open=") }.map { String($0.dropFirst(7)) }
         if !args.isEmpty {
             for path in args { await openAsync(URL(fileURLWithPath: path, isDirectory: true)) }
+            drainPendingOpens()
             return
         }
         isRestoring = true
@@ -210,6 +221,15 @@ final class Workspace {
         isRestoring = false
         if let selected, repos.contains(where: { $0.id == selected }) { selectedID = selected }
         persist()
+        drainPendingOpens()
+    }
+
+    /// Opens what Finder or the `gitwolf` command asked for while the app was still starting.
+    private func drainPendingOpens() {
+        Self.ready = true
+        let queued = Self.pendingOpens
+        Self.pendingOpens = []
+        queued.forEach { open($0) }
     }
 }
 

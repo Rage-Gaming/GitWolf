@@ -223,7 +223,14 @@ final class RepositoryStore: Identifiable {
             guard let (client, path) = await providerClient() else { return }
             do {
                 let status = try await client.ciStatus(repoPath: path, sha: sha)
-                if !status.isEmpty { withAnimation(.snappy(duration: 0.2)) { checksBySHA[sha] = status } }
+                if !status.isEmpty {
+                    let before = checksBySHA[sha]?.overall
+                    withAnimation(.snappy(duration: 0.2)) { checksBySHA[sha] = status }
+                    // Tell the user when a run they were waiting on finishes (only for the commit that is checked out).
+                    if before == .pending, sha == self.status.headOID, let after = status.overall {
+                        CheckNotifier.shared.finished(repo: name, repoID: id, branch: self.status.branchDisplay, state: after)
+                    }
+                }
             } catch ProviderError.unauthorized {
                 Self.checksPausedUntil[host] = Date().addingTimeInterval(5 * 60)
             } catch ProviderError.http(let code) where code == 403 || code == 429 {

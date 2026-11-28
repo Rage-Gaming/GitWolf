@@ -3,6 +3,14 @@ import GitWolfCore
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Folders dropped on the Dock icon, `open -a GitWolf folder`, the `gitwolf` command and `gitwolf://open?path=` links.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let folders = urls.compactMap(LaunchRequest.folder(from:))
+        guard !folders.isEmpty else { return }
+        Workspace.openExternally(folders)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         // A packaged app carries AppIcon.icns; a development build has none, so draw the same artwork.
@@ -10,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         Task { @MainActor in UpdateManager.start() }
         StatusItemController.shared.sync()
+        CheckNotifier.shared.start()
         NSWindow.allowsAutomaticWindowTabbing = false
         MainMenuTidier.start()
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in

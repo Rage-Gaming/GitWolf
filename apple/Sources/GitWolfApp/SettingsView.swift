@@ -197,6 +197,9 @@ private struct GeneralSettings: View {
     @AppStorage(SettingsKey.pullRebase) private var pullRebase = false
     @AppStorage(UpdateManager.autoKey) private var checkUpdates = true
     @AppStorage(MenuBarSetting.key) private var menuBarExtra = true
+    @AppStorage(CheckNotifier.key) private var notifyChecks = true
+    @State private var cliInstalled = CommandLineTool.isInstalled
+    @State private var cliMessage: String?
     @AppStorage(SettingsKey.diffContext) private var context = 4
     @AppStorage(SettingsKey.syntaxHighlighting) private var syntax = true
     @AppStorage(SettingsKey.diffLayout) private var layout = DiffLayout.unified.rawValue
@@ -257,6 +260,20 @@ private struct GeneralSettings: View {
             Row(icon: "menubar.rectangle", tint: .indigo, title: "Menu bar icon",
                 detail: "Open repositories and their changes, one click away") {
                 Toggle("", isOn: $menuBarExtra).labelsHidden().toggleStyle(.switch)
+            }
+            Row(icon: "bell.badge", tint: .red, title: "Notify when checks finish",
+                detail: "A notification when CI for the checked-out commit passes or fails while GitWolf is in the background") {
+                Toggle("", isOn: $notifyChecks).labelsHidden().toggleStyle(.switch)
+            }
+            Row(icon: "terminal", tint: .gray, title: "Command line tool",
+                detail: cliMessage ?? (cliInstalled
+                    ? "Run gitwolf in a folder to open it here" + (CommandLineTool.onPath ? "" : ". Add ~/.local/bin to your PATH")
+                    : "Installs gitwolf into ~/.local/bin, so “gitwolf .” opens the current folder")) {
+                Button(cliInstalled ? "Remove" : "Install") {
+                    if cliInstalled { CommandLineTool.uninstall(); cliMessage = nil }
+                    else { do { try CommandLineTool.install(); cliMessage = nil } catch { cliMessage = error.localizedDescription } }
+                    cliInstalled = CommandLineTool.isInstalled
+                }
             }
             Row(icon: "arrow.down.app", tint: .green, title: "Check for updates",
                 detail: "Once a day. When a new version is found you choose to install it; it is verified before it replaces the app", divider: false) {

@@ -7,6 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **macOS integration:** `gitwolf [folder]` command (Settings > Command line tool installs it into `~/.local/bin`), `gitwolf://open?path=` links, and folders dropped on the Dock icon or opened with Open With now open as repositories; a notification when CI for the checked-out commit finishes while GitWolf is in the background (Settings > Notify when checks finish).
 - **Pull Requests Across Repositories:** one sheet (Home button, Help menu, command palette) listing open pull requests from every open repository, split into Mine, Others and CI failing.
 - **Undo now handles checkouts and whole rebases.** *Undo Last Change* switches back after a checkout and rewinds a complete rebase in one step, instead of moving the branch by one reflog entry.
 - **Breaking Change** toggle in the commit message helpers (adds `!` and a `BREAKING CHANGE:` footer), and **Copy Release Notes Since This Tag** on a tag, which groups commit subjects by conventional type.
