@@ -6,13 +6,37 @@ All notable changes are documented here. Format based on
 
 ## [Unreleased]
 
-### Added
-- **Distribution:** a Homebrew cask (`brew install --cask ipuppyyt/gitwolf/gitwolf`, generated per release and attached to it), a project website published on GitHub Pages, a social preview image, and install instructions in the README.
-- **Repository statistics** (Repository > Statistics…, or ⌘K): commits per week, contributors with lines added and removed, the most-changed and highest-churn files, and who works in each top-level folder, from one pass over the history (up to 20,000 commits).
-- **macOS integration:** `gitwolf [folder]` command (Settings > Command line tool installs it into `~/.local/bin`), `gitwolf://open?path=` links, and folders dropped on the Dock icon or opened with Open With now open as repositories; a notification when CI for the checked-out commit finishes while GitWolf is in the background (Settings > Notify when checks finish).
-- **Pull Requests Across Repositories:** one sheet (Home button, Help menu, command palette) listing open pull requests from every open repository, split into Mine, Others and CI failing.
-- **Undo now handles checkouts and whole rebases.** *Undo Last Change* switches back after a checkout and rewinds a complete rebase in one step, instead of moving the branch by one reflog entry.
-- **Breaking Change** toggle in the commit message helpers (adds `!` and a `BREAKING CHANGE:` footer), and **Copy Release Notes Since This Tag** on a tag, which groups commit subjects by conventional type.
+## [0.2.0] - 2026-11-28
+
+### Added (macOS)
+- **First-run welcome:** checks Git, connects an account, finds repositories in a folder you pick, and sets appearance and accent. Shown once, every step skippable, never shown to existing users.
+- **Repository statistics** (Repository > Statistics…): commits per week, contributors, hot and high-churn files, and who works in each folder.
+- **Pull Requests Across Repositories** (Hosting menu, ⌥⌘P): open pull requests from every open repository, split into Mine, Others and CI failing.
+- **Command line and links:** `gitwolf [folder]` (install it in Settings), `gitwolf://open?path=` links, and folders dropped on the Dock icon open as repositories.
+- **Notifications** when CI for the checked-out commit finishes while GitWolf is in the background (Settings to turn off).
+- **Undo** now switches back after a checkout and rewinds a whole rebase; a **Breaking Change** toggle in the commit helpers; **Copy Release Notes Since This Tag** on any tag.
+- **New wolf logo** (app icon, About window, Home screen, menu bar) and a **GitWolf blue** default accent. New About window and Help > Contributors.
+- **Install:** Homebrew (`brew install --cask ipuppyyt/gitwolf/gitwolf`, skips the Open Anyway step), a project website, and install steps in the README.
+- Provider errors now show the server's reason, with *Sign In Again* for browser sign-ins. Copy buttons confirm with "Copied".
+
+### Added (Windows)
+- Provider accounts, pull requests and issues, notifications, safer sync and diff tools, matching the Mac app.
+- In-app updates (signed feed, verified before install), Open in editor/terminal, and custom actions.
+- CI: re-run, cancel and follow checks; a banner to open a pull request after a push.
+- Cached profile pictures, success notices, adjustable panel heights, a Copied confirmation, and tests and a build in CI.
+
+### Changed
+- Menu bar: the new **Hosting** menu holds New Pull Request, New Issue, Notifications and Fork; the Repository menu is shorter.
+- CI lookups pause for five minutes after a host refuses them (rate limit), instead of retrying every few seconds.
+- Windows: trust is asked before hooks run, tokens are hidden in URLs, GitHub Actions are pinned, and the app is faster on large repositories.
+
+### Fixed
+- The checks "re-run" button gave a vague error when no account was signed in.
+- The repository rail clipped tile badges.
+- Home screen buttons now share one size.
+- Changing the accent in the welcome sheet no longer restarts it.
+
+## [0.1.2] - 2026-11-27
 
 ### Changed
 - **GitSync is now GitWolf** on macOS and Windows: the app name, bundle identifier (`org.gitwolf.GitWolf`), modules, projects, environment variables (`GITWOLF_*`) and documentation. On first launch, settings, open repositories, repository icons and saved account tokens from the old name are carried over (macOS: preferences, the Application Support folder and the Keychain; Windows: the `%LOCALAPPDATA%` folder).
@@ -28,12 +52,6 @@ All notable changes are documented here. Format based on
 - Removed menu items that don't apply: File > New Window, the View menu's toolbar and sidebar toggles, the Format menu, and the empty Help book (replaced by links to the documentation and issue tracker).
 
 ### Added
-- A first-run welcome (shown once, only on first launch): checks that Git is installed (offering Apple's command line tools if not), connects an account, finds and opens the repositories inside a folder you pick, and sets appearance and accent. Every step can be skipped, and anyone who already uses GitWolf is never shown it on update.
-- Copy buttons confirm: the commit hash pill turns into a green tick and "Copied" for a moment (keeping its width), and *Copy Output* in the hook failure sheet says "Copied".
-- A *GitWolf* accent colour, the blue of the logo (a lighter shade in dark mode), is now the default. Anyone who chose an accent keeps it.
-- Help > Contributors lists everyone who has contributed (names, pictures, commit counts, links to their profiles), starting with the maintainer. Read from GitHub's public contributors list without sending anything about you, cached for a day and shown offline from the last copy.
-- A proper About GitWolf window with the logo, version, licence and links.
-- When GitHub or GitLab refuses a change such as re-running a check, the error now shows the server's own reason. For accounts signed in with the browser it offers *Sign In Again*, which re-authorises with the current permissions (GitLab sign-in now asks for the `api` scope, which re-running and cancelling jobs needs).
 - In-app updates with Sparkle, free of any Apple Developer account: updates are signed with an EdDSA key, the app is signed with a stable self-signed certificate (so Keychain access and permissions survive updates), archives ship on GitHub Releases and the feed on GitHub Pages. First install needs macOS's *Open Anyway* once; updates never do. See `docs/RELEASING.md`. Replaces the old check-and-open-the-release-page flow.
 - Sync buttons animate while they run: Fetch spins, Pull and Push slide their arrow in the direction of travel.
 - CI checks update on their own: a commit with a running check is polled every 15 seconds, and a just-pushed commit (from the app or a terminal) or one made in the last 30 minutes is looked up every 15 seconds until its run appears. The running state shows an indeterminate ring spinner (the arc stretches and shrinks as it turns) instead of a clock.

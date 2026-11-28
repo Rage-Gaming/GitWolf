@@ -61,10 +61,34 @@ jobs:
         run: Scripts/release.sh "${GITHUB_REF_NAME#v}"
       - name: Homebrew cask
         run: apple/Scripts/make-cask.sh "${GITHUB_REF_NAME#v}" apple/build/release > apple/build/release/gitwolf.rb
+      - name: Release page text
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PREVIOUS="$(git tag --list 'v*' --sort=-v:refname | grep -vx "$GITHUB_REF_NAME" | head -1 || true)"
+          {
+            echo "## Download"
+            echo
+            echo "| Platform | File |"
+            echo "| --- | --- |"
+            echo "| macOS 15 or later | \`GitWolf-$VERSION.dmg\` |"
+            echo "| Windows 10 or 11 (x64) | \`GitWolf-$VERSION-windows-x64.zip\` |"
+            echo "| Homebrew | \`brew install --cask ipuppyyt/gitwolf/gitwolf\` |"
+            echo
+            echo "Installed copies update from inside the app. SHA-256 checksums are the \`.sha256\` files below."
+            echo "On a Mac, a first install asks once for *Open Anyway* (System Settings > Privacy & Security), because the app is not notarised."
+            echo
+            echo "## What's new"
+            echo
+            cat "$RUNNER_TEMP/notes.md"
+            if [ -n "$PREVIOUS" ]; then
+              echo
+              echo "**Full changelog:** https://github.com/${GITHUB_REPOSITORY}/compare/${PREVIOUS}...${GITHUB_REF_NAME}"
+            fi
+          } > "$RUNNER_TEMP/release-body.md"
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" apple/build/release/GitWolf-*.zip apple/build/release/GitWolf-*.dmg apple/build/release/GitWolf-*.sha256 apple/build/release/gitwolf.rb --generate-notes --title "GitWolf ${GITHUB_REF_NAME#v}"
+        run: gh release create "$GITHUB_REF_NAME" apple/build/release/GitWolf-*.zip apple/build/release/GitWolf-*.dmg apple/build/release/GitWolf-*.sha256 apple/build/release/gitwolf.rb --notes-file "$RUNNER_TEMP/release-body.md" --title "GitWolf ${GITHUB_REF_NAME#v}"
       # Optional: keeps the Homebrew tap (a repository named homebrew-gitwolf) current. Skipped without the secret.
       - name: Update the Homebrew tap
         env:
