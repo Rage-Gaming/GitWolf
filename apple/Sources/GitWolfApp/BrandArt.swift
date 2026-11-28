@@ -6,9 +6,9 @@ import SwiftUI
 /// The GitWolf artwork as vectors, so it stays sharp at any size and needs no image files in the app.
 enum BrandArt {
     /// The white wolf on a transparent background.
-    static let mark = image(markSVG, template: true)
+    nonisolated(unsafe) static let mark = image(markSVG, template: true)
     /// The wolf on the blue app-icon tile.
-    static let icon = image(iconSVG, template: false)
+    nonisolated(unsafe) static let icon = image(iconSVG, template: false)
 
     private static func image(_ svg: String, template: Bool) -> NSImage? {
         guard let image = NSImage(data: Data(svg.utf8)) else { return nil }
